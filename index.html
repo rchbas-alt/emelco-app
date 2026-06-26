@@ -2171,8 +2171,13 @@ function importCSVFile(file){
           t.weekMon=computeWeekMonSun(t.tripStartDate);
 
           const rowMatchKey=buildMatchKey(t);
-          const matchedTrip = rowMatchKey ? tripsByMatchKey.get(rowMatchKey) : null;
-          const isExisting = !!matchedTrip || existingCodes.has(code);
+          // Only fall back to Code-based matching when a stable matchKey genuinely
+          // can't be computed (no plate AND no trip ticket AND no DR#). If a matchKey
+          // CAN be computed but simply finds nothing, this is a new trip — do NOT
+          // fall back to Code, since that can falsely collide two different trips
+          // that happen to share the same Code (e.g. same plate ran twice in a day).
+          const matchedTrip = rowMatchKey ? tripsByMatchKey.get(rowMatchKey) : (existingCodes.has(code) ? tripsByCode.get(code) : null);
+          const isExisting = !!matchedTrip;
 
           if(!isExisting){
             // For genuinely new rows: full-field safety check (date+plate+driver+area+dest)
@@ -2189,13 +2194,13 @@ function importCSVFile(file){
             const newKey=buildMatchKey(t); if(newKey) tripsByMatchKey.set(newKey,t);
             added++;
           }else{
-            // Existing trip (matched by stable matchKey, or by Code as fallback):
-            // update in place with corrected values — including Code itself,
-            // since Code may have been the thing that needed correcting (e.g.
-            // driver-name-derived initials becoming stale). Keep original id,
-            // and preserve app-only data (diesel entries, multi-drop destinations,
-            // no-driver/plate flag) that don't come from the flat CSV columns.
-            const existingTrip = matchedTrip || tripsByCode.get(code);
+            // Existing trip (matched by stable matchKey, or by Code only when no
+            // matchKey is computable): update in place with corrected values —
+            // including Code itself, since Code may have been the thing that needed
+            // correcting (e.g. driver-name-derived initials becoming stale). Keep
+            // original id, and preserve app-only data (diesel entries, multi-drop
+            // destinations, no-driver/plate flag) that don't come from the flat CSV columns.
+            const existingTrip = matchedTrip;
             const oldCode=existingTrip.code;
             t.id=existingTrip.id;
             if(Array.isArray(existingTrip.dieselEntries)) t.dieselEntries=existingTrip.dieselEntries;
