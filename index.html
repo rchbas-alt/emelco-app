@@ -159,9 +159,50 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
 .import-zone-icon{font-size:36px;margin-bottom:10px}
 .import-zone-title{font-size:14px;font-weight:600;margin-bottom:5px}
 .import-zone-sub{font-size:11px;color:var(--text2)}
+
+/* ===== ROLE GATE ===== */
+body.role-operations .fin-only{display:none!important}
+#login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#1a1e2e,#2a3148);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif}
+#login-overlay.hidden{display:none}
+.login-box{background:#fff;border-radius:16px;padding:32px 30px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.login-logo-mark{width:38px;height:38px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-weight:600;font-size:13px;color:#000}
+.login-title{font-weight:700;font-size:16px}
+.login-sub{font-size:11px;color:var(--text2)}
+.role-pick{display:flex;gap:8px;margin-bottom:16px}
+.role-pick-btn{flex:1;padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:var(--bg3);cursor:pointer;font-size:12px;font-weight:700;text-align:center;color:var(--text2);transition:all .15s}
+.role-pick-btn.active{border-color:var(--accent);background:#fff7e6;color:var(--text)}
+.login-input{width:100%;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px;font-family:'Sora',sans-serif}
+.login-input:focus{outline:none;border-color:var(--accent)}
+.login-error{color:var(--red);font-size:12px;margin-bottom:10px;min-height:14px}
+.login-submit{width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:13px;cursor:pointer}
+.login-submit:hover{background:#ffc02a}
+.role-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.3px}
+.role-badge.owner{background:#fff3da;color:#8a5a00}
+.role-badge.operations{background:#e3f0ff;color:#1d5ba8}
 </style>
 </head>
 <body>
+
+<!-- ====== LOGIN OVERLAY ====== -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-mark">EM</div>
+      <div>
+        <div class="login-title">EMELCO Logistics</div>
+        <div class="login-sub">Trip List Manager — 2026</div>
+      </div>
+    </div>
+    <div class="role-pick">
+      <div class="role-pick-btn active" id="pick-owner" onclick="pickRole('owner')">👑 Owner</div>
+      <div class="role-pick-btn" id="pick-operations" onclick="pickRole('operations')">🧭 Operations</div>
+    </div>
+    <input type="password" class="login-input" id="login-pass" placeholder="Enter access code" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="login-error" id="login-error"></div>
+    <button class="login-submit" onclick="doLogin()">Unlock</button>
+  </div>
+</div>
 
 <div class="header">
   <div class="logo">
@@ -172,17 +213,19 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
     </div>
   </div>
   <div class="header-right">
+    <span class="role-badge" id="role-badge" style="display:none"></span>
     <span id="sync-status" style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace">⏳ Connecting…</span>
     <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
     <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
     <button class="btn btn-primary" onclick="openNewTrip()">+ New Trip</button>
+    <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Switch user">🔒 Logout</button>
   </div>
 </div>
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('trips')">🚚 Trips <span class="tab-badge" id="trips-badge">0</span></div>
-  <div class="tab" onclick="switchTab('summary')">📊 Summary</div>
+  <div class="tab fin-only" onclick="switchTab('summary')">📊 Summary</div>
   <div class="tab" onclick="switchTab('staff')">👤 Staff <span class="tab-badge" id="staff-badge">0</span></div>
   <div class="tab" onclick="switchTab('fleet')">🚛 Fleet</div>
   <div class="tab" onclick="switchTab('import')">⬆ Data</div>
@@ -196,10 +239,10 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
 <div class="page active" id="page-trips">
   <div class="stats-row">
     <div class="stat-card trips"><div class="stat-label">Total Trips</div><div class="stat-value" id="stat-trips">0</div><div class="stat-sub">All entries</div></div>
-    <div class="stat-card income"><div class="stat-label">Revenue (R+S)</div><div class="stat-value" id="stat-income">₱0</div><div class="stat-sub">Rate + Surcharge</div></div>
-    <div class="stat-card expense"><div class="stat-label">Total Out</div><div class="stat-value" id="stat-expenses">₱0</div><div class="stat-sub">Exp + Staff Pay</div></div>
-    <div class="stat-card profit"><div class="stat-label">Net Income</div><div class="stat-value" id="stat-profit">₱0</div><div class="stat-sub">Before OPEX</div></div>
-    <div class="stat-card"><div class="stat-label">Avg % Profit</div><div class="stat-value" id="stat-pct">0%</div><div class="stat-sub">Excl. VAT</div></div>
+    <div class="stat-card income fin-only"><div class="stat-label">Revenue (R+S)</div><div class="stat-value" id="stat-income">₱0</div><div class="stat-sub">Rate + Surcharge</div></div>
+    <div class="stat-card expense fin-only"><div class="stat-label">Total Out</div><div class="stat-value" id="stat-expenses">₱0</div><div class="stat-sub">Exp + Staff Pay</div></div>
+    <div class="stat-card profit fin-only"><div class="stat-label">Net Income</div><div class="stat-value" id="stat-profit">₱0</div><div class="stat-sub">Before OPEX</div></div>
+    <div class="stat-card fin-only"><div class="stat-label">Avg % Profit</div><div class="stat-value" id="stat-pct">0%</div><div class="stat-sub">Excl. VAT</div></div>
   </div>
   <!-- DUPE BANNER -->
   <div class="dupe-banner" id="dupe-banner">
@@ -250,8 +293,8 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
         <th class="num-cell">R+S+VAT</th>
         <th class="num-cell">Expenses</th>
         <th class="num-cell">Staff Pay</th>
-        <th class="num-cell">Income</th>
-        <th class="num-cell">% Profit</th>
+        <th class="num-cell fin-only">Income</th>
+        <th class="num-cell fin-only">% Profit</th>
         <th>Doc Status</th><th>Pay Status</th><th>Truck</th><th>Wk</th><th></th>
       </tr></thead>
       <tbody id="table-body"></tbody>
@@ -630,12 +673,12 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
     <div class="computed-row">
       <div class="computed-item"><div class="computed-label">Expenses</div><div class="computed-value" id="c-expenses" style="color:var(--red)">₱0.00</div></div>
       <div class="computed-item"><div class="computed-label">Exp + Staff Pay</div><div class="computed-value" id="c-exp-staff" style="color:var(--red)">₱0.00</div></div>
-      <div class="computed-item"><div class="computed-label">Income</div><div class="computed-value" id="c-income" style="color:var(--green)">₱0.00</div></div>
-      <div class="computed-item"><div class="computed-label">% Profit</div><div class="computed-value" id="c-pct-profit" style="color:var(--accent)">0.00%</div></div>
-      <div class="computed-item"><div class="computed-label">VAT (12%)</div><div class="computed-value" id="c-vat" style="color:var(--blue)">₱0.00</div></div>
-      <div class="computed-item"><div class="computed-label">Income+VAT</div><div class="computed-value" id="c-income-vat" style="color:var(--green)">₱0.00</div></div>
-      <div class="computed-item"><div class="computed-label">OPEX (25%)</div><div class="computed-value" id="c-opex" style="color:var(--text2)">₱0.00</div></div>
-      <div class="computed-item"><div class="computed-label">After OPEX</div><div class="computed-value" id="c-income-opex" style="color:var(--accent)">₱0.00</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">Income</div><div class="computed-value" id="c-income" style="color:var(--green)">₱0.00</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">% Profit</div><div class="computed-value" id="c-pct-profit" style="color:var(--accent)">0.00%</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">VAT (12%)</div><div class="computed-value" id="c-vat" style="color:var(--blue)">₱0.00</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">Income+VAT</div><div class="computed-value" id="c-income-vat" style="color:var(--green)">₱0.00</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">OPEX (25%)</div><div class="computed-value" id="c-opex" style="color:var(--text2)">₱0.00</div></div>
+      <div class="computed-item fin-only"><div class="computed-label">After OPEX</div><div class="computed-value" id="c-income-opex" style="color:var(--accent)">₱0.00</div></div>
     </div>
     <div class="form-section" style="margin-top:18px">
       <div class="section-title">Status & Remarks <span>INFO</span></div>
@@ -858,6 +901,63 @@ const APP_VERSION = '202606260100'; // bump this string each time you give Rucha
 const GH_REPO  = 'rchbas-alt/emelco-data';
 // SECURITY: GitHub token no longer lives here. All requests go through
 // a Cloudflare Worker proxy that holds the real token server-side.
+// ===== ROLE / ACCESS CONTROL =====
+// NOTE: this is a simple UI gate for a small trusted team, not bank-grade security.
+// Anyone with these codes (or who edits this file) can see everything — change codes here as needed.
+const ACCESS_CODES = {
+  owner: 'emelco2026',        // 👑 full access incl. financials, summary, payroll
+  operations: 'ops2026'       // 🧭 trips/staff/fleet/data/payroll, no profit/revenue figures
+};
+let currentRole = null; // 'owner' | 'operations'
+let pickedRole = 'owner';
+
+function pickRole(role){
+  pickedRole = role;
+  document.getElementById('pick-owner').classList.toggle('active', role==='owner');
+  document.getElementById('pick-operations').classList.toggle('active', role==='operations');
+  document.getElementById('login-error').textContent='';
+  document.getElementById('login-pass').value='';
+  document.getElementById('login-pass').focus();
+}
+function doLogin(){
+  const pass = document.getElementById('login-pass').value.trim();
+  if(pass === ACCESS_CODES[pickedRole]){
+    setRole(pickedRole);
+    document.getElementById('login-overlay').classList.add('hidden');
+  } else {
+    document.getElementById('login-error').textContent = 'Incorrect access code.';
+  }
+}
+function setRole(role){
+  currentRole = role;
+  localStorage.setItem('emelco_role', role);
+  document.body.classList.toggle('role-operations', role==='operations');
+  const badge = document.getElementById('role-badge');
+  badge.style.display='inline-block';
+  badge.className = 'role-badge '+role;
+  badge.textContent = role==='owner' ? '👑 Owner' : '🧭 Operations';
+}
+function doLogout(){
+  if(!confirm('Switch user / lock the app?')) return;
+  localStorage.removeItem('emelco_role');
+  currentRole = null;
+  document.body.classList.remove('role-operations');
+  document.getElementById('role-badge').style.display='none';
+  document.getElementById('login-overlay').classList.remove('hidden');
+  document.getElementById('login-pass').value='';
+  pickRole('owner');
+  // if an operations user was sitting on a now-restricted page, snap back to trips
+  switchTab('trips');
+}
+function initRoleGate(){
+  const saved = localStorage.getItem('emelco_role');
+  if(saved === 'owner' || saved === 'operations'){
+    setRole(saved);
+    document.getElementById('login-overlay').classList.add('hidden');
+  }
+}
+initRoleGate();
+
 const PROXY_URL = 'https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET = 'emelco1254rch';
 const GH_FILE  = 'emelco_data.json';
@@ -1568,8 +1668,8 @@ function renderTable(){
       <td class="num-cell accent-text">₱${fmt(c.rsvat)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(c.expenses)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(c.staffPay)}</td>
-      <td class="num-cell ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
-      <td class="num-cell ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
+      <td class="num-cell fin-only ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
+      <td class="num-cell fin-only ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
       <td><span class="badge ${getBadge(ds)}" title="${ds}" style="font-size:9px">${dsShort}</span></td>
       <td><span class="badge ${getBadge(ps)}">${ps}</span></td>
       <td style="font-size:10px;color:var(--text2)">${t.truckType||'—'}</td>
@@ -2297,6 +2397,7 @@ function clearAllData(){
 
 // ===== TABS =====
 function switchTab(name){
+  if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
