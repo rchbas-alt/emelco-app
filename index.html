@@ -894,7 +894,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606260100'; // bump this string each time you give Ruchan a new file
+const APP_VERSION = '202606261500'; // bumped: RBAC role gate + hard force-reload added
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -2621,7 +2621,7 @@ function exportBillingExcel(){
   toast('Billing summary exported ✓','success');
 }
 
-// ===== VERSION CHECK (soft warning, never blocks usage) =====
+// ===== VERSION CHECK (hard block — forces reload on mismatch) =====
 async function checkAppVersion(){
   try{
     const res = await fetch(GH_VERSION_API+'?t='+Date.now(), {
@@ -2633,22 +2633,30 @@ async function checkAppVersion(){
     if(!text) return;
     const data = JSON.parse(text);
     if(data.latestVersion && data.latestVersion !== APP_VERSION){
-      showVersionBanner(data.latestVersion, data.note||'');
+      showForceReloadBlock(data.latestVersion, data.note||'');
     }
   } catch(e){ console.warn('Version check skipped:',e); }
 }
 
-function showVersionBanner(latest, note){
-  if(document.getElementById('version-banner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'version-banner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#f0a500;color:#000;padding:10px 16px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.2)';
-  banner.innerHTML = `
-    <span>⚠️ A newer version of this app is available (${latest}). You're on ${APP_VERSION}. ${note?('— '+note):''} Ask Ruchan for the latest file when convenient.</span>
-    <button onclick="document.getElementById('version-banner').remove()" style="background:#000;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;margin-left:12px;white-space:nowrap">Dismiss</button>
-  `;
-  document.body.prepend(banner);
+function showForceReloadBlock(latest, note){
+  if(document.getElementById('force-reload-block')) return; // already showing
+  const block = document.createElement('div');
+  block.id = 'force-reload-block';
+  block.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(10,12,20,.92);display:flex;align-items:center;justify-content:center;font-family:Sora,sans-serif;padding:20px';
+  block.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:30px 28px;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="font-size:34px;margin-bottom:10px">🔄</div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:8px">An updated version is required</div>
+      <div style="font-size:12.5px;color:#5a6175;margin-bottom:4px">You're on <strong>${APP_VERSION}</strong>. Latest is <strong>${latest}</strong>.</div>
+      ${note?`<div style="font-size:12px;color:#5a6175;margin-bottom:14px">${note}</div>`:'<div style="margin-bottom:14px"></div>'}
+      <button onclick="location.reload(true)" style="width:100%;background:#d4820a;color:#000;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer">Reload Now</button>
+      <div style="font-size:10.5px;color:#9099b0;margin-top:10px">This screen will stay until you reload — the old file can no longer be used.</div>
+    </div>`;
+  document.body.appendChild(block);
 }
+
+// Re-check periodically in case someone leaves a tab open on the old version
+setInterval(checkAppVersion, 3*60*1000); // every 3 min
 
 // Run once manually after bumping APP_VERSION, to publish the new version number to GitHub
 async function publishAppVersion(note){
