@@ -359,6 +359,90 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
       <div class="guide-step"><div class="step-num">8</div><div class="step-content"><div class="step-title">Backup & Restore</div><div class="step-desc">Go to the <strong>⬆ Data</strong> tab. Click <strong>"Backup Full Data (JSON)"</strong> regularly to save a copy. To move data to another PC or browser, backup on the old one, then use <strong>"Restore from JSON Backup"</strong> on the new one.</div></div></div>
       <div class="guide-step"><div class="step-num">9</div><div class="step-content"><div class="step-title">Where is data stored?</div><div class="step-desc">All data lives in your browser's <strong>localStorage</strong> for the HTML file. As long as you open the same HTML file in the same browser, your data persists. Do NOT clear browser data/cache for this file. Use JSON Backup to be safe.</div></div></div>
     </div>
+
+    <h3 style="margin-top:24px">📋 Data Entry Rules & CSV Import Guide</h3>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="step-num">⚠️</div>
+        <div class="step-content">
+          <div class="step-title">No Driver / No Plate — Convoy & Reassignment Trips</div>
+          <div class="step-desc">
+            Some trips legitimately have no driver or no plate assigned — e.g. a load was split across multiple trucks/drivers ("convoy"), or an assigned truck broke down and another truck picked up the load instead.<br><br>
+            To save a trip like this: check the box <strong>"⚠️ No driver and/or no plate — convoy reassignment"</strong> in the New/Edit Trip form, and type a short reason in the box that appears (e.g. <em>"PINAGHATIAN PO NG TATLONG TRUCK NA KA CONVOY"</em>). The reason is required — the trip will not save without it.<br><br>
+            The reason is automatically added to <strong>Gen Remarks</strong>, and the trip is flagged with an orange <strong>⚠️ NO DRIVER</strong> / <strong>⚠️ NO PLATE</strong> badge in the table so it's easy to spot for review during billing or audits.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">🔑</div>
+        <div class="step-content">
+          <div class="step-title">Trip Code vs. TripKey — what's the difference?</div>
+          <div class="step-desc">
+            <strong>Code</strong> is the main, human-readable ID for a trip (e.g. <code>260618CBP8680CMIPJas</code>) — built from date + plate + client + driver initials when the trip is first created. It is your billing-facing reference and never changes automatically, even if you later correct the driver or plate on that trip.<br><br>
+            <strong>TripKey</strong> is a separate, optional column used only to help CSV re-imports correctly match a row to the right existing trip — especially when the same plate runs more than once in a day, or when a trip spans multiple days. It is not used for billing and does not affect Code, Trip Ticket, or any financial figures.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">🔢</div>
+        <div class="step-content">
+          <div class="step-title">Setting up TripKey in Excel</div>
+          <div class="step-desc">
+            Add a <strong>TripKey</strong> column to your Excel Trip List. For most rows, this is auto-filled with a formula that counts repeat trips per plate per day:<br>
+            <code style="display:block;background:var(--bg2);padding:8px;border-radius:6px;margin:6px 0;font-size:11px">=COUNTIFS($A$2:A2, A2, $C$2:C2, C2)</code>
+            (Adjust column letters to match your actual Date and Plate columns.) Drag this formula down the whole sheet — it numbers each repeat trip for the same plate on the same day as 1, 2, 3, etc. Single trips per day just get <strong>1</strong> automatically.<br><br>
+            <strong>For trips spanning multiple days</strong> (redelivery, multi-day hauls): manually overwrite the TripKey on the later day's row with the <em>same</em> value as day 1 — using a letter (A, B, C…) instead of a number makes it visually clear it's a continuation, not a same-day repeat.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">📤</div>
+        <div class="step-content">
+          <div class="step-title">How CSV re-import works (correcting past trips)</div>
+          <div class="step-desc">
+            When you re-upload a CSV containing rows you've corrected (driver, rate, dates, remarks, etc.):<br>
+            • A row whose <strong>Code already exists</strong> in the app will <strong>update</strong> that trip with the corrected values — it will not be skipped or duplicated.<br>
+            • Diesel entries, multi-drop destinations, and the No-Driver/Plate flag entered inside the app are <strong>preserved</strong> during this update — they will not be wiped out by the CSV's blank columns for those fields.<br>
+            • A row with a <strong>new Code</strong> not yet in the app will be added as a new trip, after a safety check for exact duplicates (same date+plate+driver+area+destination).<br>
+            • The import result message will show you exactly how many trips were <strong>added</strong> vs. <strong>updated</strong> vs. skipped, so you can always verify what happened.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">✅</div>
+        <div class="step-content">
+          <div class="step-title">Best practice checklist before re-importing</div>
+          <div class="step-desc">
+            1. Make sure corrected rows keep their <strong>original Code</strong> unless the trip is genuinely a different trip.<br>
+            2. Fill in <strong>TripKey</strong> for any plate that ran more than once on the same day, or for multi-day trips.<br>
+            3. Check the import summary message after upload (added / updated / skipped counts) to confirm the result matches what you expected.<br>
+            4. If something looks off, use the <strong>🔴 Exact</strong> / <strong>🟡 Similar</strong> duplicate filters on the Trips page to review and clean up any stray records.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px">🚚 Fleet & Staff Idle Tracking</h3>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="step-num">⏱</div>
+        <div class="step-content">
+          <div class="step-title">Idle days, automatically tracked</div>
+          <div class="step-desc">
+            Both the <strong>👤 Staff</strong> and <strong>🚛 Fleet</strong> tabs now show <strong>"Last Trip"</strong> and how many days idle each driver, helper, or truck has been — calculated automatically from their most recent trip record. No manual entry needed; it updates as soon as a new trip is saved. Idle counts of 7+ days are highlighted in red so they're easy to spot at a glance.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">🔧</div>
+        <div class="step-content">
+          <div class="step-title">Marking a truck "Under Maintenance"</div>
+          <div class="step-desc">
+            Open the truck in the <strong>🚛 Fleet</strong> tab, click ✏️ Edit, and set <strong>Fleet Status</strong> to <strong>Maintenance</strong>. This is separate from "Idle" — Idle means the truck is available but not currently assigned a trip, while Maintenance means it's out of service and shouldn't be assigned trips until changed back to Active.
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="guide-section">
     <h3>🧮 Formula Reference</h3>
@@ -615,7 +699,7 @@ tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
     <div class="form-grid form-grid-2">
       <div class="form-group"><label class="form-label">Plate Number <span class="required">*</span></label><input type="text" class="form-input" id="tk-plate" placeholder="e.g. MAZ1234" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
       <div class="form-group"><label class="form-label">Truck Type <span class="required">*</span></label><select class="form-select" id="tk-type"><option>EW - 6W</option><option>6W FWD</option><option>4W</option><option>L300</option><option>10W</option></select></div>
-      <div class="form-group"><label class="form-label">Fleet Status</label><select class="form-select" id="tk-status"><option value="Active">Active</option><option value="idle">Idle</option><option value="sold">Sold</option></select></div>
+      <div class="form-group"><label class="form-label">Fleet Status</label><select class="form-select" id="tk-status"><option value="Active">Active</option><option value="idle">Idle</option><option value="maintenance">Maintenance</option><option value="sold">Sold</option></select></div>
     </div>
   </div>
   <div class="modal-footer">
@@ -1050,6 +1134,25 @@ function fmt(v){return parseFloat(v||0).toLocaleString('en-PH',{minimumFractionD
 function pct(v){return (v*100).toFixed(2)+'%';}
 function fmtK(v){if(Math.abs(v)>=1e6)return(v/1e6).toFixed(2)+'M';if(Math.abs(v)>=1000)return(v/1000).toFixed(1)+'K';return fmt(v);}
 function fmtDate(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
+function lastTripDateFor(matchFn){
+  let latest=null;
+  trips.forEach(t=>{
+    if(!t.tripStartDate) return;
+    if(matchFn(t)){
+      if(!latest || t.tripStartDate>latest) latest=t.tripStartDate;
+    }
+  });
+  return latest;
+}
+function daysIdleLabel(lastDateStr){
+  if(!lastDateStr) return {days:null, label:'No trips on record'};
+  const last=new Date(lastDateStr+'T00:00:00');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const days=Math.floor((today-last)/86400000);
+  if(days<=0) return {days:0, label:'Active today'};
+  if(days===1) return {days, label:'Idle 1 day'};
+  return {days, label:`Idle ${days} days`};
+}
 
 // ===== WEEKS =====
 function computeWeekFriThu(ds){if(!ds)return'';const d=new Date(ds),j=new Date(d.getFullYear(),0,1),dy=Math.floor((d-j)/86400000),fri_off=((j.getDay()-5+7)%7);return Math.floor((dy+fri_off)/7)+1;}
@@ -1281,8 +1384,8 @@ function saveTrip(){
       if(!confirm(`⚠️ SIMILAR ENTRY: A trip on the same date with the same plate (${t.plate}) and driver (${t.driver}) already exists — but with a different area/destination.\n\nExisting: ${softDupe.area} — ${softDupe.destination}\n\nSave anyway?`))return;
     }
   }
-  if(editingId){ const idx=trips.findIndex(x=>x.id===editingId); if(idx!==-1)trips[idx]=t; toast('Trip updated ✓','success'); }
-  else{ trips.push(t); toast('Trip saved ✓','success'); }
+  if(editingId){ const idx=trips.findIndex(x=>x.id===editingId); if(idx!==-1){ if(!t.tripKey && trips[idx].tripKey) t.tripKey=trips[idx].tripKey; trips[idx]=t; } toast('Trip updated ✓','success'); }
+  else{ autoAssignTripKey(t, trips); trips.push(t); toast('Trip saved ✓','success'); }
   saveTripsData(); closeModal(); renderTable(); updateStats(); updateFilterOptions();
 }
 
@@ -1615,7 +1718,11 @@ function renderStaff(){
       <span>🧑‍🤝‍🧑 Helpers: <strong style="color:var(--green)">${activeHlp} Active</strong> / <span style="color:var(--text2)">${idleHlp} Idle</span></span>
       <span>Total Staff: <strong>${staff.length}</strong></span>
     </div>`;
-  document.getElementById('staff-grid').innerHTML=filtered.map(s=>`
+  document.getElementById('staff-grid').innerHTML=filtered.map(s=>{
+    const lastDate=lastTripDateFor(t=>t.driver===s.name||t.h1===s.name||t.h2===s.name);
+    const idleInfo=daysIdleLabel(lastDate);
+    const idleWarn=idleInfo.days!==null && idleInfo.days>=7;
+    return `
     <div class="staff-card">
       <div class="staff-card-header">
         <div class="staff-avatar ${s.position==='DRIVER'?'drv':'hlp'}">${s.name.split(' ').map(p=>p[0]).join('').slice(0,2)}</div>
@@ -1625,12 +1732,19 @@ function renderStaff(){
         <div class="staff-meta-item"><div class="staff-meta-label">Status</div><div><span class="${s.status==='Active'?'status-badge-active':'status-badge-idle'}">${s.status}</span></div></div>
         <div class="staff-meta-item"><div class="staff-meta-label">Duty</div><div class="staff-meta-value">${s.duty||'—'}</div></div>
         <div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Start Date</div><div class="staff-meta-value" style="font-family:'DM Mono',monospace;font-size:11px">${s.startDate||'—'}</div></div>
+        <div class="staff-meta-item" style="grid-column:span 2">
+          <div class="staff-meta-label">Last Trip</div>
+          <div class="staff-meta-value" style="font-size:11px">
+            ${lastDate?fmtDate(lastDate):'—'}
+            <span style="margin-left:6px;font-weight:700;color:${idleWarn?'var(--red)':'var(--text2)'}">${idleInfo.label}</span>
+          </div>
+        </div>
       </div>
       <div class="staff-actions">
         <button class="btn btn-ghost btn-sm" onclick="openEditStaff('${s.id}')">✏️ Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${s.id}','staff')">🗑</button>
       </div>
-    </div>`).join('');
+    </div>`;}).join('');
   document.getElementById('staff-badge').textContent=staff.length;
 }
 
@@ -1658,20 +1772,32 @@ function renderFleet(){
   trips.forEach(t=>{ if(t.plate){tripsByPlate[t.plate]=(tripsByPlate[t.plate]||0)+1;} });
   const incByPlate={};
   trips.forEach(t=>{ if(t.plate){const c=computeAll(t);incByPlate[t.plate]=(incByPlate[t.plate]||0)+c.income;} });
-  document.getElementById('fleet-grid').innerHTML=fleet.map(tk=>`
+  document.getElementById('fleet-grid').innerHTML=fleet.map(tk=>{
+    const lastDate=lastTripDateFor(t=>t.plate===tk.plate);
+    const idleInfo=daysIdleLabel(lastDate);
+    const idleWarn=idleInfo.days!==null && idleInfo.days>=7;
+    const statusClass=tk.status==='Active'?'status-badge-active'
+      :tk.status==='sold'?'badge badge-unpaid'
+      :tk.status==='maintenance'?'badge badge-pending'
+      :'status-badge-idle';
+    const statusLabel=tk.status==='maintenance'?'🔧 Maintenance':tk.status;
+    return `
     <div class="fleet-card">
       <div class="fleet-plate">${tk.plate}</div>
       <div class="fleet-type">${tk.type}</div>
-      <div style="margin-bottom:10px"><span class="${tk.status==='Active'?'status-badge-active':tk.status==='sold'?'badge badge-unpaid':'status-badge-idle'}">${tk.status}</span></div>
+      <div style="margin-bottom:10px"><span class="${statusClass}">${statusLabel}</span></div>
       <div class="fleet-meta">
         <div class="fleet-stat"><div class="fleet-stat-label">Trips</div><div style="font-weight:700;color:var(--blue)">${tripsByPlate[tk.plate]||0}</div></div>
         <div class="fleet-stat"><div class="fleet-stat-label">Net Income</div><div style="font-weight:700;color:${(incByPlate[tk.plate]||0)>=0?'var(--green)':'var(--red)'}">₱${fmtK(incByPlate[tk.plate]||0)}</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:${idleWarn?'var(--red)':'var(--text2)'}">
+        Last Trip: ${lastDate?fmtDate(lastDate):'—'} · <strong>${idleInfo.label}</strong>
       </div>
       <div style="display:flex;gap:5px;margin-top:10px">
         <button class="btn btn-ghost btn-sm" onclick="openEditTruck('${tk.id}')">✏️ Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${tk.id}','truck')">🗑</button>
       </div>
-    </div>`).join('');
+    </div>`;}).join('');
 }
 
 // ===== SUMMARY PAGE =====
@@ -1904,6 +2030,32 @@ function renderStorageStatus(){
     </div>`;
 }
 
+// ===== STABLE MATCH KEY (for CSV import matching, independent of Code) =====
+// Priority: Date+Plate+TripKey > Date+TripTicket > Date+DR# > null (fallback to Code-only)
+function buildMatchKey(t){
+  const date=t.tripStartDate||'';
+  if(!date) return null;
+  if(t.plate){
+    const tk=(t.tripKey!==undefined && t.tripKey!==null && String(t.tripKey).trim()!=='') ? String(t.tripKey).trim() : '1';
+    return `P|${date}|${t.plate}|${tk}`;
+  }
+  if(t.tripticket && t.tripticket.trim()){
+    return `T|${date}|${t.tripticket.trim().toUpperCase()}`;
+  }
+  if(t.dr && t.dr.trim()){
+    return `D|${date}|${t.dr.trim().toUpperCase()}`;
+  }
+  return null;
+}
+// Auto-assign a sequential tripKey for a trip being added without one,
+// based on how many existing trips already share its Date+Plate.
+function autoAssignTripKey(t, existingTrips){
+  if(!t.plate || !t.tripStartDate) return;
+  if(t.tripKey!==undefined && t.tripKey!==null && String(t.tripKey).trim()!=='') return;
+  const count=existingTrips.filter(x=>x.plate===t.plate && x.tripStartDate===t.tripStartDate).length;
+  t.tripKey=String(count+1);
+}
+
 // ===== IMPORT CSV =====
 function handleDrop(e){ e.preventDefault(); document.getElementById('import-zone').classList.remove('dragover'); const f=e.dataTransfer.files[0]; if(f)importCSVFile(f); }
 function importCSV(input){ if(input.files[0])importCSVFile(input.files[0]); }
@@ -1942,10 +2094,14 @@ function importCSVFile(file){
 
       resultEl.innerHTML=`<div style="color:var(--text2);padding:10px">⏳ Header found on row ${headerIdx+1}. Processing data rows…</div>`;
 
-      // Deduplicate check: by code AND by date+plate+driver+area+dest
+      // Deduplicate check: by stable matchKey (Date+Plate+TripKey) first,
+      // falling back to Code for backward compatibility, then a full-field
+      // safety check for genuinely new rows.
       const existingCodes=new Set(trips.map(t=>t.code));
       const existingFullKeys=new Set(trips.map(t=>`${t.tripStartDate}|${t.plate}|${t.driver}|${(t.area||'').toUpperCase()}|${(t.destination||'').toUpperCase()}`));
       const tripsByCode=new Map(trips.map(t=>[t.code,t]));
+      const tripsByMatchKey=new Map();
+      trips.forEach(t=>{ const mk=buildMatchKey(t); if(mk) tripsByMatchKey.set(mk,t); });
 
       let added=0, updated=0, skippedCode=0, skippedFull=0, skippedEmpty=0, errors=0;
       const errorRows=[];
@@ -1962,8 +2118,6 @@ function importCSVFile(file){
           const code=(row['Code']||'').trim();
           if(!code||code==='Code'){skippedEmpty++;continue;} // skip header-like rows
 
-          const isExisting=existingCodes.has(code);
-
           const t={
             id:genId(), code,
             dispatchedDate:parseImportDate(row['Dispatched Date']),
@@ -1979,6 +2133,7 @@ function importCSVFile(file){
             h1:row['H1_Name']||row['H1']||'',
             h2:row['H2_Name']||row['H2']||'',
             plate:row['Vehicle Plate']||row['Plate']||'',
+            tripKey:(row['tripkey']||row['TripKey']||row['Trip Key']||row['TRIPKEY']||'').toString().trim(),
             truckType:row['Truck Type']||'',
             rate:nCSV(row['Rate']),
             surcharge:nCSV(row['Surcharge']),
@@ -2015,28 +2170,43 @@ function importCSVFile(file){
           t.weekFri=computeWeekFriThu(t.tripStartDate);
           t.weekMon=computeWeekMonSun(t.tripStartDate);
 
-          // For NEW codes only: check full duplicate (date+plate+driver+area+dest)
-          // This guards against rows with blank/mismatched codes that are actually
-          // the same trip as an existing one under a different code.
+          const rowMatchKey=buildMatchKey(t);
+          const matchedTrip = rowMatchKey ? tripsByMatchKey.get(rowMatchKey) : null;
+          const isExisting = !!matchedTrip || existingCodes.has(code);
+
           if(!isExisting){
+            // For genuinely new rows: full-field safety check (date+plate+driver+area+dest)
+            // guards against rows with blank/mismatched codes that are actually
+            // the same trip as an existing one under a different code.
             const fullKey=`${t.tripStartDate}|${t.plate}|${t.driver}|${(t.area||'').toUpperCase()}|${(t.destination||'').toUpperCase()}`;
             if(existingFullKeys.has(fullKey)&&t.tripStartDate&&t.plate&&t.driver&&t.area&&t.destination){
               skippedFull++; continue;
             }
+            autoAssignTripKey(t, trips);
             trips.push(t);
             existingCodes.add(code);
             existingFullKeys.add(fullKey);
+            const newKey=buildMatchKey(t); if(newKey) tripsByMatchKey.set(newKey,t);
             added++;
           }else{
-            // Existing code: update the trip in place with corrected values,
-            // but keep its original id, and preserve app-only data (diesel entries,
-            // multi-drop destinations) that don't come from the flat CSV columns.
-            const existingTrip=tripsByCode.get(code);
+            // Existing trip (matched by stable matchKey, or by Code as fallback):
+            // update in place with corrected values — including Code itself,
+            // since Code may have been the thing that needed correcting (e.g.
+            // driver-name-derived initials becoming stale). Keep original id,
+            // and preserve app-only data (diesel entries, multi-drop destinations,
+            // no-driver/plate flag) that don't come from the flat CSV columns.
+            const existingTrip = matchedTrip || tripsByCode.get(code);
+            const oldCode=existingTrip.code;
             t.id=existingTrip.id;
             if(Array.isArray(existingTrip.dieselEntries)) t.dieselEntries=existingTrip.dieselEntries;
             if(Array.isArray(existingTrip.drops)) t.drops=existingTrip.drops;
             if(existingTrip.noDriverFlag){ t.noDriverFlag=existingTrip.noDriverFlag; t.noDriverReason=existingTrip.noDriverReason; }
+            if(!t.tripKey && existingTrip.tripKey) t.tripKey=existingTrip.tripKey;
             Object.assign(existingTrip,t);
+            if(oldCode!==existingTrip.code){
+              existingCodes.delete(oldCode); existingCodes.add(existingTrip.code);
+              tripsByCode.delete(oldCode); tripsByCode.set(existingTrip.code, existingTrip);
+            }
             updated++;
           }
         }catch(rowErr){ errors++; if(errorRows.length<3)errorRows.push(i+1); }
@@ -2082,8 +2252,8 @@ function nCSV(v){ if(!v)return 0; return parseFloat(String(v).replace(/,/g,'').r
 // ===== EXPORT =====
 function exportCSV(){
   if(!trips.length){toast('No trips to export','error');return;}
-  const hdrs=['Code','Dispatched Date','Trip Start Date','Trp cut off Date','Client','Area','Destination','Dr #/Urc Shipment','Tripticket','Budget','Drv_Name','H1_Name','H2_Name','Vehicle Plate','Truck Type','Rate','Surcharge','Mano_Ccac_Drv','Mano_Ccac_H1','Mano_Ccac_H2','Mano_Others','Drv_Pay','H1_Pay','H2_Pay','Ca_Drv','Ca_H1','Ca_H2','D_Price Per Liter','D-Liter','Diesel','Toll','Food','Passway','Parking','Checker','Load','Gcash Charge','Maintenance','Other Expenses','Gen Remarks','Docs Status','Doc Status Remarks','Payment Status','Payment Status Remarks','Paid-Rate variance','Distance to San Pedro/KM','Rate+Surcharge','R+S+Vat','Expenses','Expenses+Staff Pay','Income','%Profit','Vat','Income With Vat','%Income','Opex','Income After Opex','% Final','week Fri-Thu','Week Mon-Sun'];
-  const rows=trips.map(t=>{const c=computeAll(t);return[t.code,t.dispatchedDate,t.tripStartDate,t.cutoff,t.client,t.area,t.destination,t.dr,t.tripticket,t.budget,t.driver,t.h1,t.h2,t.plate,t.truckType,t.rate,t.surcharge,t.manoDrv,t.manoH1,t.manoH2,t.manoOthers,t.drvPay,t.h1Pay,t.h2Pay,t.caDrv,t.caH1,t.caH2,t.dieselPrice,t.dieselLiter,c.diesel,t.toll,t.food,t.passway,t.parking,t.checker,t.load,t.gcash,t.maint,t.otherExp,t.genRemarks,t.docsStatus,t.docsRemarks,t.payStatus,t.payRemarks,t.paidVariance,t.km,c.rs,c.rsvat,c.expenses,c.expStaff,c.income,pct(c.pctProfit),c.vat,c.incomeVat,pct(c.pctIncome),c.opex,c.incomeAfterOpex,pct(c.pctFinal),t.weekFri,t.weekMon];});
+  const hdrs=['Code','Dispatched Date','Trip Start Date','Trp cut off Date','Client','Area','Destination','Dr #/Urc Shipment','Tripticket','Budget','Drv_Name','H1_Name','H2_Name','Vehicle Plate','tripkey','Truck Type','Rate','Surcharge','Mano_Ccac_Drv','Mano_Ccac_H1','Mano_Ccac_H2','Mano_Others','Drv_Pay','H1_Pay','H2_Pay','Ca_Drv','Ca_H1','Ca_H2','D_Price Per Liter','D-Liter','Diesel','Toll','Food','Passway','Parking','Checker','Load','Gcash Charge','Maintenance','Other Expenses','Gen Remarks','Docs Status','Doc Status Remarks','Payment Status','Payment Status Remarks','Paid-Rate variance','Distance to San Pedro/KM','Rate+Surcharge','R+S+Vat','Expenses','Expenses+Staff Pay','Income','%Profit','Vat','Income With Vat','%Income','Opex','Income After Opex','% Final','week Fri-Thu','Week Mon-Sun'];
+  const rows=trips.map(t=>{const c=computeAll(t);return[t.code,t.dispatchedDate,t.tripStartDate,t.cutoff,t.client,t.area,t.destination,t.dr,t.tripticket,t.budget,t.driver,t.h1,t.h2,t.plate,t.tripKey||'',t.truckType,t.rate,t.surcharge,t.manoDrv,t.manoH1,t.manoH2,t.manoOthers,t.drvPay,t.h1Pay,t.h2Pay,t.caDrv,t.caH1,t.caH2,t.dieselPrice,t.dieselLiter,c.diesel,t.toll,t.food,t.passway,t.parking,t.checker,t.load,t.gcash,t.maint,t.otherExp,t.genRemarks,t.docsStatus,t.docsRemarks,t.payStatus,t.payRemarks,t.paidVariance,t.km,c.rs,c.rsvat,c.expenses,c.expStaff,c.income,pct(c.pctProfit),c.vat,c.incomeVat,pct(c.pctIncome),c.opex,c.incomeAfterOpex,pct(c.pctFinal),t.weekFri,t.weekMon];});
   const csv=[hdrs,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`EMELCO_Trips_${new Date().toISOString().slice(0,10)}.csv`;a.click();
   toast('CSV exported ✓','success');
