@@ -1545,7 +1545,7 @@ function renderTable(){
       :'';
     return`<tr class="${trClass}">
       <td style="color:var(--text3)">${i+1}</td>
-      <td class="code-cell">${t.code||'—'}${dupeTag?'<br>'+dupeTag:''}</td>
+      <td class="code-cell">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
       <td style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
       <td style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
       <td><span class="badge badge-submitted">${t.client||'—'}</span></td>
