@@ -777,7 +777,8 @@ body.role-operations .fin-only{display:none!important}
       <div class="form-group" style="grid-column:span 2"><label class="form-label">Full Name <span class="required">*</span></label><input type="text" class="form-input" id="sf-name" placeholder="First Middle Last"></div>
       <div class="form-group"><label class="form-label">Staff ID</label><input type="text" class="form-input" id="sf-staffid" readonly style="opacity:.7" placeholder="Auto-assigned on save"></div>
       <div class="form-group"><label class="form-label">Position <span class="required">*</span></label><select class="form-select" id="sf-position" onchange="onPositionChange()"><option value="DRIVER">DRIVER</option><option value="HELPER">HELPER</option><option value="OFFICE">OFFICE</option><option value="ADMIN">ADMIN</option><option value="TECH">TECH</option></select></div>
-      <div class="form-group"><label class="form-label">Status <span class="required">*</span></label><select class="form-select" id="sf-status"><option value="Active">Active</option><option value="On Call">On Call</option><option value="Idle">Idle</option><option value="Resigned">Resigned</option></select></div>
+      <div class="form-group"><label class="form-label">Status <span class="required">*</span></label><select class="form-select" id="sf-status" onchange="onStatusChange()"><option value="Active">Active</option><option value="On Call">On Call</option><option value="Idle">Idle</option><option value="Resigned">Resigned</option></select></div>
+      <div class="form-group" id="sf-resigned-row" style="display:none"><label class="form-label">Resigned Date</label><input type="date" class="form-input" id="sf-resigned-date"></div>
       <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="YYYY-MM-DD, or leave blank for On Call"></div>
       <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" placeholder="e.g. Driver, Yard Supervisor"></div>
       <div class="form-group" id="sf-license-row" style="grid-column:span 2;display:none;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
@@ -1008,7 +1009,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606271720'; // bumped: rollback to pre-rate-engine checkpoint + added validation blocking same staff in multiple roles (Driver/H1/H2) on one trip
+const APP_VERSION = '202606271730'; // bumped: added Resigned Date field to Staff profile, shown when status = Resigned
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1924,6 +1925,10 @@ function onPositionChange(){
   const pos = document.getElementById('sf-position').value;
   document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
 }
+function onStatusChange(){
+  const status = document.getElementById('sf-status').value;
+  document.getElementById('sf-resigned-row').style.display = (status==='Resigned') ? '' : 'none';
+}
 function openAddStaff(){ editingStaffId=null; document.getElementById('staff-modal-title').textContent='Add Staff'; clearStaffForm(); document.getElementById('staff-modal').classList.add('open'); }
 function openEditStaff(id){
   editingStaffId=id; const s=staff.find(x=>x.id===id); if(!s)return;
@@ -1936,7 +1941,9 @@ function openEditStaff(id){
   document.getElementById('sf-duty').value=s.duty||'';
   document.getElementById('sf-license-number').value=s.licenseNumber||'';
   document.getElementById('sf-license-expiry').value=s.licenseExpiry||'';
+  document.getElementById('sf-resigned-date').value=s.resignedDate||'';
   onPositionChange();
+  onStatusChange();
   document.getElementById('sf-previousids').value = (s.previousIds && s.previousIds.length) ? s.previousIds.join(', ') : '';
   document.getElementById('staff-modal').classList.add('open');
 }
@@ -1948,10 +1955,12 @@ function clearStaffForm(){
   document.getElementById('sf-duty').value='';
   document.getElementById('sf-license-number').value='';
   document.getElementById('sf-license-expiry').value='';
+  document.getElementById('sf-resigned-date').value='';
   document.getElementById('sf-position').value='DRIVER';
   document.getElementById('sf-status').value='Active';
   document.getElementById('sf-previousids').value='';
   onPositionChange();
+  onStatusChange();
 }
 function saveStaff(){
   const name=document.getElementById('sf-name').value.trim();
@@ -1981,6 +1990,7 @@ function saveStaff(){
     duty:document.getElementById('sf-duty').value,
     licenseNumber:document.getElementById('sf-license-number').value.trim(),
     licenseExpiry:document.getElementById('sf-license-expiry').value,
+    resignedDate:document.getElementById('sf-resigned-date').value,
   };
   if(editingStaffId){ const idx=staff.findIndex(x=>x.id===editingStaffId); if(idx!==-1)staff[idx]=s; toast('Staff updated ✓','success'); }
   else{ staff.push(s); toast('Staff added ✓','success'); }
@@ -2045,6 +2055,7 @@ function renderStaff(){
         <div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Start Date</div><div class="staff-meta-value" style="font-family:'DM Mono',monospace;font-size:11px">${s.startDate||'—'}</div></div>
         ${lic?`<div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">License</div><div class="staff-meta-value" style="font-size:11px;color:${lic.level==='ok'?'var(--text2)':'var(--red)'}">${lic.label}</div></div>`:''}
         ${s.previousIds&&s.previousIds.length?`<div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Previous ID</div><div class="staff-meta-value" style="font-size:11px">${s.previousIds.join(', ')}</div></div>`:''}
+        ${s.status==='Resigned'&&s.resignedDate?`<div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Resigned Date</div><div class="staff-meta-value" style="font-size:11px;color:var(--red)">${s.resignedDate}</div></div>`:''}
         <div class="staff-meta-item" style="grid-column:span 2">
           <div class="staff-meta-label">Last Trip</div>
           <div class="staff-meta-value" style="font-size:11px">
