@@ -394,6 +394,8 @@ body.role-operations .fin-only{display:none!important}
         <button class="btn btn-ghost" onclick="document.getElementById('json-file').click()" style="width:fit-content">⬆ Restore from JSON Backup</button>
         <input type="file" id="json-file" accept=".json" style="display:none" onchange="restoreJSON(this)">
         <hr style="border-color:var(--border);margin:4px 0">
+        <button class="btn btn-ghost" onclick="renumberStaffByStartDate()" style="width:fit-content">🔢 Renumber Driver/Helper IDs by Start Date (one-time)</button>
+        <hr style="border-color:var(--border);margin:4px 0">
         <button class="btn btn-danger" onclick="clearAllData()" style="width:fit-content">🗑 Clear All Trips</button>
       </div>
     </div>
@@ -1009,7 +1011,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606271745'; // bumped: Driver/Helper Staff IDs renumbered by start date (oldest first, On Call last); Office/Admin/Tech IDs unchanged
+const APP_VERSION = '202606271800'; // bumped: added one-time button to renumber LIVE Driver/Helper Staff IDs by start date
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1319,6 +1321,22 @@ function cleanupStaffDates(){
   saveStaffData();
   renderStaff();
   toast(changed+' staff start date(s) cleaned up ✓','success');
+}
+
+function renumberStaffByStartDate(){
+  if(!confirm('This will renumber all Driver and Helper Staff IDs by start date (oldest first, On Call/blank pushed last). Office, Admin, and Tech staff are NOT touched. This only affects display labels — trip records link by name, so nothing else breaks. Continue?')) return;
+  function sortKey(s){
+    const sd = s.startDate || '9999-99-99';
+    return sd+'|'+s.name;
+  }
+  const drivers = staff.filter(s=>s.position==='DRIVER').sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
+  const helpers = staff.filter(s=>s.position==='HELPER').sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
+  let changed=0;
+  drivers.forEach((s,i)=>{ const newId='D'+(800001+i); if(s.staffId!==newId){ s.staffId=newId; changed++; } });
+  helpers.forEach((s,i)=>{ const newId='H'+(800001+i); if(s.staffId!==newId){ s.staffId=newId; changed++; } });
+  saveStaffData();
+  renderStaff();
+  toast(changed+' Driver/Helper Staff ID(s) renumbered by start date ✓','success');
 }
 
 // Normalize cutoff format → always "MMM.DD-DD,YYYY" e.g. "APR.21-30,2026"
