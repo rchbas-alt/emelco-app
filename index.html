@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EMELCO — Trip List Manager 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--accent2:#c04a18;--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--purple:#7c3aed;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--card:#ffffff;--input-bg:#f8f9fb;--shadow:0 2px 12px rgba(0,0,0,0.08);--radius:10px}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -114,6 +115,8 @@ tr:last-child td{border-bottom:none}
 .staff-actions{display:flex;gap:5px;margin-top:10px}
 .status-badge-active{background:rgba(46,204,113,.15);color:var(--green);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
 .status-badge-idle{background:rgba(90,97,117,.2);color:var(--text3);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.status-badge-oncall{background:rgba(58,134,255,.15);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.status-badge-resigned{background:rgba(231,76,60,.15);color:var(--red);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
 /* FLEET PAGE */
 .fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .fleet-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
@@ -230,6 +233,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab" onclick="switchTab('fleet')">🚛 Fleet</div>
   <div class="tab" onclick="switchTab('import')">⬆ Data</div>
   <div class="tab" onclick="switchTab('payroll')">💰 Payroll</div>
+  <div class="tab fin-only" onclick="switchTab('officepayroll')">🏢 Office Payroll</div>
   <div class="tab" onclick="switchTab('guide')">📖 Guide</div>
 </div>
 
@@ -340,8 +344,13 @@ body.role-operations .fin-only{display:none!important}
     <div class="tab-filter active" onclick="filterStaff('all',this)">All</div>
     <div class="tab-filter" onclick="filterStaff('DRIVER',this)">Drivers</div>
     <div class="tab-filter" onclick="filterStaff('HELPER',this)">Helpers</div>
+    <div class="tab-filter" onclick="filterStaff('OFFICE',this)">Office</div>
+    <div class="tab-filter" onclick="filterStaff('ADMIN',this)">Admin</div>
+    <div class="tab-filter" onclick="filterStaff('TECH',this)">Tech</div>
     <div class="tab-filter" onclick="filterStaff('Active',this)">Active</div>
-    <div class="tab-filter" onclick="filterStaff('idle',this)">Idle</div>
+    <div class="tab-filter" onclick="filterStaff('On Call',this)">On Call</div>
+    <div class="tab-filter" onclick="filterStaff('Idle',this)">Idle</div>
+    <div class="tab-filter" onclick="filterStaff('Resigned',this)">Resigned</div>
   </div>
   <div id="staff-summary-bar" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
   <div class="staff-grid" id="staff-grid"></div>
@@ -377,6 +386,10 @@ body.role-operations .fin-only{display:none!important}
       <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-ghost" onclick="exportCSV()" style="width:fit-content">⬇ Export All Trips as CSV</button>
         <button class="btn btn-ghost" onclick="exportStaff()" style="width:fit-content">⬇ Export Staff List</button>
+        <button class="btn btn-ghost" onclick="exportStaffExcel()" style="width:fit-content">⬇ Staff Directory — Excel</button>
+        <button class="btn btn-ghost" onclick="printStaffPDF()" style="width:fit-content">🖨 Staff Directory — PDF</button>
+        <button class="btn btn-ghost" onclick="exportFleetExcel()" style="width:fit-content">⬇ Fleet Directory — Excel</button>
+        <button class="btn btn-ghost" onclick="printFleetPDF()" style="width:fit-content">🖨 Fleet Directory — PDF</button>
         <button class="btn btn-ghost" onclick="backupJSON()" style="width:fit-content">⬇ Backup Full Data (JSON)</button>
         <button class="btn btn-ghost" onclick="document.getElementById('json-file').click()" style="width:fit-content">⬆ Restore from JSON Backup</button>
         <input type="file" id="json-file" accept=".json" style="display:none" onchange="restoreJSON(this)">
@@ -513,10 +526,30 @@ body.role-operations .fin-only{display:none!important}
       <select class="filter-select" id="payroll-week-sel" onchange="renderPayroll()" style="min-width:180px">
         <option value="">— Select Week (Fri–Thu) —</option>
       </select>
+      <select class="filter-select" id="payroll-notrip-sel" style="min-width:220px">
+        <option value="">— Open slip for staff w/ no trips —</option>
+      </select>
+      <button class="btn btn-ghost" onclick="openSlipForNoTripStaff()">🧾 Open Slip</button>
       <button class="btn btn-ghost" onclick="exportPayrollCSV()">⬇ Export CSV</button>
     </div>
   </div>
   <div id="payroll-week-label" style="font-size:13px;color:var(--text2);margin-bottom:14px"></div>
+
+  <!-- ====== TRIP HISTORY LOOKUP (standalone, read-only) ====== -->
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">🔍 Trip History Lookup <span style="font-size:11px;font-weight:400;color:var(--text2)">— view a person's trips for any past week, no deductions, no editing</span></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <select class="filter-select" id="th-week-sel" style="min-width:200px">
+        <option value="">— Select Week (Fri–Thu) —</option>
+      </select>
+      <select class="filter-select" id="th-staff-sel" style="min-width:220px">
+        <option value="">— Select Driver or Helper —</option>
+      </select>
+      <button class="btn btn-ghost" onclick="viewTripHistory()">View</button>
+    </div>
+    <div id="th-results"></div>
+  </div>
+
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px" id="payroll-summary-cards"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
     <div>
@@ -529,6 +562,7 @@ body.role-operations .fin-only{display:none!important}
           <th class="num-cell">Mano CCAC</th>
           <th class="num-cell">CA Trip</th>
           <th class="num-cell">Net Pay</th>
+          <th></th>
         </tr></thead>
         <tbody id="payroll-drv-body"></tbody>
       </table></div>
@@ -543,6 +577,7 @@ body.role-operations .fin-only{display:none!important}
           <th class="num-cell">Mano CCAC</th>
           <th class="num-cell">CA Trip</th>
           <th class="num-cell">Net Pay</th>
+          <th></th>
         </tr></thead>
         <tbody id="payroll-hlp-body"></tbody>
       </table></div>
@@ -562,6 +597,28 @@ body.role-operations .fin-only{display:none!important}
       <tbody id="payroll-trip-body"></tbody>
     </table></div>
   </div>
+</div>
+
+<!-- ====== OFFICE / ADMIN / TECH PAYROLL PAGE ====== -->
+<div class="page" id="page-officepayroll">
+  <div class="page-header">
+    <h2>🏢 Office / Admin / Tech Payroll (Bi-Monthly)</h2>
+  </div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Salary-based staff — no trips involved. Pick a staff member and a pay period (1st–15th or 16th–end of month), then open their slip.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select class="filter-select" id="op-staff-sel" style="min-width:240px">
+        <option value="">— Select Office / Admin / Tech staff —</option>
+      </select>
+      <input type="date" class="form-input" id="op-period-start" style="width:160px">
+      <span style="color:var(--text2);font-size:12px">to</span>
+      <input type="date" class="form-input" id="op-period-end" style="width:160px">
+      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(1)">1st–15th</button>
+      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(16)">16th–End</button>
+      <button class="btn btn-primary" onclick="openOfficeSlip()">🧾 Open Slip</button>
+    </div>
+  </div>
+  <div id="op-recent-list" style="font-size:12px;color:var(--text2)"></div>
 </div>
 </div><!-- main -->
 
@@ -710,7 +767,7 @@ body.role-operations .fin-only{display:none!important}
 
 <!-- ====== STAFF MODAL ====== -->
 <div class="modal-overlay" id="staff-modal">
-<div class="modal" style="max-width:500px">
+<div class="modal" style="max-width:520px">
   <div class="modal-header">
     <div><div class="modal-title" id="staff-modal-title">Add Staff</div></div>
     <div class="modal-close" onclick="closeStaffModal()">✕</div>
@@ -718,15 +775,69 @@ body.role-operations .fin-only{display:none!important}
   <div class="modal-body">
     <div class="form-grid form-grid-2">
       <div class="form-group" style="grid-column:span 2"><label class="form-label">Full Name <span class="required">*</span></label><input type="text" class="form-input" id="sf-name" placeholder="First Middle Last"></div>
-      <div class="form-group"><label class="form-label">Position <span class="required">*</span></label><select class="form-select" id="sf-position"><option value="DRIVER">DRIVER</option><option value="HELPER">HELPER</option></select></div>
-      <div class="form-group"><label class="form-label">Status <span class="required">*</span></label><select class="form-select" id="sf-status"><option value="Active">Active</option><option value="idle">Idle</option></select></div>
-      <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="e.g. 20230601L"></div>
-      <div class="form-group"><label class="form-label">Duty</label><select class="form-select" id="sf-duty"><option value="Driver">Driver</option><option value="Helper">Helper</option><option value="idle">Idle</option></select></div>
+      <div class="form-group"><label class="form-label">Staff ID</label><input type="text" class="form-input" id="sf-staffid" readonly style="opacity:.7" placeholder="Auto-assigned on save"></div>
+      <div class="form-group"><label class="form-label">Position <span class="required">*</span></label><select class="form-select" id="sf-position" onchange="onPositionChange()"><option value="DRIVER">DRIVER</option><option value="HELPER">HELPER</option><option value="OFFICE">OFFICE</option><option value="ADMIN">ADMIN</option><option value="TECH">TECH</option></select></div>
+      <div class="form-group"><label class="form-label">Status <span class="required">*</span></label><select class="form-select" id="sf-status"><option value="Active">Active</option><option value="On Call">On Call</option><option value="Idle">Idle</option><option value="Resigned">Resigned</option></select></div>
+      <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="YYYY-MM-DD, or leave blank for On Call"></div>
+      <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" placeholder="e.g. Driver, Yard Supervisor"></div>
+      <div class="form-group" id="sf-license-row" style="grid-column:span 2;display:none;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Driver's license — optional, but flagged if missing</div>
+        <div class="form-grid form-grid-2">
+          <div class="form-group"><label class="form-label">License Number</label><input type="text" class="form-input" id="sf-license-number" placeholder="Leave blank if not yet on file"></div>
+          <div class="form-group"><label class="form-label">License Expiry</label><input type="date" class="form-input" id="sf-license-expiry"></div>
+        </div>
+      </div>
+      <div class="form-group" id="sf-previousid-row" style="grid-column:span 2">
+        <label class="form-label">Previous ID(s) <span style="font-size:11px;color:var(--text2)">— optional, comma-separated, for staff transferred from another role</span></label>
+        <input type="text" class="form-input" id="sf-previousids" placeholder="e.g. H800001">
+      </div>
     </div>
   </div>
   <div class="modal-footer">
     <button class="btn btn-ghost" onclick="closeStaffModal()">Cancel</button>
     <button class="btn btn-primary" onclick="saveStaff()">💾 Save</button>
+  </div>
+</div>
+</div>
+
+<!-- ====== OFFICE/ADMIN/TECH PAY SLIP MODAL ====== -->
+<div class="modal-overlay" id="office-slip-modal">
+<div class="modal" style="max-width:600px">
+  <div class="modal-header">
+    <div><div class="modal-title" id="office-slip-modal-title">Pay Slip</div><div class="modal-subtitle" id="office-slip-modal-subtitle"></div></div>
+    <div class="modal-close" onclick="closeOfficeSlipModal()">✕</div>
+  </div>
+  <div class="modal-body" id="office-slip-modal-body" style="max-height:70vh;overflow-y:auto">
+    <!-- filled dynamically -->
+  </div>
+  <div class="modal-footer" style="justify-content:space-between">
+    <div style="font-size:11px;color:var(--text2)" id="office-slip-finalized-note"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="printOfficeSlip()">🖨 Print / PDF</button>
+      <button class="btn btn-ghost" onclick="closeOfficeSlipModal()">Close</button>
+      <button class="btn btn-primary" onclick="finalizeOfficeSlip()">💾 Finalize &amp; Save</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ====== PAY SLIP MODAL ====== -->
+<div class="modal-overlay" id="slip-modal">
+<div class="modal" style="max-width:980px">
+  <div class="modal-header">
+    <div><div class="modal-title" id="slip-modal-title">Pay Slip</div><div class="modal-subtitle" id="slip-modal-subtitle"></div></div>
+    <div class="modal-close" onclick="closeSlipModal()">✕</div>
+  </div>
+  <div class="modal-body" id="slip-modal-body" style="max-height:70vh;overflow-y:auto">
+    <!-- filled dynamically by renderPaySlip() -->
+  </div>
+  <div class="modal-footer" style="justify-content:space-between">
+    <div style="font-size:11px;color:var(--text2)" id="slip-finalized-note"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="printPaySlip()">🖨 Print / PDF</button>
+      <button class="btn btn-ghost" onclick="closeSlipModal()">Close</button>
+      <button class="btn btn-primary" onclick="finalizePaySlip()">💾 Finalize &amp; Save</button>
+    </div>
   </div>
 </div>
 </div>
@@ -784,77 +895,80 @@ const AREAS = ['METRO MANILA','PAMPANGA','NUEVA ECIJA','PANGASINAN','TARLAC','AL
 
 // ===== DEFAULT STAFF =====
 const DEFAULT_STAFF = [
-  {id:'d1',name:'Henio Morales',position:'DRIVER',status:'idle',startDate:'20190615L',duty:'idle'},
-  {id:'d2',name:'Joel Calimpusan',position:'DRIVER',status:'Active',startDate:'20191116L',duty:'Driver'},
-  {id:'d3',name:'Rene Amorado',position:'DRIVER',status:'Active',startDate:'20200519L',duty:'Driver'},
-  {id:'d4',name:'Tom Herrera',position:'DRIVER',status:'Active',startDate:'20200520L',duty:'idle'},
-  {id:'d5',name:'Orlando Hilario',position:'DRIVER',status:'Active',startDate:'20210315L',duty:'idle'},
-  {id:'d6',name:'Renato Delos Santos',position:'DRIVER',status:'Active',startDate:'20210728L',duty:'idle'},
-  {id:'d7',name:'Sherwin Capeding',position:'DRIVER',status:'Active',startDate:'20210731L',duty:'Helper'},
-  {id:'d8',name:'Kevin Herrera',position:'DRIVER',status:'Active',startDate:'20210805L',duty:'idle'},
-  {id:'d9',name:'Jasper Rivera',position:'DRIVER',status:'Active',startDate:'20220715L',duty:'Driver'},
-  {id:'d10',name:'Jayson Bibas',position:'DRIVER',status:'idle',startDate:'20221122L',duty:'idle'},
-  {id:'d11',name:'James Florogo Gonzales',position:'DRIVER',status:'Active',startDate:'20230430L',duty:'Driver'},
-  {id:'d12',name:'Arvin Blaza Dorado',position:'DRIVER',status:'Active',startDate:'20230518L',duty:'Driver'},
-  {id:'d13',name:'Richard Daniel Villarez Siazon',position:'DRIVER',status:'idle',startDate:'20230601L',duty:'idle'},
-  {id:'d14',name:'Ariel Brinsa Bualoy',position:'DRIVER',status:'Active',startDate:'20230608L',duty:'Driver'},
-  {id:'d15',name:'Ramil Dimapilis',position:'DRIVER',status:'Active',startDate:'20230727L',duty:'idle'},
-  {id:'d16',name:'Angelo Samar',position:'DRIVER',status:'Active',startDate:'20230809L',duty:'idle'},
-  {id:'d17',name:'Randy Santos',position:'DRIVER',status:'idle',startDate:'20230811L',duty:'idle'},
-  {id:'d18',name:'Rolando Purgatorio',position:'DRIVER',status:'idle',startDate:'20240117L',duty:'idle'},
-  {id:'d19',name:'Kenneth Pimentel',position:'DRIVER',status:'idle',startDate:'20240119L',duty:'idle'},
-  {id:'d20',name:'Noriel Bungayan',position:'DRIVER',status:'idle',startDate:'20240119L',duty:'idle'},
-  {id:'d21',name:'Angelo Azuela',position:'DRIVER',status:'idle',startDate:'',duty:'idle'},
-  {id:'d22',name:'Marlou Balonquit',position:'DRIVER',status:'idle',startDate:'',duty:'idle'},
-  {id:'d23',name:'Emerson Tagala',position:'DRIVER',status:'idle',startDate:'',duty:'idle'},
-  {id:'d24',name:'Joseph Liberato',position:'DRIVER',status:'idle',startDate:'20240423L',duty:'idle'},
-  {id:'d25',name:'Jerry Ramos',position:'DRIVER',status:'Active',startDate:'20240628L',duty:'Driver'},
-  {id:'d26',name:'Jerico Templa',position:'DRIVER',status:'idle',startDate:'ON CALL',duty:'idle'},
-  {id:'d27',name:'Junny Conol Cobera',position:'DRIVER',status:'Active',startDate:'20250307L',duty:'Driver'},
-  {id:'d28',name:'Christopher Santillan',position:'DRIVER',status:'idle',startDate:'ON CALL',duty:'idle'},
-  {id:'d29',name:'Philip Ternal',position:'DRIVER',status:'idle',startDate:'20250802L',duty:'idle'},
-  {id:'d30',name:'Nomer Abaga',position:'DRIVER',status:'Active',startDate:'20251029L',duty:'Driver'},
-  {id:'d31',name:'Michael Marquez',position:'DRIVER',status:'Active',startDate:'20251209',duty:'Driver'},
-  {id:'d32',name:'Gilbert Ariston',position:'DRIVER',status:'Active',startDate:'20260418',duty:'Driver'},
-  {id:'h1',name:'Kenneth Feguerra',position:'HELPER',status:'Active',startDate:'20210303L',duty:'Helper'},
-  {id:'h2',name:'Den Mark Gardon',position:'HELPER',status:'idle',startDate:'20210928L',duty:'idle'},
-  {id:'h3',name:'Roniel Mabansag',position:'HELPER',status:'idle',startDate:'20220307L',duty:'idle'},
-  {id:'h4',name:'Vladjamir Bibas',position:'HELPER',status:'idle',startDate:'20221013L',duty:'idle'},
-  {id:'h5',name:'Jeffrey Surwez',position:'HELPER',status:'idle',startDate:'20221216L',duty:'idle'},
-  {id:'h6',name:'John Gabriel Dela Cruz',position:'HELPER',status:'Active',startDate:'20230127L',duty:'Helper'},
-  {id:'h7',name:'Angelo Macario Santos',position:'HELPER',status:'idle',startDate:'20230524L',duty:'idle'},
-  {id:'h8',name:'Rolly Zarsa Obidos',position:'HELPER',status:'Active',startDate:'20230602L',duty:'Helper'},
-  {id:'h9',name:'Ric Ronald Basilio Sepria',position:'HELPER',status:'Active',startDate:'20230603L',duty:'Helper'},
-  {id:'h10',name:'Michael Dorado Estornidos',position:'HELPER',status:'Active',startDate:'20230606L',duty:'Helper'},
-  {id:'h11',name:'Adrian Ace F. Depena',position:'HELPER',status:'idle',startDate:'20230705L',duty:'idle'},
-  {id:'h12',name:'Leonardo Berden',position:'HELPER',status:'Active',startDate:'20230727L',duty:'Helper'},
-  {id:'h13',name:'Randel Alvarez',position:'HELPER',status:'Active',startDate:'20230825L',duty:'Helper'},
-  {id:'h14',name:'Joel Guisan',position:'HELPER',status:'idle',startDate:'20230901L',duty:'idle'},
-  {id:'h15',name:'Marvin Castillo',position:'HELPER',status:'idle',startDate:'20231002L',duty:'idle'},
-  {id:'h16',name:'Syril Dacles',position:'HELPER',status:'Active',startDate:'20231010L',duty:'Helper'},
-  {id:'h17',name:'Marben Mag aso',position:'HELPER',status:'Active',startDate:'20231019L',duty:'Helper'},
-  {id:'h18',name:'Janrey Villanueva Dorado',position:'HELPER',status:'Active',startDate:'20231101L',duty:'Helper'},
-  {id:'h19',name:'Jay Mark Villanueva Dorado',position:'HELPER',status:'idle',startDate:'20231102L',duty:'idle'},
-  {id:'h20',name:'Jushua Fong',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h21',name:'Christopher Peligrino',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h22',name:'John Rafael Lara',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h23',name:'Nelson Zarca Ducatanan',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h24',name:'Rodel Pacia',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h25',name:'Giovanni Joseph P. Pena',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h26',name:'Nonito Quinto',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h27',name:'Roldan Sistual',position:'HELPER',status:'idle',startDate:'20240523L',duty:'idle'},
-  {id:'h28',name:'Eljun Abrasaldo',position:'HELPER',status:'Active',startDate:'',duty:'Helper'},
-  {id:'h29',name:'Antonio Latayan',position:'HELPER',status:'idle',startDate:'20240724L',duty:'idle'},
-  {id:'h30',name:'Ruben Gaway',position:'HELPER',status:'idle',startDate:'20240803L',duty:'idle'},
-  {id:'h31',name:'Jan Ellie Taylaran',position:'HELPER',status:'idle',startDate:'20240812L',duty:'idle'},
-  {id:'h32',name:'Ryan Anover',position:'HELPER',status:'idle',startDate:'',duty:'idle'},
-  {id:'h33',name:'Arjhon Dorado',position:'HELPER',status:'idle',startDate:'20250111L',duty:'idle'},
-  {id:'h34',name:'Ricky Boy Amante',position:'HELPER',status:'Active',startDate:'20250415L',duty:'Helper'},
-  {id:'h35',name:'John Paul Ellar',position:'HELPER',status:'idle',startDate:'20250506L',duty:'idle'},
-  {id:'h36',name:'Dexter Rosales',position:'HELPER',status:'idle',startDate:'20250605L',duty:'idle'},
-  {id:'h37',name:'Ryan Bautista',position:'HELPER',status:'idle',startDate:'20251006L',duty:'idle'},
-  {id:'h38',name:'Jarel Carlo Casino',position:'HELPER',status:'idle',startDate:'20251106L',duty:'idle'},
-  {id:'h39',name:'Lorenz Amorado',position:'HELPER',status:'Active',startDate:'20251226',duty:'Helper'},
+  {id:'d1',staffId:'D800001',previousIds:[],name:'Henio Morales',position:'DRIVER',status:'Idle',startDate:'2019-06-15',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d2',staffId:'D800002',previousIds:[],name:'Joel Calimpusan',position:'DRIVER',status:'Active',startDate:'2019-11-16',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d3',staffId:'D800003',previousIds:[],name:'Rene Amorado',position:'DRIVER',status:'Active',startDate:'2020-05-19',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d4',staffId:'D800004',previousIds:[],name:'Tom Herrera',position:'DRIVER',status:'Active',startDate:'2020-05-20',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d5',staffId:'D800005',previousIds:[],name:'Orlando Hilario',position:'DRIVER',status:'Active',startDate:'2021-03-15',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d6',staffId:'D800006',previousIds:[],name:'Renato Delos Santos',position:'DRIVER',status:'Active',startDate:'2021-07-28',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d7',staffId:'D800007',previousIds:[],name:'Sherwin Capeding',position:'DRIVER',status:'Active',startDate:'2021-07-31',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d8',staffId:'D800008',previousIds:[],name:'Kevin Herrera',position:'DRIVER',status:'Active',startDate:'2021-08-05',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d9',staffId:'D800009',previousIds:[],name:'Jasper Rivera',position:'DRIVER',status:'Active',startDate:'2022-07-15',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d10',staffId:'D800010',previousIds:[],name:'Jayson Bibas',position:'DRIVER',status:'Idle',startDate:'2022-11-22',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d11',staffId:'D800011',previousIds:[],name:'James Florogo Gonzales',position:'DRIVER',status:'Active',startDate:'2023-04-30',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d12',staffId:'D800012',previousIds:[],name:'Arvin Blaza Dorado',position:'DRIVER',status:'Active',startDate:'2023-05-18',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d13',staffId:'D800013',previousIds:[],name:'Richard Daniel Villarez Siazon',position:'DRIVER',status:'Idle',startDate:'2023-06-01',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d14',staffId:'D800014',previousIds:[],name:'Ariel Brinsa Bualoy',position:'DRIVER',status:'Active',startDate:'2023-06-08',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d15',staffId:'D800015',previousIds:[],name:'Ramil Dimapilis',position:'DRIVER',status:'Active',startDate:'2023-07-27',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d16',staffId:'D800016',previousIds:[],name:'Angelo Samar',position:'DRIVER',status:'Active',startDate:'2023-08-09',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d17',staffId:'D800017',previousIds:[],name:'Randy Santos',position:'DRIVER',status:'Idle',startDate:'2023-08-11',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d18',staffId:'D800018',previousIds:[],name:'Rolando Purgatorio',position:'DRIVER',status:'Idle',startDate:'2024-01-17',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d19',staffId:'D800019',previousIds:[],name:'Kenneth Pimentel',position:'DRIVER',status:'Idle',startDate:'2024-01-19',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d20',staffId:'D800020',previousIds:[],name:'Noriel Bungayan',position:'DRIVER',status:'Idle',startDate:'2024-01-19',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d21',staffId:'D800021',previousIds:[],name:'Angelo Azuela',position:'DRIVER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d22',staffId:'D800022',previousIds:[],name:'Marlou Balonquit',position:'DRIVER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d23',staffId:'D800023',previousIds:[],name:'Emerson Tagala',position:'DRIVER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d24',staffId:'D800024',previousIds:[],name:'Joseph Liberato',position:'DRIVER',status:'Idle',startDate:'2024-04-23',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d25',staffId:'D800025',previousIds:[],name:'Jerry Ramos',position:'DRIVER',status:'Active',startDate:'2024-06-28',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d26',staffId:'D800026',previousIds:[],name:'Jerico Templa',position:'DRIVER',status:'Idle',startDate:'ON CALL',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d27',staffId:'D800027',previousIds:[],name:'Junny Conol Cobera',position:'DRIVER',status:'Active',startDate:'2025-03-07',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d28',staffId:'D800028',previousIds:[],name:'Christopher Santillan',position:'DRIVER',status:'Idle',startDate:'ON CALL',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d29',staffId:'D800029',previousIds:[],name:'Philip Ternal',position:'DRIVER',status:'Idle',startDate:'2025-08-02',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'d30',staffId:'D800030',previousIds:[],name:'Nomer Abaga',position:'DRIVER',status:'Active',startDate:'2025-10-29',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d31',staffId:'D800031',previousIds:[],name:'Michael Marquez',position:'DRIVER',status:'Active',startDate:'2025-12-09',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'d32',staffId:'D800032',previousIds:[],name:'Gilbert Ariston',position:'DRIVER',status:'Active',startDate:'2026-04-18',duty:'Driver',licenseNumber:'',licenseExpiry:''},
+  {id:'h2',staffId:'H800001',previousIds:[],name:'Den Mark Gardon',position:'HELPER',status:'Idle',startDate:'2021-09-28',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h3',staffId:'H800002',previousIds:[],name:'Roniel Mabansag',position:'HELPER',status:'Idle',startDate:'2022-03-07',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h4',staffId:'H800003',previousIds:[],name:'Vladjamir Bibas',position:'HELPER',status:'Idle',startDate:'2022-10-13',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h5',staffId:'H800004',previousIds:[],name:'Jeffrey Surwez',position:'HELPER',status:'Idle',startDate:'2022-12-16',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h6',staffId:'H800005',previousIds:[],name:'John Gabriel Dela Cruz',position:'HELPER',status:'Active',startDate:'2023-01-27',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h7',staffId:'H800006',previousIds:[],name:'Angelo Macario Santos',position:'HELPER',status:'Idle',startDate:'2023-05-24',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h8',staffId:'H800007',previousIds:[],name:'Rolly Zarsa Obidos',position:'HELPER',status:'Active',startDate:'2023-06-02',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h9',staffId:'H800008',previousIds:[],name:'Ric Ronald Basilio Sepria',position:'HELPER',status:'Active',startDate:'2023-06-03',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h10',staffId:'H800009',previousIds:[],name:'Michael Dorado Estornidos',position:'HELPER',status:'Active',startDate:'2023-06-06',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h11',staffId:'H800010',previousIds:[],name:'Adrian Ace F. Depena',position:'HELPER',status:'Idle',startDate:'2023-07-05',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h12',staffId:'H800011',previousIds:[],name:'Leonardo Berden',position:'HELPER',status:'Active',startDate:'2023-07-27',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h13',staffId:'H800012',previousIds:[],name:'Randel Alvarez',position:'HELPER',status:'Active',startDate:'2023-08-25',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h14',staffId:'H800013',previousIds:[],name:'Joel Guisan',position:'HELPER',status:'Idle',startDate:'2023-09-01',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h15',staffId:'H800014',previousIds:[],name:'Marvin Castillo',position:'HELPER',status:'Idle',startDate:'2023-10-02',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h16',staffId:'H800015',previousIds:[],name:'Syril Dacles',position:'HELPER',status:'Active',startDate:'2023-10-10',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h17',staffId:'H800016',previousIds:[],name:'Marben Mag aso',position:'HELPER',status:'Active',startDate:'2023-10-19',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h18',staffId:'H800017',previousIds:[],name:'Janrey Villanueva Dorado',position:'HELPER',status:'Active',startDate:'2023-11-01',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h19',staffId:'H800018',previousIds:[],name:'Jay Mark Villanueva Dorado',position:'HELPER',status:'Idle',startDate:'2023-11-02',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h20',staffId:'H800019',previousIds:[],name:'Jushua Fong',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h21',staffId:'H800020',previousIds:[],name:'Christopher Peligrino',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h22',staffId:'H800021',previousIds:[],name:'John Rafael Lara',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h23',staffId:'H800022',previousIds:[],name:'Nelson Zarca Ducatanan',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h24',staffId:'H800023',previousIds:[],name:'Rodel Pacia',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h25',staffId:'H800024',previousIds:[],name:'Giovanni Joseph P. Pena',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h26',staffId:'H800025',previousIds:[],name:'Nonito Quinto',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h27',staffId:'H800026',previousIds:[],name:'Roldan Sistual',position:'HELPER',status:'Idle',startDate:'2024-05-23',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h28',staffId:'H800027',previousIds:[],name:'Eljun Abrasaldo',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h29',staffId:'H800028',previousIds:[],name:'Antonio Latayan',position:'HELPER',status:'Idle',startDate:'2024-07-24',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h30',staffId:'H800029',previousIds:[],name:'Ruben Gaway',position:'HELPER',status:'Idle',startDate:'2024-08-03',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h31',staffId:'H800030',previousIds:[],name:'Jan Ellie Taylaran',position:'HELPER',status:'Idle',startDate:'2024-08-12',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h32',staffId:'H800031',previousIds:[],name:'Ryan Anover',position:'HELPER',status:'On Call',startDate:'',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h33',staffId:'H800032',previousIds:[],name:'Arjhon Dorado',position:'HELPER',status:'Idle',startDate:'2025-01-11',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h34',staffId:'H800033',previousIds:[],name:'Ricky Boy Amante',position:'HELPER',status:'Active',startDate:'2025-04-15',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h35',staffId:'H800034',previousIds:[],name:'John Paul Ellar',position:'HELPER',status:'Idle',startDate:'2025-05-06',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h36',staffId:'H800035',previousIds:[],name:'Dexter Rosales',position:'HELPER',status:'Idle',startDate:'2025-06-05',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h37',staffId:'H800036',previousIds:[],name:'Ryan Bautista',position:'HELPER',status:'Idle',startDate:'2025-10-06',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h38',staffId:'H800037',previousIds:[],name:'Jarel Carlo Casino',position:'HELPER',status:'Idle',startDate:'2025-11-06',duty:'idle',licenseNumber:'',licenseExpiry:''},
+  {id:'h39',staffId:'H800038',previousIds:[],name:'Lorenz Amorado',position:'HELPER',status:'Active',startDate:'2025-12-26',duty:'Helper',licenseNumber:'',licenseExpiry:''},
+  {id:'h1',staffId:'A800001',previousIds:['H800001'],name:'Kenneth D. Feaguerra',position:'ADMIN',status:'Active',startDate:'2021-03-03',duty:'Yard Supervisor',licenseNumber:'',licenseExpiry:''},
+  {id:'o1',staffId:'O800001',previousIds:[],name:'Ellen J. Paranga',position:'OFFICE',status:'Active',startDate:'2022-09-05',duty:'Ops Office Supervisor',licenseNumber:'',licenseExpiry:''},
+  {id:'o2',staffId:'O800002',previousIds:[],name:'Jenny Makiling',position:'OFFICE',status:'Active',startDate:'2023-01-03',duty:'Ops Office Supervisor',licenseNumber:'',licenseExpiry:''},
+  {id:'t1',staffId:'T800001',previousIds:[],name:'John Rey De Vera',position:'TECH',status:'Active',startDate:'2026-06-08',duty:'Mechanic / Truck Supervisor',licenseNumber:'',licenseExpiry:''},
 ];
 
 const DEFAULT_FLEET = [
@@ -894,7 +1008,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606261500'; // bumped: RBAC role gate + hard force-reload added
+const APP_VERSION = '202606271720'; // bumped: rollback to pre-rate-engine checkpoint + added validation blocking same staff in multiple roles (Driver/H1/H2) on one trip
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1182,6 +1296,30 @@ function saveFleetData(){
 }
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+function cleanupStaffDates(){
+  let changed=0;
+  staff.forEach(s=>{
+    if(!s.startDate) return;
+    const raw = String(s.startDate).trim();
+    const upper = raw.toUpperCase();
+    if(upper==='ON CALL' || upper===''){
+      if(s.startDate!==''){ s.startDate=''; changed++; }
+      if(s.status!=='On Call' && s.status!=='Resigned'){ s.status='On Call'; }
+      return;
+    }
+    const stripped = raw.replace(/L$/i,'').trim();
+    if(/^\d{8}$/.test(stripped)){
+      const formatted = stripped.slice(0,4)+'-'+stripped.slice(4,6)+'-'+stripped.slice(6,8);
+      if(s.startDate!==formatted){ s.startDate=formatted; changed++; }
+    } else if(stripped!==raw){
+      if(s.startDate!==stripped){ s.startDate=stripped; changed++; }
+    }
+  });
+  saveStaffData();
+  renderStaff();
+  toast(changed+' staff start date(s) cleaned up ✓','success');
+}
+
 // Normalize cutoff format → always "MMM.DD-DD,YYYY" e.g. "APR.21-30,2026"
 // Normalize cutoff format
 // Same month:   "APR.21-30,2026"       → "APR.21-30,2026"
@@ -1311,6 +1449,7 @@ function populateStaffDropdowns(){
   const hlpOpts='<option value="">— None —</option>'+helpers.map(h=>`<option value="${h.name}">${h.name}${h.status==='idle'?' (idle)':''}</option>`).join('');
   h1El.innerHTML=hlpOpts; h2El.innerHTML=hlpOpts;
   if(curH1) h1El.value=curH1; if(curH2) h2El.value=curH2;
+  populateNoTripStaffDropdown();
 }
 function populatePlateDropdown(){
   const el=document.getElementById('f-plate');
@@ -1457,6 +1596,12 @@ function saveTrip(){
   } else {
     if(!t.driver){toast('Driver required','error');return;}
     if(!t.plate){toast('Plate required','error');return;}
+  }
+  const rolesFilled=[t.driver,t.h1,t.h2].filter(Boolean);
+  const rolesSet=new Set(rolesFilled);
+  if(rolesSet.size!==rolesFilled.length){
+    toast('Same staff member cannot be assigned to more than one role (Driver/H1/H2) on the same trip','error');
+    return;
   }
   if(!t.code){
     const d=new Date(t.tripStartDate);
@@ -1768,28 +1913,74 @@ function confirmDelete(){
 }
 
 // ===== STAFF PAGE =====
+const POSITION_PREFIX = {DRIVER:'D', HELPER:'H', OFFICE:'O', ADMIN:'A', TECH:'T'};
+function nextStaffId(position){
+  const prefix = POSITION_PREFIX[position] || 'X';
+  const existing = staff.filter(s=>s.staffId && s.staffId.startsWith(prefix)).map(s=>parseInt(s.staffId.slice(prefix.length),10)).filter(n=>!isNaN(n));
+  const max = existing.length ? Math.max(...existing) : 800000;
+  return prefix + String(max+1);
+}
+function onPositionChange(){
+  const pos = document.getElementById('sf-position').value;
+  document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
+}
 function openAddStaff(){ editingStaffId=null; document.getElementById('staff-modal-title').textContent='Add Staff'; clearStaffForm(); document.getElementById('staff-modal').classList.add('open'); }
 function openEditStaff(id){
   editingStaffId=id; const s=staff.find(x=>x.id===id); if(!s)return;
   document.getElementById('staff-modal-title').textContent='Edit: '+s.name;
   document.getElementById('sf-name').value=s.name;
+  document.getElementById('sf-staffid').value=s.staffId||'(none — will assign on save)';
   document.getElementById('sf-position').value=s.position;
   document.getElementById('sf-status').value=s.status;
   document.getElementById('sf-startdate').value=s.startDate||'';
-  document.getElementById('sf-duty').value=s.duty||'idle';
+  document.getElementById('sf-duty').value=s.duty||'';
+  document.getElementById('sf-license-number').value=s.licenseNumber||'';
+  document.getElementById('sf-license-expiry').value=s.licenseExpiry||'';
+  onPositionChange();
+  document.getElementById('sf-previousids').value = (s.previousIds && s.previousIds.length) ? s.previousIds.join(', ') : '';
   document.getElementById('staff-modal').classList.add('open');
 }
 function closeStaffModal(){ document.getElementById('staff-modal').classList.remove('open'); editingStaffId=null; }
-function clearStaffForm(){ ['sf-name','sf-startdate'].forEach(id=>{document.getElementById(id).value='';}); document.getElementById('sf-position').value='DRIVER'; document.getElementById('sf-status').value='Active'; document.getElementById('sf-duty').value='Driver'; }
+function clearStaffForm(){
+  document.getElementById('sf-name').value='';
+  document.getElementById('sf-staffid').value='(auto-assigned on save)';
+  document.getElementById('sf-startdate').value='';
+  document.getElementById('sf-duty').value='';
+  document.getElementById('sf-license-number').value='';
+  document.getElementById('sf-license-expiry').value='';
+  document.getElementById('sf-position').value='DRIVER';
+  document.getElementById('sf-status').value='Active';
+  document.getElementById('sf-previousids').value='';
+  onPositionChange();
+}
 function saveStaff(){
   const name=document.getElementById('sf-name').value.trim();
   if(!name){toast('Name required','error');return;}
+  const position=document.getElementById('sf-position').value;
+  const manualPrevRaw = document.getElementById('sf-previousids').value.trim();
+  const manualPrevIds = manualPrevRaw ? manualPrevRaw.split(',').map(x=>x.trim()).filter(Boolean) : [];
+  let staffId, previousIds=[...manualPrevIds];
+  if(editingStaffId){
+    const existing=staff.find(x=>x.id===editingStaffId);
+    if(existing && existing.position!==position){
+      // Department transfer: issue new ID, keep old as history (merged with any manual entries)
+      if(existing.staffId && !previousIds.includes(existing.staffId)) previousIds.push(existing.staffId);
+      staffId = nextStaffId(position);
+      toast('Position changed — new Staff ID '+staffId+' issued, '+existing.staffId+' kept as history','success');
+    } else {
+      staffId = existing ? (existing.staffId || nextStaffId(position)) : nextStaffId(position);
+    }
+  } else {
+    staffId = nextStaffId(position);
+  }
   const s={
-    id:editingStaffId||genId(), name,
-    position:document.getElementById('sf-position').value,
+    id:editingStaffId||genId(), name, staffId, previousIds,
+    position,
     status:document.getElementById('sf-status').value,
     startDate:document.getElementById('sf-startdate').value,
     duty:document.getElementById('sf-duty').value,
+    licenseNumber:document.getElementById('sf-license-number').value.trim(),
+    licenseExpiry:document.getElementById('sf-license-expiry').value,
   };
   if(editingStaffId){ const idx=staff.findIndex(x=>x.id===editingStaffId); if(idx!==-1)staff[idx]=s; toast('Staff updated ✓','success'); }
   else{ staff.push(s); toast('Staff added ✓','success'); }
@@ -1802,36 +1993,58 @@ function filterStaff(type,el){
   el.classList.add('active');
   renderStaff();
 }
+function licenseExpiryInfo(s){
+  if(s.position!=='DRIVER') return null;
+  if(!s.licenseNumber) return {level:'missing', label:'⚠️ No license on file'};
+  if(!s.licenseExpiry) return {level:'ok', label:'License: '+s.licenseNumber};
+  const today=new Date(); const exp=new Date(s.licenseExpiry);
+  const days=Math.round((exp-today)/86400000);
+  if(days<0) return {level:'expired', label:'⚠️ License expired '+Math.abs(days)+'d ago'};
+  if(days<=60) return {level:'soon', label:'⚠️ License expires in '+days+'d'};
+  return {level:'ok', label:'License: '+s.licenseNumber+' (exp '+s.licenseExpiry+')'};
+}
+function statusBadgeClass(status){
+  if(status==='Active') return 'status-badge-active';
+  if(status==='On Call') return 'status-badge-oncall';
+  if(status==='Resigned') return 'status-badge-resigned';
+  return 'status-badge-idle';
+}
 function renderStaff(){
   let filtered=staff;
-  if(staffFilter==='DRIVER')filtered=staff.filter(s=>s.position==='DRIVER');
-  else if(staffFilter==='HELPER')filtered=staff.filter(s=>s.position==='HELPER');
-  else if(staffFilter==='Active')filtered=staff.filter(s=>s.status==='Active');
-  else if(staffFilter==='idle')filtered=staff.filter(s=>s.status==='idle');
-  const activeDrv=staff.filter(s=>s.position==='DRIVER'&&s.status==='Active').length;
-  const idleDrv=staff.filter(s=>s.position==='DRIVER'&&s.status!=='Active').length;
-  const activeHlp=staff.filter(s=>s.position==='HELPER'&&s.status==='Active').length;
-  const idleHlp=staff.filter(s=>s.position==='HELPER'&&s.status!=='Active').length;
+  if(['DRIVER','HELPER','OFFICE','ADMIN','TECH'].includes(staffFilter)) filtered=staff.filter(s=>s.position===staffFilter);
+  else if(['Active','On Call','Idle','Resigned'].includes(staffFilter)) filtered=staff.filter(s=>s.status===staffFilter);
+  const counts={};
+  ['DRIVER','HELPER','OFFICE','ADMIN','TECH'].forEach(p=>{
+    counts[p+'_active']=staff.filter(s=>s.position===p&&s.status==='Active').length;
+    counts[p+'_other']=staff.filter(s=>s.position===p&&s.status!=='Active').length;
+  });
   document.getElementById('staff-summary-bar').innerHTML=`
     <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 16px;display:flex;gap:20px;font-size:12px;flex-wrap:wrap">
-      <span>🚗 Drivers: <strong style="color:var(--green)">${activeDrv} Active</strong> / <span style="color:var(--text2)">${idleDrv} Idle</span></span>
-      <span>🧑‍🤝‍🧑 Helpers: <strong style="color:var(--green)">${activeHlp} Active</strong> / <span style="color:var(--text2)">${idleHlp} Idle</span></span>
+      <span>🚗 Drivers: <strong style="color:var(--green)">${counts.DRIVER_active} Active</strong> / <span style="color:var(--text2)">${counts.DRIVER_other} Other</span></span>
+      <span>🧑‍🤝‍🧑 Helpers: <strong style="color:var(--green)">${counts.HELPER_active} Active</strong> / <span style="color:var(--text2)">${counts.HELPER_other} Other</span></span>
+      <span>🏢 Office: <strong>${counts.OFFICE_active+counts.OFFICE_other}</strong></span>
+      <span>📋 Admin: <strong>${counts.ADMIN_active+counts.ADMIN_other}</strong></span>
+      <span>🔧 Tech: <strong>${counts.TECH_active+counts.TECH_other}</strong></span>
       <span>Total Staff: <strong>${staff.length}</strong></span>
     </div>`;
   document.getElementById('staff-grid').innerHTML=filtered.map(s=>{
     const lastDate=lastTripDateFor(t=>t.driver===s.name||t.h1===s.name||t.h2===s.name);
     const idleInfo=daysIdleLabel(lastDate);
     const idleWarn=idleInfo.days!==null && idleInfo.days>=7;
+    const lic=licenseExpiryInfo(s);
+    const avatarClass=s.position==='DRIVER'?'drv':s.position==='HELPER'?'hlp':'hlp';
     return `
     <div class="staff-card">
       <div class="staff-card-header">
-        <div class="staff-avatar ${s.position==='DRIVER'?'drv':'hlp'}">${s.name.split(' ').map(p=>p[0]).join('').slice(0,2)}</div>
-        <div><div class="staff-name">${s.name}</div><div class="staff-role">${s.position}</div></div>
+        <div class="staff-avatar ${avatarClass}">${s.name.split(' ').map(p=>p[0]).join('').slice(0,2)}</div>
+        <div><div class="staff-name">${s.name}</div><div class="staff-role">${s.position} · ${s.staffId||'—'}</div></div>
       </div>
       <div class="staff-meta">
-        <div class="staff-meta-item"><div class="staff-meta-label">Status</div><div><span class="${s.status==='Active'?'status-badge-active':'status-badge-idle'}">${s.status}</span></div></div>
+        <div class="staff-meta-item"><div class="staff-meta-label">Status</div><div><span class="${statusBadgeClass(s.status)}">${s.status}</span></div></div>
         <div class="staff-meta-item"><div class="staff-meta-label">Duty</div><div class="staff-meta-value">${s.duty||'—'}</div></div>
         <div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Start Date</div><div class="staff-meta-value" style="font-family:'DM Mono',monospace;font-size:11px">${s.startDate||'—'}</div></div>
+        ${lic?`<div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">License</div><div class="staff-meta-value" style="font-size:11px;color:${lic.level==='ok'?'var(--text2)':'var(--red)'}">${lic.label}</div></div>`:''}
+        ${s.previousIds&&s.previousIds.length?`<div class="staff-meta-item" style="grid-column:span 2"><div class="staff-meta-label">Previous ID</div><div class="staff-meta-value" style="font-size:11px">${s.previousIds.join(', ')}</div></div>`:''}
         <div class="staff-meta-item" style="grid-column:span 2">
           <div class="staff-meta-label">Last Trip</div>
           <div class="staff-meta-value" style="font-size:11px">
@@ -2375,6 +2588,81 @@ function backupJSON(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=`EMELCO_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();
   toast('Backup saved ✓','success');
 }
+
+function exportStaffExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded — check internet connection','error');return;}
+  const hdrs=['Staff ID','Name','Position','Status','Duty / Role','Start Date','License No.','License Expiry','Previous ID(s)','Last Trip','Idle Days'];
+  const rows=staff.map(s=>{
+    const lastDate=lastTripDateFor(t=>t.driver===s.name||t.h1===s.name||t.h2===s.name);
+    const idleInfo=daysIdleLabel(lastDate);
+    return[s.staffId||'',s.name,s.position,s.status,s.duty||'',s.startDate||'',s.licenseNumber||'',s.licenseExpiry||'',(s.previousIds||[]).join(', '),lastDate?fmtDate(lastDate):'',idleInfo.days!==null?idleInfo.days:''];
+  });
+  const ws=XLSX.utils.aoa_to_sheet([hdrs,...rows]);
+  ws['!cols']=[{wch:12},{wch:26},{wch:10},{wch:10},{wch:22},{wch:12},{wch:14},{wch:14},{wch:14},{wch:12},{wch:10}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Staff Directory');
+  XLSX.writeFile(wb,`EMELCO_Staff_Directory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Staff Directory Excel exported ✓','success');
+}
+
+function exportFleetExcel(){
+  if(typeof XLSX==='undefined'){toast('Excel library not loaded — check internet connection','error');return;}
+  const tripsByPlate={};trips.forEach(t=>{if(t.plate){tripsByPlate[t.plate]=(tripsByPlate[t.plate]||0)+1;}});
+  const hdrs=['Plate #','Truck Type','Fleet Status','Total Trips','Last Trip','Idle Days'];
+  const rows=fleet.map(tk=>{
+    const lastDate=lastTripDateFor(t=>t.plate===tk.plate);
+    const idleInfo=daysIdleLabel(lastDate);
+    return[tk.plate,tk.type,tk.status,tripsByPlate[tk.plate]||0,lastDate?fmtDate(lastDate):'',idleInfo.days!==null?idleInfo.days:''];
+  });
+  const ws=XLSX.utils.aoa_to_sheet([hdrs,...rows]);
+  ws['!cols']=[{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:10}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Fleet Directory');
+  XLSX.writeFile(wb,`EMELCO_Fleet_Directory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Fleet Directory Excel exported ✓','success');
+}
+
+function printStaffPDF(){
+  const grid=document.getElementById('staff-grid');
+  if(!grid){toast('Staff directory not loaded','error');return;}
+  openPrintWindow('EMELCO Staff Directory', grid.innerHTML);
+}
+
+function printFleetPDF(){
+  const grid=document.getElementById('fleet-grid');
+  if(!grid){toast('Fleet directory not loaded','error');return;}
+  openPrintWindow('EMELCO Fleet Directory', grid.innerHTML);
+}
+
+function openPrintWindow(title, gridHTML){
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+  <style>
+  :root{--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--purple:#7c3aed;--text:#1a1e2e;--text2:#5a6175;--border:#dde1e9}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1e2e;padding:24px}
+  h1{font-size:18px;margin-bottom:4px}
+  .sub{font-size:11px;color:#5a6175;margin-bottom:16px}
+  .staff-grid,.fleet-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .staff-card,.fleet-card{border:1px solid #dde1e9;border-radius:8px;padding:12px;page-break-inside:avoid}
+  .staff-card-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .staff-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;background:#eee}
+  .staff-name,.fleet-plate{font-weight:700;font-size:12px}
+  .staff-role,.fleet-type{font-size:9px;color:#5a6175}
+  .staff-meta,.fleet-meta{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px}
+  .staff-meta-label,.fleet-stat-label{font-size:8px;color:#9099b0;text-transform:uppercase}
+  .staff-meta-value{color:#1a1e2e}
+  .staff-actions,.fleet-card button{display:none}
+  .status-badge-active,.status-badge-idle,.status-badge-oncall,.status-badge-resigned,.badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;background:#eee}
+  @media print{ body{padding:0} }
+  </style></head><body>
+  <h1>${title}</h1>
+  <div class="sub">Generated ${new Date().toLocaleString()}</div>
+  <div class="${title.includes('Fleet')?'fleet-grid':'staff-grid'}">${gridHTML}</div>
+  </body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.print(); }, 300);
+}
 function restoreJSON(input){
   if(!input.files[0])return;
   const reader=new FileReader();
@@ -2398,7 +2686,8 @@ function clearAllData(){
 // ===== TABS =====
 function switchTab(name){
   if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','guide'][i]===name));
+  if(name==='officepayroll' && currentRole==='operations'){ toast('Office Payroll is restricted to Owner access','error'); return; }
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(name==='summary')renderSummary();
@@ -2406,6 +2695,7 @@ function switchTab(name){
   if(name==='fleet')renderFleet();
   if(name==='import')renderStorageStatus();
   if(name==='payroll'){ populatePayrollWeeks(); renderPayroll(); }
+  if(name==='officepayroll'){ populateOfficePayrollDropdowns(); }
 }
 
 // ===== TOAST =====
@@ -2415,7 +2705,7 @@ function toast(msg,type='success'){
 }
 
 // ===== CLOSE ON OVERLAY =====
-['trip-modal','confirm-modal','staff-modal','truck-modal'].forEach(id=>{
+['trip-modal','confirm-modal','staff-modal','truck-modal','slip-modal','office-slip-modal'].forEach(id=>{
   document.getElementById(id).addEventListener('click',function(e){if(e.target===this){this.classList.remove('open');}});
 });
 
@@ -2710,6 +3000,90 @@ function populatePayrollWeeks(){
   const cur=sel.value;
   sel.innerHTML='<option value="">— Select Week (Fri–Thu) —</option>'+
     weeks.map(w=>`<option value="${w}" ${String(w)===String(cur)?'selected':''}>${getWeekFriLabel(w)}</option>`).join('');
+  populateNoTripStaffDropdown();
+}
+
+function populateNoTripStaffDropdown(){
+  const sel=document.getElementById('payroll-notrip-sel');
+  if(!sel) return;
+  const eligible=staff.filter(s=>s.position==='DRIVER'||s.position==='HELPER').sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="">— Open slip for staff w/ no trips —</option>'+
+    eligible.map(s=>`<option value="${s.name}|${s.position}">${s.name} (${s.position})</option>`).join('');
+  populateTripHistoryDropdowns();
+}
+
+function populateTripHistoryDropdowns(){
+  const weekSel=document.getElementById('th-week-sel');
+  const staffSel=document.getElementById('th-staff-sel');
+  if(!weekSel||!staffSel) return;
+  const weeks=[...new Set(trips.map(t=>t.weekFri).filter(x=>x||x===0))].sort((a,b)=>a-b);
+  const curWeek=weekSel.value;
+  weekSel.innerHTML='<option value="">— Select Week (Fri–Thu) —</option>'+
+    weeks.map(w=>`<option value="${w}" ${String(w)===String(curWeek)?'selected':''}>${getWeekFriLabel(w)}</option>`).join('');
+  const curStaff=staffSel.value;
+  const eligible=staff.filter(s=>s.position==='DRIVER'||s.position==='HELPER').sort((a,b)=>a.name.localeCompare(b.name));
+  staffSel.innerHTML='<option value="">— Select Driver or Helper —</option>'+
+    eligible.map(s=>`<option value="${s.name}|${s.position}" ${(`${s.name}|${s.position}`)===curStaff?'selected':''}>${s.name} (${s.position})</option>`).join('');
+}
+
+function viewTripHistory(){
+  const weekNum=document.getElementById('th-week-sel').value;
+  const staffVal=document.getElementById('th-staff-sel').value;
+  const results=document.getElementById('th-results');
+  if(!weekNum || !staffVal){ results.innerHTML='<div style="color:var(--text2);font-size:12px">Select both a week and a staff member.</div>'; return; }
+  const [name]=staffVal.split('|');
+  const rows=getTripRowsForPerson(weekNum,name);
+  if(!rows.length){
+    results.innerHTML=`<div style="color:var(--text2);font-size:12px;padding:8px 0">No trips for <strong>${name}</strong> during ${getWeekFriLabel(weekNum)}.</div>`;
+    return;
+  }
+  let totalRate=0,totalMano=0,totalCA=0;
+  const rowsHtml=rows.map(r=>{
+    totalRate+=r.rate; totalMano+=r.mano; totalCA+=r.ca;
+    return `<tr>
+      <td style="font-size:11px">${fmtDate(r.trip.tripStartDate)}</td>
+      <td style="text-align:center;font-weight:700">${r.pos}</td>
+      <td style="font-size:11px">${r.trip.driver||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${r.pos==='D' ? (r.trip.h1||'—') : '—'}</td>
+      <td style="font-size:11px">${r.trip.plate||'—'}</td>
+      <td style="font-size:11px">${r.trip.client||'—'}</td>
+      <td style="font-size:11px">${r.trip.area||'—'}</td>
+      <td style="font-size:11px" title="${r.trip.destination||''}">${shortenDest(r.trip.destination)}</td>
+      <td style="text-align:center;font-size:11px">${dropCount(r.trip)}</td>
+      <td class="num-cell">₱${fmt(r.rate)}</td>
+      <td class="num-cell">₱${fmt(r.mano)}</td>
+      <td class="num-cell" style="color:var(--red)">₱${fmt(r.ca)}</td>
+    </tr>`;
+  }).join('');
+  results.innerHTML=`
+    <div class="table-wrapper" style="max-height:300px">
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Pos</th><th>Driver</th><th>Helper</th><th>Plate</th><th>Client</th><th>Area</th><th>Destination</th><th>Drops</th>
+        <th class="num-cell">Rate</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--bg3)">
+        <td colspan="9">TOTAL</td>
+        <td class="num-cell">₱${fmt(totalRate)}</td>
+        <td class="num-cell">₱${fmt(totalMano)}</td>
+        <td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td>
+      </tr></tfoot>
+    </table>
+    </div>`;
+}
+
+function openSlipForNoTripStaff(){
+  const weekNum=document.getElementById('payroll-week-sel').value;
+  if(!weekNum){ toast('Select a payroll week first','error'); return; }
+  const val=document.getElementById('payroll-notrip-sel').value;
+  if(!val){ toast('Pick a staff member first','error'); return; }
+  const [name,position]=val.split('|');
+  const rows=getTripRowsForPerson(weekNum,name);
+  if(rows.length){
+    toast(name+' actually had '+rows.length+' trip(s) this week — opening their normal slip','success');
+  }
+  openPaySlip(name, position);
 }
 
 function renderPayroll(){
@@ -2760,11 +3134,13 @@ function renderPayroll(){
       <td class="num-cell">₱${fmt(p.manoDrv)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(p.caDrv)}</td>
       <td class="num-cell ${net>=0?'positive':'negative'}" style="font-weight:700">₱${fmt(net)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openPaySlip('${p.name.replace(/'/g,"\\'")}',  'DRIVER')">🧾 Slip</button></td>
     </tr>`;
   }).join('')+`<tr style="background:var(--bg3);font-weight:700;border-top:2px solid var(--border2)">
     <td colspan="2">TOTAL</td>
     <td class="num-cell"></td><td class="num-cell"></td><td class="num-cell"></td>
     <td class="num-cell positive">₱${fmt(totalDrvNet)}</td>
+    <td></td>
   </tr>`;
 
   // Build helper table
@@ -2784,11 +3160,13 @@ function renderPayroll(){
       <td class="num-cell">₱${fmt(mano)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(ca)}</td>
       <td class="num-cell ${net>=0?'positive':'negative'}" style="font-weight:700">₱${fmt(net)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openPaySlip('${p.name.replace(/'/g,"\\'")}',  'HELPER')">🧾 Slip</button></td>
     </tr>`;
   }).join('')+`<tr style="background:var(--bg3);font-weight:700;border-top:2px solid var(--border2)">
     <td colspan="2">TOTAL</td>
     <td class="num-cell"></td><td class="num-cell"></td><td class="num-cell"></td>
     <td class="num-cell positive">₱${fmt(totalHlpNet)}</td>
+    <td></td>
   </tr>`;
 
   // Summary cards
@@ -2822,6 +3200,515 @@ function renderPayroll(){
     <td style="font-size:11px;color:var(--text2)">${t.area||'—'}</td>
     <td style="font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${t.destination}">${t.destination||'—'}</td>
   </tr>`).join('');
+}
+
+// ===== PAY SLIP SYSTEM =====
+const PAYROLL_SLIPS_KEY='emelco_payroll_slips_2026';
+let payrollSlips={};
+function loadPayrollSlips(){
+  try{ payrollSlips=JSON.parse(localStorage.getItem(PAYROLL_SLIPS_KEY)||'{}'); }catch(e){ payrollSlips={}; }
+}
+function savePayrollSlips(){
+  localStorage.setItem(PAYROLL_SLIPS_KEY, JSON.stringify(payrollSlips));
+}
+function slipKey(weekNum, name){ return weekNum+'__'+name; }
+
+let currentSlipWeek=null, currentSlipName=null, currentSlipPosition=null;
+
+function dropCount(t){ return (Array.isArray(t.drops) && t.drops.length) ? t.drops.length : 1; }
+function shortenDest(dest){
+  if(!dest) return '—';
+  return dest.split(' ').map(w=>w.slice(0,3)).join(' ');
+}
+
+function findStaffByName(name){
+  return staff.find(s=>s.name===name);
+}
+
+function getTripRowsForPerson(weekNum, name){
+  const wt=trips.filter(t=>String(t.weekFri)===String(weekNum));
+  const rows=[];
+  wt.forEach(t=>{
+    if(t.driver===name) rows.push({trip:t, pos:'D', rate:n(t.rate), mano:n(t.manoDrv), ca:n(t.caDrv), pay:n(t.drvPay)});
+    if(t.h1===name) rows.push({trip:t, pos:'H1', rate:n(t.rate), mano:n(t.manoH1), ca:n(t.caH1), pay:n(t.h1Pay)});
+    if(t.h2===name) rows.push({trip:t, pos:'H2', rate:n(t.rate), mano:n(t.manoH2), ca:n(t.caH2), pay:n(t.h2Pay)});
+  });
+  rows.sort((a,b)=>(a.trip.tripStartDate||'').localeCompare(b.trip.tripStartDate||''));
+  return rows;
+}
+
+function openPaySlip(name, position){
+  loadPayrollSlips();
+  const weekNum=document.getElementById('payroll-week-sel').value;
+  if(!weekNum){ toast('Select a payroll week first','error'); return; }
+  currentSlipWeek=weekNum; currentSlipName=name; currentSlipPosition=position;
+  const s=findStaffByName(name);
+  document.getElementById('slip-modal-title').textContent='Pay Slip — '+name;
+  document.getElementById('slip-modal-subtitle').textContent=getWeekFriLabel(weekNum);
+  renderPaySlip();
+  document.getElementById('slip-modal').classList.add('open');
+}
+function closeSlipModal(){
+  document.getElementById('slip-modal').classList.remove('open');
+  currentSlipWeek=null; currentSlipName=null; currentSlipPosition=null;
+}
+
+function renderPaySlip(){
+  const weekNum=currentSlipWeek, name=currentSlipName, position=currentSlipPosition;
+  const s=findStaffByName(name) || {};
+  const key=slipKey(weekNum,name);
+  const saved=payrollSlips[key] || {};
+  const tripRows=getTripRowsForPerson(weekNum,name);
+
+  let totalRate=0,totalMano=0,totalCA=0,totalPay=0;
+  const tripRowsHtml=tripRows.map(r=>{
+    totalRate+=r.rate; totalMano+=r.mano; totalCA+=r.ca; totalPay+=r.pay;
+    const helperName = r.pos==='D' ? (r.trip.h1||'—') : (r.pos==='H1' ? (r.trip.driver||'—') : (r.trip.driver||'—'));
+    return `<tr>
+      <td style="font-size:11px">${fmtDate(r.trip.tripStartDate)}</td>
+      <td style="text-align:center;font-weight:700">${r.pos}</td>
+      <td style="font-size:11px">${r.trip.driver||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${r.pos==='D' ? (r.trip.h1||'—') : '—'}</td>
+      <td style="font-size:11px">${r.trip.plate||'—'}</td>
+      <td style="font-size:11px">${r.trip.client||'—'}</td>
+      <td style="font-size:11px">${r.trip.area||'—'}</td>
+      <td style="font-size:11px" title="${r.trip.destination||''}">${shortenDest(r.trip.destination)}</td>
+      <td style="text-align:center;font-size:11px">${dropCount(r.trip)}</td>
+      <td class="num-cell">₱${fmt(r.rate)}</td>
+      <td class="num-cell">₱${fmt(r.mano)}</td>
+      <td class="num-cell" style="color:var(--red)">₱${fmt(r.ca)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="12" style="text-align:center;color:var(--text2);padding:16px">No trips this period.</td></tr>`;
+
+  const grossPay = totalPay + totalMano;
+
+  const licenseLine = s.position==='DRIVER'
+    ? (s.licenseNumber ? `License: ${s.licenseNumber}${s.licenseExpiry?(' · exp '+s.licenseExpiry):''}` : '⚠️ No license on file')
+    : '';
+
+  document.getElementById('slip-modal-body').innerHTML = `
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+    <div><span style="color:var(--text2)">Name</span><div style="font-weight:700">${name}</div></div>
+    <div><span style="color:var(--text2)">Staff ID</span><div style="font-weight:700">${s.staffId||'—'}</div></div>
+    <div><span style="color:var(--text2)">Position</span><div>${s.position||position}</div></div>
+    <div><span style="color:var(--text2)">${licenseLine?'License':''}</span><div style="font-size:11px">${licenseLine}</div></div>
+  </div>
+
+  <div style="font-size:12px;font-weight:700;margin-bottom:6px">Trip Detail</div>
+  <div class="table-wrapper" style="max-height:220px;margin-bottom:16px">
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Pos</th><th>Driver</th><th>Helper</th><th>Plate</th><th>Client</th><th>Area</th><th>Destination</th><th>Drops</th>
+        <th class="num-cell">Rate</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
+      </tr></thead>
+      <tbody>${tripRowsHtml}</tbody>
+      <tfoot><tr style="font-weight:700;background:var(--bg3)">
+        <td colspan="9">TOTAL</td>
+        <td class="num-cell">₱${fmt(totalRate)}</td>
+        <td class="num-cell">₱${fmt(totalMano)}</td>
+        <td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td>
+      </tr></tfoot>
+    </table>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div>
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">Earnings</div>
+      <table style="width:100%;font-size:12px">
+        <tr><td style="padding:3px 0">Driver/Helper Pay</td><td class="num-cell">₱${fmt(totalPay)}</td></tr>
+        <tr><td style="padding:3px 0">Mano (CCAC)</td><td class="num-cell">₱${fmt(totalMano)}</td></tr>
+        <tr><td style="padding:3px 0">Other Pay <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-otherpay" data-saved="${saved.otherPay||''}" value="${saved.otherPay||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td colspan="2" style="padding:0 0 6px"><input type="text" class="form-input" id="sl-otherpay-remark" value="${saved.otherPayRemark||''}" placeholder="Reason for Other Pay…" style="font-size:11px;width:100%"></td></tr>
+        <tr><td style="padding:3px 0">13th Month <span style="color:var(--text2);font-size:10px">(designated run only)</span></td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-13th" value="${saved.thirteenthMonth||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Bonus</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-bonus" value="${saved.bonus||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding:6px 0">Gross Pay</td><td class="num-cell" id="sl-gross">₱${fmt(grossPay)}</td></tr>
+      </table>
+    </div>
+    <div>
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">Deductions</div>
+      <table style="width:100%;font-size:12px">
+        <tr><td style="padding:3px 0">CA from Trip</td><td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td></tr>
+        <tr><td style="padding:3px 0">CA Request</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-carequest" value="${saved.caRequest||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">SSS</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-sss" value="${saved.sss||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">PhilHealth</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-philhealth" value="${saved.philhealth||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Pag-IBIG</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-pagibig" value="${saved.pagibig||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Rent</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-rent" value="${saved.rent||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Electric</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-electric" value="${saved.electric||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Water</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-water" value="${saved.water||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Phone</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-phone" value="${saved.phone||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Bond</td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-bond" value="${saved.bond||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Other Deduction <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
+          <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-otherded" value="${saved.otherDeduction||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td></tr>
+        <tr><td colspan="2" style="padding:0 0 6px"><input type="text" class="form-input" id="sl-otherded-remark" value="${saved.otherDeductionRemark||''}" placeholder="Reason for Other Deduction…" style="font-size:11px;width:100%"></td></tr>
+        <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding:6px 0">Total Deductions</td><td class="num-cell" id="sl-totalded" style="color:var(--red)">₱0.00</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <label class="form-label">General Remarks <span style="font-size:11px;color:var(--text2)">— for anything not already covered above (e.g. why SSS wasn't deducted this week, a special CA arrangement, or "no deduction this week")</span></label>
+    <textarea class="form-textarea form-input" id="sl-remarks" rows="2" placeholder="Optional — any other note for this week's slip…">${saved.remarks||''}</textarea>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+    <div style="text-align:right">
+      <div style="font-size:12px;color:var(--text2)">Net Pay</div>
+      <div style="font-size:26px;font-weight:700" id="sl-netpay">₱0.00</div>
+      <div style="font-size:11px;color:var(--red);margin-top:2px;display:none" id="sl-netpay-note"></div>
+    </div>
+  </div>
+  `;
+  // store gross components for recompute
+  document.getElementById('slip-modal-body').dataset.totalPay=totalPay;
+  document.getElementById('slip-modal-body').dataset.totalMano=totalMano;
+  document.getElementById('slip-modal-body').dataset.totalCA=totalCA;
+  updateSlipTotals();
+
+  const finalizedNote=document.getElementById('slip-finalized-note');
+  finalizedNote.textContent = saved.finalizedAt ? ('Last finalized: '+new Date(saved.finalizedAt).toLocaleString()) : 'Not yet finalized for this week.';
+}
+
+function updateSlipTotals(){
+  const body=document.getElementById('slip-modal-body');
+  const totalPay=n(body.dataset.totalPay), totalMano=n(body.dataset.totalMano), totalCA=n(body.dataset.totalCA);
+  const otherPay=n(document.getElementById('sl-otherpay').value);
+  const thirteenth=n(document.getElementById('sl-13th').value);
+  const bonus=n(document.getElementById('sl-bonus').value);
+  const gross=totalPay+totalMano+otherPay+thirteenth+bonus;
+
+  const caRequest=n(document.getElementById('sl-carequest').value);
+  const sss=n(document.getElementById('sl-sss').value);
+  const philhealth=n(document.getElementById('sl-philhealth').value);
+  const pagibig=n(document.getElementById('sl-pagibig').value);
+  const rent=n(document.getElementById('sl-rent').value);
+  const electric=n(document.getElementById('sl-electric').value);
+  const water=n(document.getElementById('sl-water').value);
+  const phone=n(document.getElementById('sl-phone').value);
+  const bond=n(document.getElementById('sl-bond').value);
+  const otherDed=n(document.getElementById('sl-otherded').value);
+  const totalDed=totalCA+caRequest+sss+philhealth+pagibig+rent+electric+water+phone+bond+otherDed;
+
+  const net=gross-totalDed;
+  document.getElementById('sl-gross').textContent='₱'+fmt(gross);
+  document.getElementById('sl-totalded').textContent='₱'+fmt(totalDed);
+  const netEl=document.getElementById('sl-netpay');
+  netEl.textContent='₱'+fmt(net);
+  netEl.style.color = net<0 ? 'var(--red)' : 'var(--green)';
+  const netNote=document.getElementById('sl-netpay-note');
+  if(netNote){
+    netNote.textContent = net<0 ? '⚠️ Negative — staff owes this amount, add to CA balance owed to Emelco' : '';
+    netNote.style.display = net<0 ? '' : 'none';
+  }
+}
+
+function collectSlipData(){
+  const g=id=>document.getElementById(id).value;
+  return {
+    caRequest:n(g('sl-carequest')), sss:n(g('sl-sss')), philhealth:n(g('sl-philhealth')), pagibig:n(g('sl-pagibig')),
+    rent:n(g('sl-rent')), electric:n(g('sl-electric')), water:n(g('sl-water')), phone:n(g('sl-phone')), bond:n(g('sl-bond')),
+    otherDeduction:n(g('sl-otherded')), otherDeductionRemark:g('sl-otherded-remark').trim(),
+    otherPay:n(g('sl-otherpay')), otherPayRemark:g('sl-otherpay-remark').trim(),
+    thirteenthMonth:n(g('sl-13th')), bonus:n(g('sl-bonus')),
+    remarks:g('sl-remarks')
+  };
+}
+
+function finalizePaySlip(){
+  if(!currentSlipWeek||!currentSlipName) return;
+  const data=collectSlipData();
+  if(data.otherPay>0 && !data.otherPayRemark){ toast('Please add a remark for Other Pay before finalizing','error'); return; }
+  if(data.otherDeduction>0 && !data.otherDeductionRemark){ toast('Please add a remark for Other Deduction before finalizing','error'); return; }
+  const key=slipKey(currentSlipWeek,currentSlipName);
+  data.finalizedAt=new Date().toISOString();
+  data.weekNum=currentSlipWeek;
+  data.name=currentSlipName;
+  const s=findStaffByName(currentSlipName);
+  data.staffId=s?s.staffId:'';
+  payrollSlips[key]=data;
+  savePayrollSlips();
+  toast('Pay slip finalized and saved ✓','success');
+  renderPaySlip();
+}
+
+function printPaySlip(){
+  const data=collectSlipData();
+  const bodyHtml=document.getElementById('slip-modal-body').innerHTML
+    .replace(/<input[^>]*id="sl-([a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>/g, (m,id,val)=>`<span>₱${fmt(n(val))}</span>`)
+    .replace(/<textarea[^>]*>([^<]*)<\/textarea>/g, (m,val)=>`<div>${val||'—'}</div>`);
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Pay Slip - ${currentSlipName}</title>
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1e2e;padding:24px;font-size:12px}
+  :root{--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--text2:#5a6175;--border:#dde1e9;--bg3:#f5f6f8}
+  h2{font-size:16px;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse}
+  td,th{padding:4px 6px;font-size:11px}
+  .num-cell{text-align:right}
+  .table-wrapper{max-height:none!important;overflow:visible!important}
+  input,textarea{border:none;font-size:11px;width:100%}
+  @media print{ body{padding:0} }
+  </style></head><body>
+  <h2>EMELCO Logistics Services — Pay Slip</h2>
+  <div style="color:#5a6175;margin-bottom:14px">${currentSlipName} · ${getWeekFriLabel(currentSlipWeek)}</div>
+  ${bodyHtml}
+  </body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.print(); }, 300);
+}
+
+// ===== OFFICE / ADMIN / TECH PAYROLL (bi-monthly, salary-based) =====
+const OFFICE_SLIPS_KEY='emelco_office_slips_2026';
+let officeSlips={};
+function loadOfficeSlips(){
+  try{ officeSlips=JSON.parse(localStorage.getItem(OFFICE_SLIPS_KEY)||'{}'); }catch(e){ officeSlips={}; }
+}
+function saveOfficeSlips(){
+  localStorage.setItem(OFFICE_SLIPS_KEY, JSON.stringify(officeSlips));
+}
+function officeSlipKey(staffId,start,end){ return staffId+'__'+start+'_'+end; }
+
+function populateOfficePayrollDropdowns(){
+  const sel=document.getElementById('op-staff-sel');
+  if(!sel) return;
+  const eligible=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position)).sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="">— Select Office / Admin / Tech staff —</option>'+
+    eligible.map(s=>`<option value="${s.id}">${s.name} (${s.position}) — ${s.staffId||'—'}</option>`).join('');
+  loadOfficeSlips();
+  renderRecentOfficeSlips();
+}
+
+function setOfficePeriodPreset(startDay){
+  const today=new Date();
+  const y=today.getFullYear(), m=today.getMonth();
+  let start,end;
+  if(startDay===1){
+    start=new Date(y,m,1); end=new Date(y,m,15);
+  } else {
+    start=new Date(y,m,16);
+    end=new Date(y,m+1,0); // last day of month
+  }
+  const fmtISO=d=>d.toISOString().slice(0,10);
+  document.getElementById('op-period-start').value=fmtISO(start);
+  document.getElementById('op-period-end').value=fmtISO(end);
+}
+
+let currentOfficeStaffId=null, currentOfficeStart=null, currentOfficeEnd=null;
+
+function openOfficeSlip(){
+  const staffId=document.getElementById('op-staff-sel').value;
+  const start=document.getElementById('op-period-start').value;
+  const end=document.getElementById('op-period-end').value;
+  if(!staffId){ toast('Select a staff member first','error'); return; }
+  if(!start||!end){ toast('Set the pay period dates first','error'); return; }
+  currentOfficeStaffId=staffId; currentOfficeStart=start; currentOfficeEnd=end;
+  const s=staff.find(x=>x.id===staffId);
+  document.getElementById('office-slip-modal-title').textContent='Pay Slip — '+(s?s.name:'');
+  document.getElementById('office-slip-modal-subtitle').textContent=fmtDate(start)+' – '+fmtDate(end);
+  renderOfficeSlip();
+  document.getElementById('office-slip-modal').classList.add('open');
+}
+function closeOfficeSlipModal(){
+  document.getElementById('office-slip-modal').classList.remove('open');
+  currentOfficeStaffId=null; currentOfficeStart=null; currentOfficeEnd=null;
+}
+
+function officeDaysInPeriod(start,end){
+  const s=new Date(start+'T00:00:00'), e=new Date(end+'T00:00:00');
+  return Math.round((e-s)/86400000)+1;
+}
+
+function renderOfficeSlip(){
+  const s=staff.find(x=>x.id===currentOfficeStaffId)||{};
+  const key=officeSlipKey(s.staffId||currentOfficeStaffId, currentOfficeStart, currentOfficeEnd);
+  const saved=officeSlips[key]||{};
+  const defaultDays=officeDaysInPeriod(currentOfficeStart,currentOfficeEnd);
+
+  document.getElementById('office-slip-modal-body').innerHTML=`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+    <div><span style="color:var(--text2)">Name</span><div style="font-weight:700">${s.name||''}</div></div>
+    <div><span style="color:var(--text2)">Staff ID</span><div style="font-weight:700">${s.staffId||'—'}</div></div>
+    <div><span style="color:var(--text2)">Role</span><div>${s.duty||s.position||''}</div></div>
+    <div><span style="color:var(--text2)">Pay Period</span><div>${fmtDate(currentOfficeStart)} – ${fmtDate(currentOfficeEnd)}</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div>
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">Earnings</div>
+      <table style="width:100%;font-size:12px">
+        <tr><td style="padding:3px 0">Standard Pay <span style="color:var(--text2);font-size:10px">(days)</span></td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-days" value="${saved.days!==undefined?saved.days:defaultDays}" style="width:55px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Standard Pay <span style="color:var(--text2);font-size:10px">(amount for period)</span></td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-standardpay" value="${saved.standardPay||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Holiday Pay</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-holiday" value="${saved.holidayPay||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Paid Leave</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-leave" value="${saved.paidLeave||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Bonus</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-bonus" value="${saved.bonus||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">13th Month <span style="color:var(--text2);font-size:10px">(designated run only)</span></td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-13th" value="${saved.thirteenthMonth||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Other Pay <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-otherpay" value="${saved.otherPay||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td colspan="2" style="padding:0 0 6px"><input type="text" class="form-input" id="os-otherpay-remark" value="${saved.otherPayRemark||''}" placeholder="Reason for Other Pay…" style="font-size:11px;width:100%"></td></tr>
+        <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding:6px 0">Gross Pay</td><td class="num-cell" id="os-gross">₱0.00</td></tr>
+      </table>
+    </div>
+    <div>
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">Deductions</div>
+      <table style="width:100%;font-size:12px">
+        <tr><td style="padding:3px 0">Cash Advance</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-ca" value="${saved.cashAdvance||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">SSS</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-sss" value="${saved.sss||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">PhilHealth</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-philhealth" value="${saved.philhealth||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Pag-IBIG</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-pagibig" value="${saved.pagibig||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Rent</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-rent" value="${saved.rent||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Electric</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-electric" value="${saved.electric||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Water</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-water" value="${saved.water||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Phone</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-phone" value="${saved.phone||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Bond</td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-bond" value="${saved.bond||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td style="padding:3px 0">Other Deduction <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
+          <td class="num-cell"><input type="number" class="form-input" id="os-otherded" value="${saved.otherDeduction||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
+        <tr><td colspan="2" style="padding:0 0 6px"><input type="text" class="form-input" id="os-otherded-remark" value="${saved.otherDeductionRemark||''}" placeholder="Reason for Other Deduction…" style="font-size:11px;width:100%"></td></tr>
+        <tr style="font-weight:700;border-top:1px solid var(--border)"><td style="padding:6px 0">Total Deductions</td><td class="num-cell" id="os-totalded" style="color:var(--red)">₱0.00</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <label class="form-label">General Remarks <span style="font-size:11px;color:var(--text2)">— for anything not already covered above</span></label>
+    <textarea class="form-textarea form-input" id="os-remarks" rows="2" placeholder="Optional — any other note for this slip…">${saved.remarks||''}</textarea>
+  </div>
+
+  <div style="display:flex;justify-content:flex-end;margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+    <div style="text-align:right">
+      <div style="font-size:12px;color:var(--text2)">Net Pay</div>
+      <div style="font-size:26px;font-weight:700" id="os-netpay">₱0.00</div>
+      <div style="font-size:11px;color:var(--red);margin-top:2px;display:none" id="os-netpay-note"></div>
+    </div>
+  </div>
+  `;
+  updateOfficeSlipTotals();
+  const note=document.getElementById('office-slip-finalized-note');
+  note.textContent = saved.finalizedAt ? ('Last finalized: '+new Date(saved.finalizedAt).toLocaleString()) : 'Not yet finalized for this period.';
+}
+
+function updateOfficeSlipTotals(){
+  const standardPay=n(document.getElementById('os-standardpay').value);
+  const holiday=n(document.getElementById('os-holiday').value);
+  const leave=n(document.getElementById('os-leave').value);
+  const bonus=n(document.getElementById('os-bonus').value);
+  const thirteenth=n(document.getElementById('os-13th').value);
+  const otherPay=n(document.getElementById('os-otherpay').value);
+  const gross=standardPay+holiday+leave+bonus+thirteenth+otherPay;
+
+  const ca=n(document.getElementById('os-ca').value);
+  const sss=n(document.getElementById('os-sss').value);
+  const philhealth=n(document.getElementById('os-philhealth').value);
+  const pagibig=n(document.getElementById('os-pagibig').value);
+  const rent=n(document.getElementById('os-rent').value);
+  const electric=n(document.getElementById('os-electric').value);
+  const water=n(document.getElementById('os-water').value);
+  const phone=n(document.getElementById('os-phone').value);
+  const bond=n(document.getElementById('os-bond').value);
+  const otherDed=n(document.getElementById('os-otherded').value);
+  const totalDed=ca+sss+philhealth+pagibig+rent+electric+water+phone+bond+otherDed;
+
+  const net=gross-totalDed;
+  document.getElementById('os-gross').textContent='₱'+fmt(gross);
+  document.getElementById('os-totalded').textContent='₱'+fmt(totalDed);
+  const netEl=document.getElementById('os-netpay');
+  netEl.textContent='₱'+fmt(net);
+  netEl.style.color = net<0 ? 'var(--red)' : 'var(--green)';
+  const note=document.getElementById('os-netpay-note');
+  if(note){
+    note.textContent = net<0 ? '⚠️ Negative — staff owes this amount' : '';
+    note.style.display = net<0 ? '' : 'none';
+  }
+}
+
+function collectOfficeSlipData(){
+  const g=id=>document.getElementById(id).value;
+  return {
+    days:n(g('os-days')), standardPay:n(g('os-standardpay')), holidayPay:n(g('os-holiday')), paidLeave:n(g('os-leave')),
+    bonus:n(g('os-bonus')), thirteenthMonth:n(g('os-13th')), otherPay:n(g('os-otherpay')), otherPayRemark:g('os-otherpay-remark').trim(),
+    cashAdvance:n(g('os-ca')), sss:n(g('os-sss')), philhealth:n(g('os-philhealth')), pagibig:n(g('os-pagibig')),
+    rent:n(g('os-rent')), electric:n(g('os-electric')), water:n(g('os-water')), phone:n(g('os-phone')), bond:n(g('os-bond')),
+    otherDeduction:n(g('os-otherded')), otherDeductionRemark:g('os-otherded-remark').trim(),
+    remarks:g('os-remarks')
+  };
+}
+
+function finalizeOfficeSlip(){
+  if(!currentOfficeStaffId) return;
+  const data=collectOfficeSlipData();
+  if(data.otherPay>0 && !data.otherPayRemark){ toast('Please add a remark for Other Pay before finalizing','error'); return; }
+  if(data.otherDeduction>0 && !data.otherDeductionRemark){ toast('Please add a remark for Other Deduction before finalizing','error'); return; }
+  const s=staff.find(x=>x.id===currentOfficeStaffId);
+  const key=officeSlipKey(s.staffId||currentOfficeStaffId, currentOfficeStart, currentOfficeEnd);
+  data.finalizedAt=new Date().toISOString();
+  data.staffId=s?s.staffId:''; data.name=s?s.name:'';
+  data.periodStart=currentOfficeStart; data.periodEnd=currentOfficeEnd;
+  officeSlips[key]=data;
+  saveOfficeSlips();
+  toast('Office pay slip finalized and saved ✓','success');
+  renderOfficeSlip();
+  renderRecentOfficeSlips();
+}
+
+function renderRecentOfficeSlips(){
+  const el=document.getElementById('op-recent-list');
+  if(!el) return;
+  const entries=Object.values(officeSlips).filter(x=>x.finalizedAt).sort((a,b)=>(b.finalizedAt||'').localeCompare(a.finalizedAt||'')).slice(0,8);
+  if(!entries.length){ el.innerHTML=''; return; }
+  el.innerHTML='<div style="font-weight:700;margin-bottom:6px;color:var(--text)">Recently finalized:</div>'+
+    entries.map(e=>`<div style="padding:2px 0">${e.name} — ${fmtDate(e.periodStart)} to ${fmtDate(e.periodEnd)} — finalized ${new Date(e.finalizedAt).toLocaleDateString()}</div>`).join('');
+}
+
+function printOfficeSlip(){
+  const s=staff.find(x=>x.id===currentOfficeStaffId)||{};
+  const bodyHtml=document.getElementById('office-slip-modal-body').innerHTML
+    .replace(/<input[^>]*id="os-([a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>/g, (m,id,val)=>`<span>${id==='days'?val:'₱'+fmt(n(val))}</span>`)
+    .replace(/<textarea[^>]*>([^<]*)<\/textarea>/g, (m,val)=>`<div>${val||'—'}</div>`);
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Pay Slip - ${s.name||''}</title>
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1e2e;padding:24px;font-size:12px}
+  :root{--green:#1a8c52;--red:#c0392b;--text2:#5a6175;--border:#dde1e9}
+  h2{font-size:16px;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse}
+  td,th{padding:4px 6px;font-size:11px}
+  .num-cell{text-align:right}
+  input,textarea{border:none;font-size:11px;width:100%}
+  @media print{ body{padding:0} }
+  </style></head><body>
+  <h2>EMELCO Logistics Services — Pay Slip</h2>
+  <div style="color:#5a6175;margin-bottom:14px">${s.name||''} · ${fmtDate(currentOfficeStart)} – ${fmtDate(currentOfficeEnd)}</div>
+  ${bodyHtml}
+  </body></html>`);
+  w.document.close();
+  setTimeout(()=>{ w.print(); }, 300);
 }
 
 function exportPayrollCSV(){
