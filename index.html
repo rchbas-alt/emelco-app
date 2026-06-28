@@ -219,7 +219,6 @@ body.role-operations .fin-only{display:none!important}
     <span class="role-badge" id="role-badge" style="display:none"></span>
     <span id="sync-status" style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace">⏳ Connecting…</span>
     <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
-    <button class="btn btn-ghost btn-sm" onclick="window.open('assignment.html','_blank')" title="Open weekly truck assignment view">📅 Weekly View</button>
     <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
     <button class="btn btn-primary" onclick="openNewTrip()">+ New Trip</button>
@@ -1017,7 +1016,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606271900'; // bumped: added Payroll Trend panel — collapsible weeks showing finalized totals, expand to see staff, drill into individual slips
+const APP_VERSION = '202606271915'; // URGENT FIX: Pay Slip and Trip History Lookup were showing client billing Rate instead of actual Driver/Helper Pay in the trip detail table — now shows correct per-trip Pay
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3073,9 +3072,9 @@ function viewTripHistory(){
     results.innerHTML=`<div style="color:var(--text2);font-size:12px;padding:8px 0">No trips for <strong>${name}</strong> during ${getWeekFriLabel(weekNum)}.</div>`;
     return;
   }
-  let totalRate=0,totalMano=0,totalCA=0;
+  let totalPayCol=0,totalMano=0,totalCA=0;
   const rowsHtml=rows.map(r=>{
-    totalRate+=r.rate; totalMano+=r.mano; totalCA+=r.ca;
+    totalPayCol+=r.pay; totalMano+=r.mano; totalCA+=r.ca;
     return `<tr>
       <td style="font-size:11px">${fmtDate(r.trip.tripStartDate)}</td>
       <td style="text-align:center;font-weight:700">${r.pos}</td>
@@ -3086,7 +3085,7 @@ function viewTripHistory(){
       <td style="font-size:11px">${r.trip.area||'—'}</td>
       <td style="font-size:11px" title="${r.trip.destination||''}">${shortenDest(r.trip.destination)}</td>
       <td style="text-align:center;font-size:11px">${dropCount(r.trip)}</td>
-      <td class="num-cell">₱${fmt(r.rate)}</td>
+      <td class="num-cell">₱${fmt(r.pay)}</td>
       <td class="num-cell">₱${fmt(r.mano)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(r.ca)}</td>
     </tr>`;
@@ -3096,12 +3095,12 @@ function viewTripHistory(){
     <table>
       <thead><tr>
         <th>Date</th><th>Pos</th><th>Driver</th><th>Helper</th><th>Plate</th><th>Client</th><th>Area</th><th>Destination</th><th>Drops</th>
-        <th class="num-cell">Rate</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
+        <th class="num-cell">Pay</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
       <tfoot><tr style="font-weight:700;background:var(--bg3)">
         <td colspan="9">TOTAL</td>
-        <td class="num-cell">₱${fmt(totalRate)}</td>
+        <td class="num-cell">₱${fmt(totalPayCol)}</td>
         <td class="num-cell">₱${fmt(totalMano)}</td>
         <td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td>
       </tr></tfoot>
@@ -3359,9 +3358,9 @@ function renderPaySlip(){
   const saved=payrollSlips[key] || {};
   const tripRows=getTripRowsForPerson(weekNum,name);
 
-  let totalRate=0,totalMano=0,totalCA=0,totalPay=0;
+  let totalPayCol=0,totalMano=0,totalCA=0,totalPay=0;
   const tripRowsHtml=tripRows.map(r=>{
-    totalRate+=r.rate; totalMano+=r.mano; totalCA+=r.ca; totalPay+=r.pay;
+    totalPayCol+=r.pay; totalMano+=r.mano; totalCA+=r.ca; totalPay+=r.pay;
     const helperName = r.pos==='D' ? (r.trip.h1||'—') : (r.pos==='H1' ? (r.trip.driver||'—') : (r.trip.driver||'—'));
     return `<tr>
       <td style="font-size:11px">${fmtDate(r.trip.tripStartDate)}</td>
@@ -3373,7 +3372,7 @@ function renderPaySlip(){
       <td style="font-size:11px">${r.trip.area||'—'}</td>
       <td style="font-size:11px" title="${r.trip.destination||''}">${shortenDest(r.trip.destination)}</td>
       <td style="text-align:center;font-size:11px">${dropCount(r.trip)}</td>
-      <td class="num-cell">₱${fmt(r.rate)}</td>
+      <td class="num-cell">₱${fmt(r.pay)}</td>
       <td class="num-cell">₱${fmt(r.mano)}</td>
       <td class="num-cell" style="color:var(--red)">₱${fmt(r.ca)}</td>
     </tr>`;
@@ -3398,12 +3397,12 @@ function renderPaySlip(){
     <table>
       <thead><tr>
         <th>Date</th><th>Pos</th><th>Driver</th><th>Helper</th><th>Plate</th><th>Client</th><th>Area</th><th>Destination</th><th>Drops</th>
-        <th class="num-cell">Rate</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
+        <th class="num-cell">Pay</th><th class="num-cell">Mano</th><th class="num-cell">CA Trip</th>
       </tr></thead>
       <tbody>${tripRowsHtml}</tbody>
       <tfoot><tr style="font-weight:700;background:var(--bg3)">
         <td colspan="9">TOTAL</td>
-        <td class="num-cell">₱${fmt(totalRate)}</td>
+        <td class="num-cell">₱${fmt(totalPayCol)}</td>
         <td class="num-cell">₱${fmt(totalMano)}</td>
         <td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td>
       </tr></tfoot>
