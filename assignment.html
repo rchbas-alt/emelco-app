@@ -6,17 +6,32 @@
 <title>EMELCO — Weekly Truck Assignment</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--today:rgba(212,130,10,.55);--noassign-bg:#fff4e1;--noassign-border:#f0c060}
+:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--today:rgba(212,130,10,.55);--noassign-bg:#fff4e1;--noassign-border:#f0c060;
+  --c-ccac-bg:#e3f0ff;--c-ccac-bd:#a9cdf2;
+  --c-cmip-bg:#e2f7e9;--c-cmip-bd:#a6e0bb;
+  --c-cdi-bg:#f1e8fb;--c-cdi-bd:#cdb3ee;
+  --c-other-bg:#ffeede;--c-other-bd:#f3c596;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
-.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 24px}
+.header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .title{font-weight:700;font-size:18px;letter-spacing:.2px}
 .subtitle{font-size:12px;color:var(--text2);font-weight:400;margin-top:2px}
+.stats-bar{display:flex;justify-content:center;gap:10px;margin:12px 0;flex-wrap:wrap}
+.stat-pill{font-size:12px;font-weight:700;color:var(--accent);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 14px;white-space:nowrap}
+.client-breakdown{display:flex;align-items:center;gap:10px;color:var(--text);flex-wrap:wrap}
+.client-breakdown .seg{display:flex;align-items:center;gap:5px}
+.client-breakdown .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.client-breakdown .dot.client-ccac{background:var(--c-ccac-bd)}
+.client-breakdown .dot.client-cmip{background:var(--c-cmip-bd)}
+.client-breakdown .dot.client-cdi{background:var(--c-cdi-bd)}
+.client-breakdown .dot.client-other{background:var(--c-other-bd)}
+.nav-row{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .nav{display:flex;align-items:center;gap:10px}
 .nav button{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px}
 .nav button:hover{background:var(--border)}
 .weeklabel{font-size:13px;color:var(--text2);min-width:190px;text-align:center}
-.weektotal{font-size:12px;font-weight:700;color:var(--accent);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;white-space:nowrap}
 .status{font-size:11px;color:var(--text3)}
 .main{padding:18px 24px}
 .table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:auto;width:100%}
@@ -33,6 +48,10 @@ td.noassign{background:var(--noassign-bg);border-left:2px solid var(--noassign-b
 .dash{color:var(--text3);text-align:center;padding:10px 0;font-size:13px}
 .chip{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 7px;line-height:1.35;margin-bottom:4px}
 .chip:last-child{margin-bottom:0}
+.chip.client-ccac{background:var(--c-ccac-bg);border-color:var(--c-ccac-bd)}
+.chip.client-cmip{background:var(--c-cmip-bg);border-color:var(--c-cmip-bd)}
+.chip.client-cdi{background:var(--c-cdi-bg);border-color:var(--c-cdi-bd)}
+.chip.client-other{background:var(--c-other-bg);border-color:var(--c-other-bd)}
 .chip .area{font-weight:600;font-size:12px}
 .chip .who{color:var(--text2);font-size:11.5px;margin-top:1px}
 tfoot td{background:var(--bg3);font-weight:700;text-align:center;border-top:2px solid var(--border2);padding:10px 6px}
@@ -45,17 +64,24 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 <body>
 
 <div class="header">
-  <div>
-    <div class="title">EMELCO — Weekly Truck Assignment</div>
-    <div class="subtitle" id="sync-status">Connecting…</div>
-  </div>
-  <div class="nav">
-    <button onclick="shiftWeek(-1)">&larr; Prev</button>
+  <div class="header-top">
+    <div>
+      <div class="title">EMELCO — Weekly Truck Assignment</div>
+      <div class="subtitle" id="sync-status">Connecting…</div>
+    </div>
     <div class="weeklabel" id="week-label">—</div>
-    <div class="weektotal" id="week-total">0 trips this week</div>
-    <button onclick="shiftWeek(1)">Next &rarr;</button>
-    <button onclick="goToday()">Today</button>
-    <button onclick="loadData(true)">&#x21bb; Refresh</button>
+  </div>
+  <div class="stats-bar">
+    <div class="stat-pill" id="week-total">0 trips this week</div>
+    <div class="stat-pill client-breakdown" id="client-breakdown">—</div>
+  </div>
+  <div class="nav-row">
+    <div class="nav">
+      <button onclick="shiftWeek(-1)">&larr; Prev</button>
+      <button onclick="goToday()">Today</button>
+      <button onclick="shiftWeek(1)">Next &rarr;</button>
+      <button onclick="loadData(true)" title="Refresh">&#x21bb;</button>
+    </div>
   </div>
 </div>
 
@@ -80,6 +106,10 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
     </table>
   </div>
   <div class="legend">
+    <span><span class="swatch" style="background:var(--c-ccac-bg);border:1px solid var(--c-ccac-bd)"></span>CCAC</span>
+    <span><span class="swatch" style="background:var(--c-cmip-bg);border:1px solid var(--c-cmip-bd)"></span>CMIP</span>
+    <span><span class="swatch" style="background:var(--c-cdi-bg);border:1px solid var(--c-cdi-bd)"></span>CDI</span>
+    <span><span class="swatch" style="background:var(--c-other-bg);border:1px solid var(--c-other-bd)"></span>Other</span>
     <span><span class="swatch" style="background:var(--noassign-bg);border:1px solid var(--noassign-border)"></span>No assignment today</span>
     <span>Auto-refreshes every 60 seconds. Only trucks marked Active in Fleet are shown.</span>
   </div>
@@ -116,6 +146,13 @@ function shortenName(full){
   const parts = full.trim().split(/\s+/);
   if(parts.length===1) return parts[0];
   return parts[0]+' '+parts[parts.length-1][0]+'.';
+}
+function clientClass(client){
+  const c = (client||'').trim().toUpperCase();
+  if(c === 'CCAC') return 'client-ccac';
+  if(c === 'CMIP') return 'client-cmip';
+  if(c === 'CDI') return 'client-cdi';
+  return 'client-other';
 }
 function safeAtobUtf8(b64){
   const binary = atob(b64.replace(/\n/g,''));
@@ -189,6 +226,7 @@ function renderGrid(){
   const tbody = document.getElementById('grid-body');
   tbody.innerHTML = '';
   const dayTotals = new Array(7).fill(0);
+  const clientCounts = {};
 
   if(activePlates.length===0){
     tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No active trucks found in Fleet.</td></tr>';
@@ -210,7 +248,9 @@ function renderGrid(){
           const chips = dayTrips.map(t => {
             const who = [shortenName(t.driver), shortenName(t.h1), shortenName(t.h2)]
               .filter(Boolean).join(' / ');
-            return `<div class="chip"><div class="area">${t.area||''}</div><div class="who">${who}</div></div>`;
+            const cKey = t.client && t.client.trim() ? t.client.trim().toUpperCase() : 'UNSPECIFIED';
+            clientCounts[cKey] = (clientCounts[cKey] || 0) + 1;
+            return `<div class="chip ${clientClass(t.client)}"><div class="area">${t.area||''}</div><div class="who">${who}</div></div>`;
           }).join('');
           html += `<td class="${cellClass}">${chips}</td>`;
         }
@@ -227,6 +267,25 @@ function renderGrid(){
   const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
   document.getElementById('week-total').textContent =
     weekTotal + (weekTotal===1 ? ' trip this week' : ' trips this week');
+
+  const order = ['CCAC','CMIP','CDI'];
+  const seen = new Set();
+  const segs = [];
+  order.forEach(c => {
+    if(clientCounts[c]){
+      segs.push({label:c, count:clientCounts[c], cls:clientClass(c)});
+      seen.add(c);
+    }
+  });
+  Object.keys(clientCounts).sort().forEach(c => {
+    if(!seen.has(c)){
+      segs.push({label:c, count:clientCounts[c], cls: c==='UNSPECIFIED' ? 'client-other' : clientClass(c)});
+    }
+  });
+  const breakdownEl = document.getElementById('client-breakdown');
+  breakdownEl.innerHTML = segs.length
+    ? segs.map(s => `<span class="seg"><span class="dot ${s.cls}"></span>${s.label}: ${s.count}</span>`).join('')
+    : 'No trips this week';
 }
 
 function shiftWeek(dir){
