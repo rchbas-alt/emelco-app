@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMELCO — Weekly Truck Assignment</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--today:rgba(212,130,10,.55);--noassign-bg:#fff4e1;--noassign-border:#f0c060}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.title{font-weight:700;font-size:18px;letter-spacing:.2px}
+.subtitle{font-size:12px;color:var(--text2);font-weight:400;margin-top:2px}
+.nav{display:flex;align-items:center;gap:10px}
+.nav button{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px}
+.nav button:hover{background:var(--border)}
+.weeklabel{font-size:13px;color:var(--text2);min-width:190px;text-align:center}
+.weektotal{font-size:12px;font-weight:700;color:var(--accent);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;white-space:nowrap}
+.status{font-size:11px;color:var(--text3)}
+.main{padding:18px 24px}
+.table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:auto;width:100%}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+col.plate-col{width:150px}
+th{background:var(--bg3);padding:10px 8px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);border-bottom:1px solid var(--border2)}
+th.plate-h{text-align:left;padding-left:14px;position:sticky;left:0;background:var(--bg3);z-index:2;white-space:nowrap}
+.plate-h-inner{display:flex;align-items:center;gap:6px}
+.plate-count-badge{font-size:9.5px;font-weight:700;color:var(--accent);background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:2px 6px;text-transform:none;letter-spacing:0;white-space:nowrap}
+td{padding:6px;border-bottom:1px solid var(--border);vertical-align:top}
+td.plate-cell{font-family:'DM Mono',monospace;font-weight:500;font-size:13px;padding:10px 14px;position:sticky;left:0;background:var(--bg2);z-index:1;border-right:1px solid var(--border)}
+td.today-col{background:rgba(212,130,10,.04)}
+td.noassign{background:var(--noassign-bg);border-left:2px solid var(--noassign-border)}
+.dash{color:var(--text3);text-align:center;padding:10px 0;font-size:13px}
+.chip{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 7px;line-height:1.35;margin-bottom:4px}
+.chip:last-child{margin-bottom:0}
+.chip .area{font-weight:600;font-size:12px}
+.chip .who{color:var(--text2);font-size:11.5px;margin-top:1px}
+tfoot td{background:var(--bg3);font-weight:700;text-align:center;border-top:2px solid var(--border2);padding:10px 6px}
+tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
+.legend{display:flex;gap:18px;align-items:center;margin-top:10px;font-size:11px;color:var(--text2)}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.empty-state{padding:60px;text-align:center;color:var(--text3)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">EMELCO — Weekly Truck Assignment</div>
+    <div class="subtitle" id="sync-status">Connecting…</div>
+  </div>
+  <div class="nav">
+    <button onclick="shiftWeek(-1)">&larr; Prev</button>
+    <div class="weeklabel" id="week-label">—</div>
+    <div class="weektotal" id="week-total">0 trips this week</div>
+    <button onclick="shiftWeek(1)">Next &rarr;</button>
+    <button onclick="goToday()">Today</button>
+    <button onclick="loadData(true)">&#x21bb; Refresh</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="table-wrap">
+    <table id="grid-table">
+      <colgroup>
+        <col class="plate-col">
+        <col><col><col><col><col><col><col>
+      </colgroup>
+      <thead>
+        <tr id="head-row">
+          <th class="plate-h">Plate</th>
+        </tr>
+      </thead>
+      <tbody id="grid-body">
+        <tr><td colspan="8" class="empty-state">Loading…</td></tr>
+      </tbody>
+      <tfoot>
+        <tr id="totals-row"><td class="plate-cell">Trips / day</td></tr>
+      </tfoot>
+    </table>
+  </div>
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--noassign-bg);border:1px solid var(--noassign-border)"></span>No assignment today</span>
+    <span>Auto-refreshes every 60 seconds. Only trucks marked Active in Fleet are shown.</span>
+  </div>
+</div>
+
+<script>
+const PROXY_URL = 'https://emelco-proxy.rchbas.workers.dev';
+const PROXY_SECRET = 'emelco1254rch';
+const GH_FILE  = 'emelco_data.json';
+const GH_API   = `${PROXY_URL}/contents/${GH_FILE}`;
+
+let trips = [];
+let fleet = [];
+let weekStart = startOfWeek(new Date());
+
+function startOfWeek(d){
+  const x = new Date(d);
+  const day = x.getDay(); // 0=Sun..6=Sat
+  const diff = day===0 ? -6 : 1-day; // Monday as start
+  x.setDate(x.getDate()+diff);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function fmtDate(d){
+  return d.toISOString().slice(0,10);
+}
+function fmtHeader(d){
+  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const idx=(d.getDay()+6)%7;
+  return `${days[idx]} ${d.getMonth()+1}/${d.getDate()}`;
+}
+function shortenName(full){
+  if(!full) return '';
+  const parts = full.trim().split(/\s+/);
+  if(parts.length===1) return parts[0];
+  return parts[0]+' '+parts[parts.length-1][0]+'.';
+}
+function safeAtobUtf8(b64){
+  const binary = atob(b64.replace(/\n/g,''));
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+async function loadData(manual){
+  const statusEl = document.getElementById('sync-status');
+  statusEl.textContent = manual ? 'Refreshing…' : 'Syncing…';
+  try{
+    const metaRes = await fetch(GH_API+'?t='+Date.now(), {
+      headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+    });
+    if(!metaRes.ok) throw new Error('HTTP '+metaRes.status);
+    const meta = await metaRes.json();
+    let text;
+    if(meta.content && meta.encoding==='base64'){
+      text = safeAtobUtf8(meta.content);
+    } else {
+      const blobRes = await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`, {
+        headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+      });
+      if(!blobRes.ok) throw new Error('Blob HTTP '+blobRes.status);
+      const blob = await blobRes.json();
+      text = safeAtobUtf8(blob.content);
+    }
+    const content = JSON.parse(text);
+    trips = content.trips || [];
+    fleet = content.fleet || [];
+    const now = new Date();
+    statusEl.textContent = 'Live · last updated ' + now.toLocaleTimeString();
+    renderGrid();
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = 'Could not load live data — check connection. ('+e.message+')';
+  }
+}
+
+function renderGrid(){
+  const activePlates = fleet
+    .filter(f => (f.status||'').toLowerCase()==='active')
+    .map(f => f.plate)
+    .sort();
+
+  const weekDays = [];
+  for(let i=0;i<7;i++){
+    const d = new Date(weekStart);
+    d.setDate(d.getDate()+i);
+    weekDays.push(d);
+  }
+  const todayStr = fmtDate(startOfWeek(new Date())===null? new Date(): new Date());
+  const todayIso = fmtDate(new Date());
+
+  document.getElementById('week-label').textContent =
+    `${fmtHeader(weekDays[0])} – ${fmtHeader(weekDays[6])}, ${weekDays[0].getFullYear()}`;
+
+  const headRow = document.getElementById('head-row');
+  headRow.innerHTML = `<th class="plate-h"><div class="plate-h-inner"><span>Plate</span><span class="plate-count-badge">${activePlates.length} active</span></div></th>` +
+    weekDays.map(d => `<th>${fmtHeader(d)}</th>`).join('');
+
+  const tripsByPlateDay = {};
+  trips.forEach(t => {
+    if(!t.tripStartDate || !t.plate) return;
+    const key = t.plate + '|' + t.tripStartDate;
+    if(!tripsByPlateDay[key]) tripsByPlateDay[key] = [];
+    tripsByPlateDay[key].push(t);
+  });
+
+  const tbody = document.getElementById('grid-body');
+  tbody.innerHTML = '';
+  const dayTotals = new Array(7).fill(0);
+
+  if(activePlates.length===0){
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No active trucks found in Fleet.</td></tr>';
+  } else {
+    activePlates.forEach(plate => {
+      const tr = document.createElement('tr');
+      let html = `<td class="plate-cell">${plate}</td>`;
+      weekDays.forEach((d, idx) => {
+        const iso = fmtDate(d);
+        const key = plate + '|' + iso;
+        const dayTrips = tripsByPlateDay[key] || [];
+        dayTotals[idx] += dayTrips.length;
+        const isToday = iso === todayIso;
+        let cellClass = isToday ? 'today-col' : '';
+        if(isToday && dayTrips.length===0) cellClass += ' noassign';
+        if(dayTrips.length===0){
+          html += `<td class="${cellClass}"><div class="dash">—</div></td>`;
+        } else {
+          const chips = dayTrips.map(t => {
+            const who = [shortenName(t.driver), shortenName(t.h1), shortenName(t.h2)]
+              .filter(Boolean).join(' / ');
+            return `<div class="chip"><div class="area">${t.area||''}</div><div class="who">${who}</div></div>`;
+          }).join('');
+          html += `<td class="${cellClass}">${chips}</td>`;
+        }
+      });
+      tr.innerHTML = html;
+      tbody.appendChild(tr);
+    });
+  }
+
+  const totalsRow = document.getElementById('totals-row');
+  totalsRow.innerHTML = '<td class="plate-cell">Trips / day</td>' +
+    dayTotals.map(t => `<td>${t}</td>`).join('');
+
+  const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
+  document.getElementById('week-total').textContent =
+    weekTotal + (weekTotal===1 ? ' trip this week' : ' trips this week');
+}
+
+function shiftWeek(dir){
+  weekStart.setDate(weekStart.getDate() + dir*7);
+  renderGrid();
+}
+function goToday(){
+  weekStart = startOfWeek(new Date());
+  renderGrid();
+}
+
+loadData(false);
+setInterval(() => loadData(false), 60000);
+</script>
+
+</body>
+</html>
