@@ -218,6 +218,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="header-right">
     <span class="role-badge" id="role-badge" style="display:none"></span>
     <span id="sync-status" style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace">⏳ Connecting…</span>
+    <a href="https://rchbas-alt.github.io/emelco-app/assignment.html" target="_blank" class="btn btn-ghost btn-sm" title="View weekly truck assignment grid">📅 Assignment</a>
     <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
     <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
@@ -1016,7 +1017,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606271915'; // URGENT FIX: Pay Slip and Trip History Lookup were showing client billing Rate instead of actual Driver/Helper Pay in the trip detail table — now shows correct per-trip Pay
+const APP_VERSION = '202606271930'; // bumped: re-added Assignment page link button in header (before Sync), lost in earlier rollback
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
