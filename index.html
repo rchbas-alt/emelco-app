@@ -1465,10 +1465,11 @@ function computeFormulas(){
 // ===== STAFF DROPDOWNS =====
 function populateStaffDropdowns(){
   const sortName=(a,b)=>a.name.localeCompare(b.name);
-  const activeDrivers=staff.filter(s=>s.position==='DRIVER'&&s.status!=='idle').sort(sortName);
-  const idleDrivers=staff.filter(s=>s.position==='DRIVER'&&s.status==='idle').sort(sortName);
-  const activeHelpers=staff.filter(s=>s.position==='HELPER'&&s.status!=='idle').sort(sortName);
-  const idleHelpers=staff.filter(s=>s.position==='HELPER'&&s.status==='idle').sort(sortName);
+  const ss=s=>(s.status||'').toLowerCase();
+  const activeDrivers=staff.filter(s=>s.position==='DRIVER'&&ss(s)!=='idle').sort(sortName);
+  const idleDrivers=staff.filter(s=>s.position==='DRIVER'&&ss(s)==='idle').sort(sortName);
+  const activeHelpers=staff.filter(s=>s.position==='HELPER'&&ss(s)!=='idle').sort(sortName);
+  const idleHelpers=staff.filter(s=>s.position==='HELPER'&&ss(s)==='idle').sort(sortName);
   const dEl=document.getElementById('f-driver');
   const h1El=document.getElementById('f-h1');
   const h2El=document.getElementById('f-h2');
@@ -1486,7 +1487,16 @@ function populateStaffDropdowns(){
 function populatePlateDropdown(){
   const el=document.getElementById('f-plate');
   const cur=el.value;
-  el.innerHTML='<option value="">— Select —</option>'+fleet.filter(t=>t.status!=='sold').map(t=>`<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate} — ${t.type}${t.status==='idle'?' (idle)':''}</option>`).join('');
+  const sortPlate=(a,b)=>a.plate.localeCompare(b.plate);
+  const st=t=>(t.status||'').toLowerCase();
+  const active=fleet.filter(t=>st(t)==='active').sort(sortPlate);
+  const idle=fleet.filter(t=>st(t)==='idle').sort(sortPlate);
+  const others=fleet.filter(t=>st(t)!=='active'&&st(t)!=='idle'&&st(t)!=='sold').sort(sortPlate);
+  const mkOpt=t=>`<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate} — ${t.type}${st(t)!=='active'?' ('+t.status+')':''}</option>`;
+  let html=active.map(mkOpt).join('');
+  if(idle.length) html+=`<optgroup label="─── Idle ───"></optgroup>`+idle.map(mkOpt).join('');
+  if(others.length) html+=`<optgroup label="─── Other ───"></optgroup>`+others.map(mkOpt).join('');
+  el.innerHTML='<option value="">— Select —</option>'+html;
   if(cur) el.value=cur;
 }
 function populateDriverFilter(){
