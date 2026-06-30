@@ -1464,14 +1464,21 @@ function computeFormulas(){
 
 // ===== STAFF DROPDOWNS =====
 function populateStaffDropdowns(){
-  const drivers=staff.filter(s=>s.position==='DRIVER').sort((a,b)=>a.name.localeCompare(b.name));
-  const helpers=staff.filter(s=>s.position==='HELPER').sort((a,b)=>a.name.localeCompare(b.name));
+  const sortName=(a,b)=>a.name.localeCompare(b.name);
+  const activeDrivers=staff.filter(s=>s.position==='DRIVER'&&s.status!=='idle').sort(sortName);
+  const idleDrivers=staff.filter(s=>s.position==='DRIVER'&&s.status==='idle').sort(sortName);
+  const activeHelpers=staff.filter(s=>s.position==='HELPER'&&s.status!=='idle').sort(sortName);
+  const idleHelpers=staff.filter(s=>s.position==='HELPER'&&s.status==='idle').sort(sortName);
   const dEl=document.getElementById('f-driver');
   const h1El=document.getElementById('f-h1');
   const h2El=document.getElementById('f-h2');
   const curDrv=dEl.value,curH1=h1El.value,curH2=h2El.value;
-  dEl.innerHTML='<option value="">— Select Driver —</option>'+drivers.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name}${d.status==='idle'?' (idle)':''}</option>`).join('');
-  const hlpOpts='<option value="">— None —</option>'+helpers.map(h=>`<option value="${h.name}">${h.name}${h.status==='idle'?' (idle)':''}</option>`).join('');
+  const drvOpts=activeDrivers.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name}</option>`).join('')+
+    (idleDrivers.length?`<optgroup label="─── Idle ───"></optgroup>`+idleDrivers.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name} (idle)</option>`).join(''):'');
+  dEl.innerHTML='<option value="">— Select Driver —</option>'+drvOpts;
+  const hlpActive=activeHelpers.map(h=>`<option value="${h.name}">${h.name}</option>`).join('');
+  const hlpIdle=idleHelpers.length?`<optgroup label="─── Idle ───"></optgroup>`+idleHelpers.map(h=>`<option value="${h.name}">${h.name} (idle)</option>`).join(''):'';
+  const hlpOpts='<option value="">— None —</option>'+hlpActive+hlpIdle;
   h1El.innerHTML=hlpOpts; h2El.innerHTML=hlpOpts;
   if(curH1) h1El.value=curH1; if(curH2) h2El.value=curH2;
   populateNoTripStaffDropdown();
