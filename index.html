@@ -1017,7 +1017,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606281100'; // bumped: role/position change on staff edit now requires confirmation with explanation of effects; reverts if cancelled
+const APP_VERSION = '202606281115'; // bumped: Helper dropdown reordered — Active H → Active D → Idle H → Idle D
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1478,16 +1478,16 @@ function populateStaffDropdowns(){
     activeDrvs.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name}</option>`).join('')+
     (idleDrvs.length?'<option disabled>— Idle —</option>'+idleDrvs.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name} (idle)</option>`).join(''):'');
 
-  // Helper dropdown includes Helpers + Drivers (with dividers)
+  // Helper dropdown: Active H → Active D → Idle H → Idle D
   const activeHlp=helpers.filter(h=>h.status==='Active');
   const idleHlp=helpers.filter(h=>h.status!=='Active');
   const activeDrvAsHlp=drivers.filter(d=>d.status==='Active');
   const idleDrvAsHlp=drivers.filter(d=>d.status!=='Active');
   const hlpOpts='<option value="">— None —</option>'+
     activeHlp.map(h=>`<option value="${h.name}">${h.name}</option>`).join('')+
-    (idleHlp.length?'<option disabled>— Idle Helpers —</option>'+idleHlp.map(h=>`<option value="${h.name}">${h.name} (idle)</option>`).join(''):'')+
     (activeDrvAsHlp.length?'<option disabled>— Drivers (can assist) —</option>'+activeDrvAsHlp.map(d=>`<option value="${d.name}">${d.name} (D)</option>`).join(''):'')+
-    (idleDrvAsHlp.length?idleDrvAsHlp.map(d=>`<option value="${d.name}">${d.name} (D-idle)</option>`).join(''):'');
+    (idleHlp.length?'<option disabled>— Idle Helpers —</option>'+idleHlp.map(h=>`<option value="${h.name}">${h.name} (idle)</option>`).join(''):'')+
+    (idleDrvAsHlp.length?'<option disabled>— Idle Drivers —</option>'+idleDrvAsHlp.map(d=>`<option value="${d.name}">${d.name} (D-idle)</option>`).join(''):'');
   h1El.innerHTML=hlpOpts; h2El.innerHTML=hlpOpts;
   if(curH1) h1El.value=curH1; if(curH2) h2El.value=curH2;
   populateNoTripStaffDropdown();
