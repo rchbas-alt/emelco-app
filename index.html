@@ -1017,7 +1017,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606281130'; // bumped: Duty/Role field now has position-aware suggestion list (type or pick); auto-fills default duty when position changes
+const APP_VERSION = '202606281145'; // bumped: Duty/Role now shown in pay slip header alongside Position
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3468,7 +3468,7 @@ function renderPaySlip(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
     <div><span style="color:var(--text2)">Name</span><div style="font-weight:700">${name}</div></div>
     <div><span style="color:var(--text2)">Staff ID</span><div style="font-weight:700">${s.staffId||'—'}</div></div>
-    <div><span style="color:var(--text2)">Position</span><div>${s.position||position}</div></div>
+    <div><span style="color:var(--text2)">Position</span><div>${s.position||position}${s.duty?' · '+s.duty:''}</div></div>
     <div><span style="color:var(--text2)">${licenseLine?'License':''}</span><div style="font-size:11px">${licenseLine}</div></div>
   </div>
 
