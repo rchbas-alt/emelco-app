@@ -665,9 +665,9 @@ body.role-operations .fin-only{display:none!important}
     <div class="form-section">
       <div class="section-title">Crew & Vehicle <span>INFO</span></div>
       <div class="form-grid form-grid-4">
-        <div class="form-group"><label class="form-label">Driver <span class="required">*</span></label><select class="form-select" id="f-driver" onchange="generateCode()"><option value="">— Select Driver —</option></select></div>
-        <div class="form-group"><label class="form-label">Helper 1</label><select class="form-select" id="f-h1"><option value="">— None —</option></select></div>
-        <div class="form-group"><label class="form-label">Helper 2</label><select class="form-select" id="f-h2"><option value="">— None —</option></select></div>
+        <div class="form-group"><label class="form-label">Driver <span class="required">*</span></label><select class="form-select" id="f-driver" onchange="generateCode();checkRoleDuplicates()"><option value="">— Select Driver —</option></select></div>
+        <div class="form-group"><label class="form-label">Helper 1</label><select class="form-select" id="f-h1" onchange="checkRoleDuplicates()"><option value="">— None —</option></select></div>
+        <div class="form-group"><label class="form-label">Helper 2</label><select class="form-select" id="f-h2" onchange="checkRoleDuplicates()"><option value="">— None —</option></select></div>
         <div class="form-group"><label class="form-label">Plate <span class="required">*</span></label><select class="form-select" id="f-plate" onchange="generateCode();lookupTruckType()"><option value="">— Select —</option></select></div>
       </div>
       <div class="form-grid form-grid-4" style="margin-top:10px">
@@ -1010,14 +1010,14 @@ const DEFAULT_FLEET = [
 // ===== STATE =====
 let trips=[], staff=[], fleet=[];
 let editingId=null, deleteId=null, deleteType=null;
-let editingStaffId=null, editingTruckId=null;
+let editingStaffId=null, editingTruckId=null, originalStaffPosition=null;
 let sortCol='tripStartDate', sortDir=-1;
 let staffFilter='all';
 let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606281000'; // bumped: corrected version date stamp (was mislabeled as 06-27 throughout session); confirms Pay Slip Rate->Pay fix + Assignment link are current as of June 28
+const APP_VERSION = '202606281100'; // bumped: role/position change on staff edit now requires confirmation with explanation of effects; reverts if cancelled
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1464,39 +1464,56 @@ function computeFormulas(){
 
 // ===== STAFF DROPDOWNS =====
 function populateStaffDropdowns(){
-  const sortName=(a,b)=>a.name.localeCompare(b.name);
-  const ss=s=>(s.status||'').toLowerCase();
-  const activeDrivers=staff.filter(s=>s.position==='DRIVER'&&ss(s)!=='idle').sort(sortName);
-  const idleDrivers=staff.filter(s=>s.position==='DRIVER'&&ss(s)==='idle').sort(sortName);
-  const activeHelpers=staff.filter(s=>s.position==='HELPER'&&ss(s)!=='idle').sort(sortName);
-  const idleHelpers=staff.filter(s=>s.position==='HELPER'&&ss(s)==='idle').sort(sortName);
+  const drivers=staff.filter(s=>s.position==='DRIVER'&&s.status!=='Resigned').sort((a,b)=>a.name.localeCompare(b.name));
+  const helpers=staff.filter(s=>s.position==='HELPER'&&s.status!=='Resigned').sort((a,b)=>a.name.localeCompare(b.name));
   const dEl=document.getElementById('f-driver');
   const h1El=document.getElementById('f-h1');
   const h2El=document.getElementById('f-h2');
   const curDrv=dEl.value,curH1=h1El.value,curH2=h2El.value;
-  const drvOpts=activeDrivers.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name}</option>`).join('')+
-    (idleDrivers.length?`<optgroup label="─── Idle ───"></optgroup>`+idleDrivers.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name} (idle)</option>`).join(''):'');
-  dEl.innerHTML='<option value="">— Select Driver —</option>'+drvOpts;
-  const hlpActive=activeHelpers.map(h=>`<option value="${h.name}">${h.name}</option>`).join('');
-  const hlpIdle=idleHelpers.length?`<optgroup label="─── Idle ───"></optgroup>`+idleHelpers.map(h=>`<option value="${h.name}">${h.name} (idle)</option>`).join(''):'';
-  const hlpOpts='<option value="">— None —</option>'+hlpActive+hlpIdle;
+
+  // Active/idle divider helpers for driver dropdown
+  const activeDrvs=drivers.filter(d=>d.status==='Active');
+  const idleDrvs=drivers.filter(d=>d.status!=='Active');
+  dEl.innerHTML='<option value="">— Select Driver —</option>'+
+    activeDrvs.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name}</option>`).join('')+
+    (idleDrvs.length?'<option disabled>— Idle —</option>'+idleDrvs.map(d=>`<option value="${d.name}" ${d.name===curDrv?'selected':''}>${d.name} (idle)</option>`).join(''):'');
+
+  // Helper dropdown includes Helpers + Drivers (with dividers)
+  const activeHlp=helpers.filter(h=>h.status==='Active');
+  const idleHlp=helpers.filter(h=>h.status!=='Active');
+  const activeDrvAsHlp=drivers.filter(d=>d.status==='Active');
+  const idleDrvAsHlp=drivers.filter(d=>d.status!=='Active');
+  const hlpOpts='<option value="">— None —</option>'+
+    activeHlp.map(h=>`<option value="${h.name}">${h.name}</option>`).join('')+
+    (idleHlp.length?'<option disabled>— Idle Helpers —</option>'+idleHlp.map(h=>`<option value="${h.name}">${h.name} (idle)</option>`).join(''):'')+
+    (activeDrvAsHlp.length?'<option disabled>— Drivers (can assist) —</option>'+activeDrvAsHlp.map(d=>`<option value="${d.name}">${d.name} (D)</option>`).join(''):'')+
+    (idleDrvAsHlp.length?idleDrvAsHlp.map(d=>`<option value="${d.name}">${d.name} (D-idle)</option>`).join(''):'');
   h1El.innerHTML=hlpOpts; h2El.innerHTML=hlpOpts;
   if(curH1) h1El.value=curH1; if(curH2) h2El.value=curH2;
   populateNoTripStaffDropdown();
 }
+
+function checkRoleDuplicates(){
+  const drv=document.getElementById('f-driver').value;
+  const h1=document.getElementById('f-h1').value;
+  const h2=document.getElementById('f-h2').value;
+  const warn='2px solid var(--red)';
+  const ok='';
+  // Check each pair
+  const h1IsDrv = h1 && h1===drv;
+  const h2IsDrv = h2 && h2===drv;
+  const h1h2Same = h1 && h2 && h1===h2;
+  document.getElementById('f-h1').style.outline = (h1IsDrv||h1h2Same) ? warn : ok;
+  document.getElementById('f-h2').style.outline = (h2IsDrv||h1h2Same) ? warn : ok;
+  document.getElementById('f-driver').style.outline = (h1IsDrv||h2IsDrv) ? warn : ok;
+  if(h1IsDrv||h2IsDrv||h1h2Same){
+    toast('⚠️ Same person assigned to multiple roles on this trip — check before saving','error');
+  }
+}
 function populatePlateDropdown(){
   const el=document.getElementById('f-plate');
   const cur=el.value;
-  const sortPlate=(a,b)=>a.plate.localeCompare(b.plate);
-  const st=t=>(t.status||'').toLowerCase();
-  const active=fleet.filter(t=>st(t)==='active').sort(sortPlate);
-  const idle=fleet.filter(t=>st(t)==='idle').sort(sortPlate);
-  const others=fleet.filter(t=>st(t)!=='active'&&st(t)!=='idle'&&st(t)!=='sold').sort(sortPlate);
-  const mkOpt=t=>`<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate} — ${t.type}${st(t)!=='active'?' ('+t.status+')':''}</option>`;
-  let html=active.map(mkOpt).join('');
-  if(idle.length) html+=`<optgroup label="─── Idle ───"></optgroup>`+idle.map(mkOpt).join('');
-  if(others.length) html+=`<optgroup label="─── Other ───"></optgroup>`+others.map(mkOpt).join('');
-  el.innerHTML='<option value="">— Select —</option>'+html;
+  el.innerHTML='<option value="">— Select —</option>'+fleet.filter(t=>t.status!=='sold').map(t=>`<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate} — ${t.type}${t.status==='idle'?' (idle)':''}</option>`).join('');
   if(cur) el.value=cur;
 }
 function populateDriverFilter(){
@@ -1965,14 +1982,37 @@ function nextStaffId(position){
 function onPositionChange(){
   const pos = document.getElementById('sf-position').value;
   document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
+
+  // Only warn when editing an existing staff member and position actually changed
+  if(!editingStaffId || !originalStaffPosition || pos===originalStaffPosition) return;
+
+  const s=staff.find(x=>x.id===editingStaffId);
+  const oldId=s?s.staffId:'(current ID)';
+  const confirmed=confirm(
+    `⚠️ Role Change Confirmation\n\n`+
+    `You are changing ${s?s.name:'this staff member'} from ${originalStaffPosition} → ${pos}.\n\n`+
+    `What will happen:\n`+
+    `• A NEW Staff ID will be issued (${pos[0]}8xxxxx)\n`+
+    `• Old ID ${oldId} will be kept as Previous ID history\n`+
+    `• They will move to the ${pos} dropdown in trip entry\n`+
+    `• Past trip records stay linked (trips are linked by name, not ID)\n`+
+    `• Finalized Office pay slips linked to old ID will need manual re-linking\n\n`+
+    `Are you sure you want to change this role?`
+  );
+  if(!confirmed){
+    // Revert the dropdown back to original
+    document.getElementById('sf-position').value=originalStaffPosition;
+    document.getElementById('sf-license-row').style.display=(originalStaffPosition==='DRIVER')?'':'none';
+  }
 }
 function onStatusChange(){
   const status = document.getElementById('sf-status').value;
   document.getElementById('sf-resigned-row').style.display = (status==='Resigned') ? '' : 'none';
 }
-function openAddStaff(){ editingStaffId=null; document.getElementById('staff-modal-title').textContent='Add Staff'; clearStaffForm(); document.getElementById('staff-modal').classList.add('open'); }
+function openAddStaff(){ editingStaffId=null; originalStaffPosition=null; document.getElementById('staff-modal-title').textContent='Add Staff'; clearStaffForm(); document.getElementById('staff-modal').classList.add('open'); }
 function openEditStaff(id){
   editingStaffId=id; const s=staff.find(x=>x.id===id); if(!s)return;
+  originalStaffPosition=s.position;
   document.getElementById('staff-modal-title').textContent='Edit: '+s.name;
   document.getElementById('sf-name').value=s.name;
   document.getElementById('sf-staffid').value=s.staffId||'(none — will assign on save)';
@@ -1988,7 +2028,7 @@ function openEditStaff(id){
   document.getElementById('sf-previousids').value = (s.previousIds && s.previousIds.length) ? s.previousIds.join(', ') : '';
   document.getElementById('staff-modal').classList.add('open');
 }
-function closeStaffModal(){ document.getElementById('staff-modal').classList.remove('open'); editingStaffId=null; }
+function closeStaffModal(){ document.getElementById('staff-modal').classList.remove('open'); editingStaffId=null; originalStaffPosition=null; }
 function clearStaffForm(){
   document.getElementById('sf-name').value='';
   document.getElementById('sf-staffid').value='(auto-assigned on save)';
