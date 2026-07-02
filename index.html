@@ -788,7 +788,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="form-group"><label class="form-label">Status <span class="required">*</span></label><select class="form-select" id="sf-status" onchange="onStatusChange()"><option value="Active">Active</option><option value="On Call">On Call</option><option value="Idle">Idle</option><option value="Resigned">Resigned</option></select></div>
       <div class="form-group" id="sf-resigned-row" style="display:none"><label class="form-label">Resigned Date</label><input type="date" class="form-input" id="sf-resigned-date"></div>
       <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="YYYY-MM-DD, or leave blank for On Call"></div>
-      <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" placeholder="e.g. Driver, Yard Supervisor"></div>
+      <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" list="dl-duty" placeholder="Type or pick a role…" autocomplete="off"><datalist id="dl-duty"></datalist></div>
       <div class="form-group" id="sf-license-row" style="grid-column:span 2;display:none;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Driver's license — optional, but flagged if missing</div>
         <div class="form-grid form-grid-2">
@@ -1017,7 +1017,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606281115'; // bumped: Helper dropdown reordered — Active H → Active D → Idle H → Idle D
+const APP_VERSION = '202606281130'; // bumped: Duty/Role field now has position-aware suggestion list (type or pick); auto-fills default duty when position changes
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1979,9 +1979,29 @@ function nextStaffId(position){
   const max = existing.length ? Math.max(...existing) : 800000;
   return prefix + String(max+1);
 }
+const DUTY_SUGGESTIONS={
+  DRIVER:  ['Driver'],
+  HELPER:  ['Helper'],
+  OFFICE:  ['Ops Office Supervisor','Office Manager','Dispatcher'],
+  ADMIN:   ['Yard Supervisor','Admin Officer'],
+  TECH:    ['Mechanic / Truck Supervisor','Mechanic','Truck Supervisor'],
+};
+
 function onPositionChange(){
   const pos = document.getElementById('sf-position').value;
   document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
+
+  // Update duty suggestions datalist
+  const dl=document.getElementById('dl-duty');
+  const suggestions=DUTY_SUGGESTIONS[pos]||[];
+  dl.innerHTML=suggestions.map(s=>`<option value="${s}">`).join('');
+
+  // Auto-fill duty only if field is blank or was a known default
+  const dutyEl=document.getElementById('sf-duty');
+  const allDefaults=Object.values(DUTY_SUGGESTIONS).flat();
+  if(!dutyEl.value || allDefaults.includes(dutyEl.value)){
+    dutyEl.value=suggestions[0]||'';
+  }
 
   // Only warn when editing an existing staff member and position actually changed
   if(!editingStaffId || !originalStaffPosition || pos===originalStaffPosition) return;
@@ -2000,9 +2020,11 @@ function onPositionChange(){
     `Are you sure you want to change this role?`
   );
   if(!confirmed){
-    // Revert the dropdown back to original
     document.getElementById('sf-position').value=originalStaffPosition;
     document.getElementById('sf-license-row').style.display=(originalStaffPosition==='DRIVER')?'':'none';
+    // Restore duty suggestions for original position
+    const origSuggestions=DUTY_SUGGESTIONS[originalStaffPosition]||[];
+    dl.innerHTML=origSuggestions.map(s=>`<option value="${s}">`).join('');
   }
 }
 function onStatusChange(){
