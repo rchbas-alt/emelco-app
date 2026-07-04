@@ -54,6 +54,7 @@ td.noassign{background:var(--noassign-bg);border-left:2px solid var(--noassign-b
 .chip.client-other{background:var(--c-other-bg);border-color:var(--c-other-bd)}
 .chip .area{font-weight:600;font-size:12px}
 .chip .who{color:var(--text2);font-size:11.5px;margin-top:1px}
+.chip .rate{color:var(--text2);font-size:10.5px;margin-top:2px;font-family:'DM Mono',monospace}
 tfoot td{background:var(--bg3);font-weight:700;text-align:center;border-top:2px solid var(--border2);padding:10px 6px}
 tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 .legend{display:flex;gap:18px;align-items:center;margin-top:10px;font-size:11px;color:var(--text2)}
@@ -134,10 +135,7 @@ function startOfWeek(d){
   return x;
 }
 function fmtDate(d){
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
+  return d.toISOString().slice(0,10);
 }
 function fmtHeader(d){
   const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -229,6 +227,7 @@ function renderGrid(){
   const tbody = document.getElementById('grid-body');
   tbody.innerHTML = '';
   const dayTotals = new Array(7).fill(0);
+  const dayBilling = new Array(7).fill(0);
   const clientCounts = {};
 
   if(activePlates.length===0){
@@ -253,7 +252,10 @@ function renderGrid(){
               .filter(Boolean).join(' / ');
             const cKey = t.client && t.client.trim() ? t.client.trim().toUpperCase() : 'UNSPECIFIED';
             clientCounts[cKey] = (clientCounts[cKey] || 0) + 1;
-            return `<div class="chip ${clientClass(t.client)}"><div class="area">${t.area||''}</div><div class="who">${who}</div></div>`;
+            const rs = (parseFloat(t.rate)||0) + (parseFloat(t.surcharge)||0);
+            dayBilling[idx] += rs;
+            const rsFmt = rs ? '₱' + rs.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+            return `<div class="chip ${clientClass(t.client)}"><div class="area">${t.area||''}</div><div class="who">${who}</div>${rsFmt?`<div class="rate">${rsFmt}</div>`:''}</div>`;
           }).join('');
           html += `<td class="${cellClass}">${chips}</td>`;
         }
@@ -264,12 +266,18 @@ function renderGrid(){
   }
 
   const totalsRow = document.getElementById('totals-row');
-  totalsRow.innerHTML = '<td class="plate-cell">Trips / day</td>' +
-    dayTotals.map(t => `<td>${t}</td>`).join('');
+  totalsRow.innerHTML = '<td class="plate-cell">Trips / Billing</td>' +
+    dayTotals.map((t,i) => {
+      const b = dayBilling[i];
+      const bFmt = b ? '₱'+b.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+      return `<td>${t?t+'&nbsp;trip'+(t>1?'s':''):'—'}${bFmt?`<div style="font-size:10px;color:var(--text2);margin-top:1px">${bFmt}</div>`:''}</td>`;
+    }).join('');
 
   const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
+  const weekBilling = dayBilling.reduce((a,b)=>a+b,0);
+  const weekBillingFmt = weekBilling ? ' · ₱'+weekBilling.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
   document.getElementById('week-total').textContent =
-    weekTotal + (weekTotal===1 ? ' trip this week' : ' trips this week');
+    weekTotal + (weekTotal===1 ? ' trip' : ' trips') + weekBillingFmt + ' this week';
 
   const order = ['CCAC','CMIP','CDI'];
   const seen = new Set();
