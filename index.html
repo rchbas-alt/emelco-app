@@ -235,6 +235,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab" onclick="switchTab('import')">⬆ Data</div>
   <div class="tab" onclick="switchTab('payroll')">💰 Payroll</div>
   <div class="tab fin-only" onclick="switchTab('officepayroll')">🏢 Office Payroll</div>
+  <div class="tab" onclick="switchTab('ledger')">📒 Ledger</div>
   <div class="tab" onclick="switchTab('guide')">📖 Guide</div>
 </div>
 
@@ -628,7 +629,38 @@ body.role-operations .fin-only{display:none!important}
   </div>
   <div id="op-recent-list" style="font-size:12px;color:var(--text2)"></div>
 </div>
+
+<!-- ====== LEDGER PAGE ====== -->
+<div class="page" id="page-ledger">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h2>📒 Staff Ledger</h2>
+    <div style="display:flex;gap:8px">
+      <select class="filter-select" id="ledger-filter" onchange="renderLedgerSummary()" style="min-width:140px">
+        <option value="all">All Staff</option>
+        <option value="DRIVER">Drivers</option>
+        <option value="HELPER">Helpers</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="openImportLedger(false)">📥 Import Opening Balances</button>
+      <button class="btn btn-ghost btn-sm" onclick="openImportLedger(true)" title="Clears existing balances and re-imports from Excel data">🔄 Re-import (Reset Balances)</button>
+      <button class="btn btn-danger btn-sm" onclick="clearLedgerData()">🗑 Clear All Ledger Data</button>
+    </div>
+  </div>
+  <div id="ledger-totals-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+  <div id="ledger-summary-table" style="overflow-x:auto;margin-bottom:18px"></div>
+</div>
+
 </div><!-- main -->
+
+<!-- ====== LEDGER DETAIL MODAL ====== -->
+<div class="modal-overlay" id="ledger-modal">
+<div class="modal" style="max-width:760px">
+  <div class="modal-header">
+    <div><div class="modal-title" id="ledger-modal-title">Staff Ledger</div><div class="modal-subtitle" id="ledger-modal-subtitle"></div></div>
+    <div class="modal-close" onclick="closeLedgerModal()">✕</div>
+  </div>
+  <div class="modal-body" id="ledger-modal-body" style="max-height:75vh;overflow-y:auto"></div>
+</div>
+</div>
 
 <!-- ====== TRIP MODAL ====== -->
 <div class="modal-overlay" id="trip-modal">
@@ -1017,7 +1049,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202606281145'; // bumped: Duty/Role now shown in pay slip header alongside Position
+const APP_VERSION = '202607021430'; // FIXED: Utility/Rent data now reads col B for names (not C) and includes hidden rows — correct Rent/Electric/Water for all staff
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -2802,7 +2834,7 @@ function clearAllData(){
 function switchTab(name){
   if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
   if(name==='officepayroll' && currentRole==='operations'){ toast('Office Payroll is restricted to Owner access','error'); return; }
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','guide'][i]===name));
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','ledger','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(name==='summary')renderSummary();
@@ -2811,6 +2843,7 @@ function switchTab(name){
   if(name==='import')renderStorageStatus();
   if(name==='payroll'){ populatePayrollWeeks(); renderPayroll(); renderPayrollTrend(); }
   if(name==='officepayroll'){ populateOfficePayrollDropdowns(); }
+  if(name==='ledger'){ renderLedgerSummary(); }
 }
 
 // ===== TOAST =====
@@ -2820,7 +2853,7 @@ function toast(msg,type='success'){
 }
 
 // ===== CLOSE ON OVERLAY =====
-['trip-modal','confirm-modal','staff-modal','truck-modal','slip-modal','office-slip-modal'].forEach(id=>{
+['trip-modal','confirm-modal','staff-modal','truck-modal','slip-modal','office-slip-modal','ledger-modal'].forEach(id=>{
   document.getElementById(id).addEventListener('click',function(e){if(e.target===this){this.classList.remove('open');}});
 });
 
@@ -3334,6 +3367,8 @@ function renderPayroll(){
 
 // ===== PAY SLIP SYSTEM =====
 const PAYROLL_SLIPS_KEY='emelco_payroll_slips_2026';
+const LEDGER_KEY='emelco_ledger_2026';
+const LEDGER_TXN_KEY='emelco_ledger_txn_2026';
 let payrollSlips={};
 function loadPayrollSlips(){
   try{ payrollSlips=JSON.parse(localStorage.getItem(PAYROLL_SLIPS_KEY)||'{}'); }catch(e){ payrollSlips={}; }
@@ -3889,6 +3924,336 @@ function printOfficeSlip(){
   </body></html>`);
   w.document.close();
   setTimeout(()=>{ w.print(); }, 300);
+}
+
+
+// ===== STAFF LEDGER SYSTEM =====
+const LEDGER_OPENING_BALANCES = {"Henio Morales":{"ca":7383.0,"bond":4500.0,"rent":0,"electric":0,"water":0},"Kenneth Feguerra":{"ca":14804.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Joel Calimpusan":{"ca":13705.0,"bond":4200.0,"rent":500.0,"electric":0,"water":0},"Den Mark Gardon":{"ca":11933.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Rene Amorado":{"ca":0.0,"bond":4500.0,"rent":250.0,"electric":0,"water":0},"Roniel Mabansag":{"ca":0.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Tom Herrera":{"ca":14347.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Vladjamir Bibas":{"ca":2948.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Renato Delos Santos":{"ca":17443.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Jeffrey Surwez":{"ca":0.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Sherwin Capeding":{"ca":20253.0,"bond":1500.0,"rent":775.0,"electric":0,"water":0},"John Gabriel Dela Cruz":{"ca":3890.0,"bond":2700.0,"rent":500.0,"electric":757.0,"water":0},"Kevin Herrera":{"ca":20561.0,"rent":0,"electric":0,"water":0},"Angelo Macario Santos":{"ca":5209.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Jasper Rivera":{"ca":16622.0,"bond":3600.0,"rent":500.0,"electric":1215.0,"water":360.0},"Rolly Zarsa Obidos":{"ca":702.0,"bond":300.0,"rent":0,"electric":0,"water":0},"Jayson Bibas":{"ca":9138.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Ric Ronald Basilio Sepria":{"ca":17959.0,"bond":4500.0,"rent":0,"electric":172.0,"water":120.0},"James Florogo Gonzales":{"ca":0.0,"bond":1200.0,"rent":0,"electric":0,"water":0},"Michael Dorado Estornidos":{"ca":724.0,"bond":2700.0},"Arvin Blaza Dorado":{"ca":137.0,"bond":600.0,"rent":0,"electric":0,"water":0},"Richard Daniel Villarez Siazon":{"ca":2622.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Leonardo Berden":{"ca":2394.0,"bond":1800.0,"rent":250.0,"electric":172.0,"water":120.0},"Ariel Brinsa Bualoy":{"ca":0.0,"bond":4800.0,"rent":500.0,"electric":285.0,"water":240.0},"Randel Alvarez":{"ca":1551.0,"bond":1800.0,"rent":500.0,"electric":0,"water":0},"Angelo Samar":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0,"water":0},"Joel Guisan":{"ca":819.0,"bond":0.0},"Randy Santos":{"ca":1428.0,"bond":0.0,"rent":0.0,"electric":0,"water":0},"Marvin Castillo":{"ca":0.0,"bond":0.0},"Rolando Purgatorio":{"ca":15267.0,"bond":0.0,"rent":500.0,"electric":915.0,"water":240.0},"Syril Dacles":{"ca":0.0,"bond":3900.0,"rent":250.0,"electric":0,"water":0},"Kenneth Pimentel":{"ca":0.0,"bond":0.0,"rent":500.0,"electric":0,"water":0},"Marben Mag aso":{"ca":1970.0,"bond":900.0},"Noriel Bungayan":{"ca":14186.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Janrey Villanueva Dorado":{"ca":8366.0,"bond":4800.0,"rent":500.0,"electric":585.0,"water":240.0},"Joseph Liberato":{"ca":3241.0,"rent":0,"electric":0,"water":0},"Jay Mark Villanueva Dorado":{"ca":0.0,"bond":0.0},"Marlou Balonquit":{"ca":0.0,"bond":0.0},"Jushua Fong":{"ca":1000.0},"Jerry Ramos":{"ca":10.0,"bond":4800.0,"rent":500.0,"electric":150.0,"water":120.0},"Christopher Peligrino":{"ca":0.0},"Jericho Templa":{"ca":2490.0},"John Rafael Lara":{"ca":0.0},"Junny Conol Cobera":{"ca":0.0,"bond":0.0},"Nelson Zarca":{"ca":0.0},"Christopher Santillan":{"ca":0.0,"bond":0.0},"Rodel Pacia":{"ca":0.0},"Philip Ternal":{"ca":204.0,"bond":0.0},"Nonito Quinto":{"ca":0.0},"Nomer Abaga":{"ca":0.0,"bond":3300.0},"Roldan Situal":{"ca":0.0},"Michael Marquez":{"ca":267.0,"bond":8000.0},"Jan Ellie Taylaran":{"ca":3749.0},"Ryan Anover":{"ca":0.0},"Arjhon Dorado":{"ca":0.0,"bond":0.0},"Gilbert Ariston":{"ca":786.0,"bond":900.0},"Lorenz Amorado":{"ca":1972.0,"bond":4500.0,"rent":250.0,"electric":0,"water":0},"Ricky Boy Amante":{"ca":5600.0,"bond":3000.0,"rent":500.0,"electric":930.0,"water":120.0},"John Paul Ellar":{"ca":1500.0,"bond":0.0},"Ryan Bautista":{"ca":0.0},"Jarel Carlo Casino":{"ca":600.0},"Eljun Abrasaldo":{"ca":2393.0,"bond":3300.0,"rent":500.0,"electric":0,"water":0},"Orlando Hilario":{"bond":0.0,"rent":0,"electric":0,"water":0},"Joseph S. Liberato":{"bond":0.0},"Samuel Subsilica":{"bond":0.0},"Angelo Azuela":{"bond":0.0,"rent":0,"electric":0,"water":0},"Roldan Sistual":{"bond":0.0},"Jan Taylaran":{"bond":0.0},"Michael Villanueva":{},"Alvin Mabeza":{},"Robert Encarnado Tahum":{},"Antonio Gabiana":{},"Gerald B Lucas":{},"Agnio Quipido Poja":{},"Ronnie Gonzales":{},"Arjay Sanchez":{},"Jerome Mabeza":{},"Roque Zacarias":{},"John Wilson Piandiong":{},"Norman Reyes Mirasol":{},"Xerxies Emmanual Rosell":{},"Acmad Saripada":{},"Christian Murillo Navida":{},"Jeremy Encarnado Campaner":{},"Raffy Mendoza":{}};
+
+const LEDGER_TXN_STORE_KEY=LEDGER_TXN_KEY;
+let ledgerData={};
+let ledgerTxn={};
+
+function loadLedger(){
+  try{ ledgerData=JSON.parse(localStorage.getItem(LEDGER_KEY)||'{}'); }catch(e){ ledgerData={}; }
+  try{ ledgerTxn=JSON.parse(localStorage.getItem(LEDGER_TXN_KEY)||'{}'); }catch(e){ ledgerTxn={}; }
+}
+function saveLedger(){ localStorage.setItem(LEDGER_KEY,JSON.stringify(ledgerData)); }
+function saveLedgerTxn(){ localStorage.setItem(LEDGER_TXN_KEY,JSON.stringify(ledgerTxn)); }
+
+function getLedger(name){
+  if(!ledgerData[name]) ledgerData[name]={ca:0,bond:0,phone:[],rent:0,electric:0,water:0,sss:{lastDate:'',lastAmount:0,lastPeriod:''},philhealth:{lastDate:'',lastAmount:0,lastPeriod:''},pagibig:{lastDate:'',lastAmount:0,lastPeriod:''}};
+  return ledgerData[name];
+}
+function getTxn(name){
+  if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
+  return ledgerTxn[name];
+}
+function addTxn(name,item,type,amount,remark,by){
+  loadLedger();
+  const t=getTxn(name);
+  if(!t[item]) t[item]=[];
+  t[item].unshift({date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||currentRole||'ops'});
+  saveLedgerTxn();
+}
+function addTxnDirect(name,item,type,amount,remark,by){
+  if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
+  const t=ledgerTxn[name];
+  if(!t[item]) t[item]=[];
+  t[item].push({date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||'system'});
+}
+
+function openImportLedger(force){
+  if(force && !confirm('This will RESET all existing ledger balances and re-import from the Excel opening data. Any manual entries made after the last import will be lost. Continue?')) return;
+  loadLedger();
+  let imported=0,skipped=0;
+  Object.entries(LEDGER_OPENING_BALANCES).forEach(([name,data])=>{
+    const existing=ledgerData[name];
+    if(!force && existing&&(existing.ca||existing.bond||existing.rent)){skipped++;return;}
+    ledgerData[name]={ca:data.ca||0,bond:data.bond||0,phone:[],rent:data.rent||0,electric:data.electric||0,water:data.water||0,sss:{lastDate:'',lastAmount:0,lastPeriod:''},philhealth:{lastDate:'',lastAmount:0,lastPeriod:''},pagibig:{lastDate:'',lastAmount:0,lastPeriod:''}};
+    if(data.ca>0) addTxnDirect(name,'ca','opening',data.ca,'Imported from Excel Jun 26-Jul 2 2026 payroll','system');
+    if(data.bond>0) addTxnDirect(name,'bond','opening',data.bond,'Imported from Excel Jun 26-Jul 2 2026 payroll','system');
+    imported++;
+  });
+  saveLedger(); saveLedgerTxn();
+  toast(imported+' staff ledger records imported'+(skipped?' ('+skipped+' skipped — already had data)':''),'success');
+  renderLedgerSummary();
+}
+
+function clearLedgerData(){
+  const typed=prompt('This will permanently delete ALL ledger data (CA balances, bond, phone records, transaction logs) for all staff.\n\nType DELETE (all caps) to confirm:');
+  if(typed!=='DELETE'){ toast('Cancelled — no ledger data was deleted','success'); return; }
+  localStorage.removeItem(LEDGER_KEY);
+  localStorage.removeItem(LEDGER_TXN_KEY);
+  ledgerData={};
+  ledgerTxn={};
+  toast('All ledger data cleared ✓','success');
+  renderLedgerSummary();
+}
+
+function renderLedgerSummary(){
+  loadLedger();
+  const filter=document.getElementById('ledger-filter').value;
+  let filtered=staff.filter(s=>['DRIVER','HELPER'].includes(s.position));
+  if(filter!=='all') filtered=filtered.filter(s=>s.position===filter);
+  const statusOrder={Active:0,'On Call':1,Idle:2,Resigned:3};
+  filtered.sort((a,b)=>{
+    const so=(statusOrder[a.status]??9)-(statusOrder[b.status]??9);
+    if(so!==0) return so;
+    return a.name.localeCompare(b.name);
+  });
+  const el=document.getElementById('ledger-summary-table');
+  if(!filtered.length){el.innerHTML='<div style="color:var(--text2);padding:16px">No staff to show.</div>';return;}
+  // Always compute all three groups for the top bar
+  const allDH=staff.filter(s=>['DRIVER','HELPER'].includes(s.position));
+  const groups=[
+    {label:'All Staff', members:allDH},
+    {label:'Drivers', members:allDH.filter(s=>s.position==='DRIVER')},
+    {label:'Helpers', members:allDH.filter(s=>s.position==='HELPER')},
+  ];
+  const bar=document.getElementById('ledger-totals-bar');
+  if(bar){
+    bar.innerHTML=groups.map(g=>{
+      const gCA=g.members.reduce((t,s)=>t+(getLedger(s.name).ca||0),0);
+      const gBond=g.members.reduce((t,s)=>t+(getLedger(s.name).bond||0),0);
+      return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:180px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+g.label+' ('+g.members.length+')</div>'
+        +'<div style="display:flex;gap:14px">'
+        +'<div><div style="font-size:10px;color:var(--text3)">CA Total</div><div style="font-size:15px;font-weight:700;color:var(--red)">&#8369;'+fmt(gCA)+'</div></div>'
+        +'<div><div style="font-size:10px;color:var(--text3)">Bond Total</div><div style="font-size:15px;font-weight:700;color:var(--green)">&#8369;'+fmt(gBond)+'</div></div>'
+        +'</div></div>';
+    }).join('');
+  }
+
+  let lastStatus=null;
+  let totCA=0,totBond=0,totRent=0,totElectric=0,totWater=0;
+  const rows=filtered.map(s=>{
+    const l=getLedger(s.name);
+    const ap=l.phone.find(p=>p.status==='active');
+    totCA+=l.ca||0; totBond+=l.bond||0;
+    totRent+=l.rent||0; totElectric+=l.electric||0; totWater+=l.water||0;
+    const isInactive=s.status==='Idle'||s.status==='Resigned';
+    let divider='';
+    if(s.status!==lastStatus){
+      if(s.status==='On Call'){
+        divider='<tr><td colspan="12" style="background:var(--bg3);font-size:10px;color:var(--text3);padding:4px 8px;font-weight:700;text-transform:uppercase;letter-spacing:1px">On Call</td></tr>';
+      } else if(s.status==='Idle'||s.status==='Resigned'){
+        divider='<tr><td colspan="12" style="background:var(--bg3);font-size:10px;color:var(--text3);padding:4px 8px;font-weight:700;text-transform:uppercase;letter-spacing:1px">'+s.status+' / Inactive</td></tr>';
+      }
+      lastStatus=s.status;
+    }
+    return divider+'<tr data-sid="'+s.id+'" style="opacity:'+(isInactive?'0.6':'1')+'">'
+      +'<td style="font-weight:600;font-size:12px;padding:6px">'+s.name+'</td>'
+      +'<td style="font-size:11px;color:var(--text2);padding:6px">'+s.staffId+'</td>'
+      +'<td style="font-size:11px;padding:6px">'+s.position+'</td>'
+      +'<td class="num-cell" style="font-size:12px;padding:6px">'+(l.rent?'&#8369;'+fmt(l.rent):'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;padding:6px">'+(l.electric?'&#8369;'+fmt(l.electric):'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;padding:6px">'+(l.water?'&#8369;'+fmt(l.water):'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;font-weight:600;color:var(--green);padding:6px">'+(l.bond?'&#8369;'+fmt(l.bond):'&#8212;')+'</td>'
+      +'<td style="font-size:11px;padding:6px">'+(ap?ap.brand+' '+ap.model:'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;padding:6px">'+(ap?'&#8369;'+fmt(ap.price):'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;color:'+(ap&&ap.balance>0?'var(--accent)':'var(--text2)')+';padding:6px">'+(ap?'&#8369;'+fmt(ap.balance):'&#8212;')+'</td>'
+      +'<td class="num-cell" style="font-size:12px;font-weight:600;color:'+(l.ca>0?'var(--red)':'var(--text2)')+';padding:6px">'+(l.ca?'&#8369;'+fmt(l.ca):'&#8212;')+'</td>'
+      +'<td style="padding:6px"><button class="btn btn-ghost btn-sm" onclick="openLedgerDetailById(this.closest(\'tr\').dataset.sid)">&#128203; View</button></td>'
+      +'</tr>';
+  }).join('');
+  el.innerHTML='<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">Name</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">Staff ID</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">Position</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Rent</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Electric</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Water</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Bond Bal</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">Phone</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Price</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">Phone Bal</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:right">CA Bal</th>'
+    +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)"></th>'
+    +'</tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="background:var(--bg3);font-weight:700;border-top:2px solid var(--border2)">'
+    +'<td style="padding:8px 6px;font-size:12px">TOTAL ('+filtered.length+' staff)</td>'
+    +'<td colspan="2"></td>'
+    +'<td class="num-cell" style="font-size:12px;padding:8px 6px">'+( totRent ? '&#8369;'+fmt(totRent) : '&#8212;' )+'</td>'
+    +'<td class="num-cell" style="font-size:12px;padding:8px 6px">'+( totElectric ? '&#8369;'+fmt(totElectric) : '&#8212;' )+'</td>'
+    +'<td class="num-cell" style="font-size:12px;padding:8px 6px">'+( totWater ? '&#8369;'+fmt(totWater) : '&#8212;' )+'</td>'
+    +'<td class="num-cell" style="font-size:12px;font-weight:700;color:var(--green);padding:8px 6px">'+( totBond ? '&#8369;'+fmt(totBond) : '&#8212;' )+'</td>'
+    +'<td colspan="3"></td>'
+    +'<td class="num-cell" style="font-size:12px;font-weight:700;color:var(--red);padding:8px 6px">'+( totCA ? '&#8369;'+fmt(totCA) : '&#8212;' )+'</td>'
+    +'<td></td>'
+    +'</tr></tfoot>'
+    +'</table>';
+}
+
+let currentLedgerName=null;
+function openLedgerDetailById(id){
+  const s=staff.find(x=>x.id===id);
+  if(s) openLedgerDetail(s.name);
+}
+function openLedgerDetail(name){
+  currentLedgerName=name;
+  loadLedger();
+  const s=findStaffByName(name)||{};
+  const l=getLedger(name);
+  const t=getTxn(name);
+  document.getElementById('ledger-modal-title').textContent='Ledger: '+name;
+  document.getElementById('ledger-modal-subtitle').textContent=(s.staffId||'')+(s.position?' · '+s.position:'');
+  const txnTable=(rows)=>'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="font-size:10px;text-align:left;padding:3px 4px">Date</th><th style="font-size:10px;text-align:left">Type</th><th style="font-size:10px;text-align:right">Amount</th><th style="font-size:10px;text-align:left">Remark</th><th style="font-size:10px;text-align:left">By</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  const txnRows=(item)=>{
+    const entries=(t[item]||[]);
+    if(!entries.length) return '<tr><td colspan="5" style="color:var(--text2);font-size:11px;padding:6px">No transactions yet.</td></tr>';
+    return entries.map(e=>'<tr>'
+      +'<td style="font-size:10px;padding:3px 4px">'+e.date+'</td>'
+      +'<td style="font-size:10px;color:var(--text2)">'+e.type+'</td>'
+      +'<td style="font-size:10px;text-align:right;color:'+(e.amount>=0?'var(--red)':'var(--green)')+';">'+(e.amount>=0?'+':'')+'&#8369;'+fmt(Math.abs(e.amount))+'</td>'
+      +'<td style="font-size:10px;color:var(--text2)">'+(e.remark||'&#8212;')+'</td>'
+      +'<td style="font-size:10px;color:var(--text3)">'+e.by+'</td>'
+      +'</tr>').join('');
+  };
+  const ap=l.phone.find(p=>p.status==='active');
+document.getElementById('ledger-modal-body').innerHTML=
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    // CA
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700">Cash Advance (CA)</span><span style="font-size:18px;font-weight:700;color:'+(l.ca>0?'var(--red)':'var(--text2)')+'">&#8369;'+fmt(l.ca)+'</span></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+    +'<div><label style="font-size:10px;color:var(--text2)">Amount</label><input type="number" class="form-input" id="lca-amount" placeholder="0" style="font-size:11px"></div>'
+    +'<div><label style="font-size:10px;color:var(--text2)">Type</label><select class="form-select" id="lca-type" style="font-size:11px"><option value="given">Given to staff (+CA)</option><option value="deducted">Deducted from staff (-CA)</option></select></div>'
+    +'<div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark (optional)</label><input type="text" class="form-input" id="lca-remark" placeholder="e.g. Emergency advance" style="font-size:11px"></div>'
+    +'</div><button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,"ca")">Save CA Entry</button>'
+    +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
+    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('ca'))+'</div>'
+    +'</div>'
+    // BOND
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700">Bond (Savings)</span><span style="font-size:18px;font-weight:700;color:var(--green)">&#8369;'+fmt(l.bond)+'</span></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+    +'<div><label style="font-size:10px;color:var(--text2)">Amount</label><input type="number" class="form-input" id="lbond-amount" placeholder="0" style="font-size:11px"></div>'
+    +'<div><label style="font-size:10px;color:var(--text2)">Type</label><select class="form-select" id="lbond-type" style="font-size:11px"><option value="deducted">Deducted from pay (+savings)</option><option value="returned">Returned to staff (-)</option></select></div>'
+    +'<div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark (optional)</label><input type="text" class="form-input" id="lbond-remark" placeholder="e.g. Week 28 bond deduction" style="font-size:11px"></div>'
+    +'</div>'
+    +(currentRole==='owner'?'<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="openBondPayout(currentLedgerName)">&#128176; Process Bond Payout</button>':'')
+    +'<button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,"bond")">Save Bond Entry</button>'
+    +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
+    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('bond'))+'</div>'
+    +'</div>'
+    // PHONE
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
+    +'<div style="font-weight:700;margin-bottom:8px">Phone Installment</div>'
+    +(ap?'<div style="font-size:11px;color:var(--text2);margin-bottom:4px">'+ap.brand+' '+ap.model+' &middot; &#8369;'+fmt(ap.price)+' &middot; '+ap.date+'</div>'
+        +'<div style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:8px">&#8369;'+fmt(ap.balance)+' remaining</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
+        +'<div><label style="font-size:10px;color:var(--text2)">Deduction amount</label><input type="number" class="form-input" id="lphone-amount" placeholder="0" style="font-size:11px"></div>'
+        +'<div><label style="font-size:10px;color:var(--text2)">Remark</label><input type="text" class="form-input" id="lphone-remark" placeholder="e.g. Week 28 installment" style="font-size:11px"></div>'
+        +'</div><button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:4px" onclick="saveLedgerEntry(currentLedgerName,"phone")">Save Phone Entry</button>'
+        +(t.phone&&t.phone[ap.id]?'<div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div><div style="max-height:120px;overflow-y:auto;margin-top:4px">'+txnTable(t.phone[ap.id].map(e=>'<tr><td style="font-size:10px;padding:3px 4px">'+e.date+'</td><td style="font-size:10px;color:var(--text2)">'+e.type+'</td><td style="font-size:10px;text-align:right;color:var(--accent)">-&#8369;'+fmt(Math.abs(e.amount))+'</td><td style="font-size:10px;color:var(--text2)">'+(e.remark||'&#8212;')+'</td><td style="font-size:10px;color:var(--text3)">'+e.by+'</td></tr>').join(''))+'</div>':'')
+        :'<div style="font-size:11px;color:var(--text2);margin-bottom:8px">No active phone installment.</div>')
+    +'<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px" onclick="openAddPhone(currentLedgerName)">+ Add Phone Record</button>'
+    +(l.phone.filter(p=>p.status==='closed').length?'<div style="margin-top:6px;font-size:10px;color:var(--text3)">'+l.phone.filter(p=>p.status==='closed').length+' closed phone record(s) in history</div>':'')
+    +'</div>'
+    // UTILITIES
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
+    +'<div style="font-weight:700;margin-bottom:10px">Utilities &amp; Contributions</div>'
+    +'<div style="display:grid;gap:8px;font-size:11px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text2)">Rent (fixed weekly)</span><input type="number" class="form-input" id="lrent" value="'+(l.rent||'')+'" placeholder="0" style="width:90px;font-size:11px;text-align:right" onchange="saveLedgerUtility(currentLedgerName)"></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text2)">Electric (current week)</span><input type="number" class="form-input" id="lelectric" value="'+(l.electric||'')+'" placeholder="0" style="width:90px;font-size:11px;text-align:right" onchange="saveLedgerUtility(currentLedgerName)"></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text2)">Water (current week)</span><input type="number" class="form-input" id="lwater" value="'+(l.water||'')+'" placeholder="0" style="width:90px;font-size:11px;text-align:right" onchange="saveLedgerUtility(currentLedgerName)"></div>'
+    +'<hr style="border-color:var(--border);margin:2px 0">'
+    +'<div style="font-size:11px;font-weight:700;color:var(--text2)">Last Contributions Deducted</div>'
+    +['sss','philhealth','pagibig'].map(k=>{
+      const label={sss:'SSS',philhealth:'PhilHealth',pagibig:'Pag-IBIG'}[k];
+      const d=l[k]||{};
+      return '<div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">'+label+'</span><span style="font-size:10px">'+(d.lastAmount?'&#8369;'+fmt(d.lastAmount)+' &middot; '+d.lastPeriod+' ('+d.lastDate+')':'&#8212;')+'</span></div>';
+    }).join('')
+    +'</div></div>'
+    +'</div>';
+  document.getElementById('ledger-modal').classList.add('open');
+}
+
+function closeLedgerModal(){ document.getElementById('ledger-modal').classList.remove('open'); }
+
+function saveLedgerEntry(name,item){
+  loadLedger();
+  const l=getLedger(name);
+  if(item==='ca'){
+    const amount=n(document.getElementById('lca-amount').value);
+    const type=document.getElementById('lca-type').value;
+    const remark=document.getElementById('lca-remark').value.trim();
+    if(!amount){toast('Enter an amount','error');return;}
+    if(type==='given') l.ca+=amount;
+    else l.ca-=amount;
+    addTxn(name,'ca',type,type==='given'?amount:-amount,remark);
+  } else if(item==='bond'){
+    const amount=n(document.getElementById('lbond-amount').value);
+    const type=document.getElementById('lbond-type').value;
+    const remark=document.getElementById('lbond-remark').value.trim();
+    if(!amount){toast('Enter an amount','error');return;}
+    if(type==='deducted') l.bond+=amount;
+    else l.bond-=amount;
+    addTxn(name,'bond',type,type==='deducted'?amount:-amount,remark);
+  } else if(item==='phone'){
+    const ap=l.phone.find(p=>p.status==='active');
+    if(!ap){toast('No active phone record','error');return;}
+    const amount=n(document.getElementById('lphone-amount').value);
+    const remark=document.getElementById('lphone-remark').value.trim();
+    if(!amount){toast('Enter an amount','error');return;}
+    ap.balance=Math.max(0,ap.balance-amount);
+    if(ap.balance===0) ap.status='closed';
+    if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
+    if(!ledgerTxn[name].phone[ap.id]) ledgerTxn[name].phone[ap.id]=[];
+    ledgerTxn[name].phone[ap.id].unshift({date:new Date().toISOString().slice(0,10),type:'installment',amount:-amount,remark,by:currentRole||'ops'});
+    saveLedgerTxn();
+  }
+  saveLedger();
+  toast('Ledger updated','success');
+  renderLedgerSummary();
+  openLedgerDetail(name);
+}
+
+function saveLedgerUtility(name){
+  loadLedger();
+  const l=getLedger(name);
+  l.rent=n(document.getElementById('lrent').value);
+  l.electric=n(document.getElementById('lelectric').value);
+  l.water=n(document.getElementById('lwater').value);
+  saveLedger();
+  toast('Utility settings saved','success');
+  renderLedgerSummary();
+}
+
+function openAddPhone(name){
+  const brand=prompt('Phone brand (e.g. Samsung):'); if(!brand) return;
+  const model=prompt('Model (e.g. A15):'); if(!model) return;
+  const price=parseFloat(prompt('Purchase price:')); if(!price||isNaN(price)) return;
+  const date=prompt('Purchase date (YYYY-MM-DD):',new Date().toISOString().slice(0,10)); if(!date) return;
+  loadLedger();
+  const l=getLedger(name);
+  const id='ph'+Date.now().toString(36);
+  l.phone.push({id,brand,model,price,date,balance:price,status:'active'});
+  addTxnDirect(name,'bond','phone_added',0,'Phone added: '+brand+' '+model+' ₱'+price,'ops');
+  saveLedger(); saveLedgerTxn();
+  toast('Phone record added','success');
+  renderLedgerSummary();
+  openLedgerDetail(name);
+}
+
+function openBondPayout(name){
+  loadLedger();
+  const l=getLedger(name);
+  if(!l.bond){toast('No bond balance to pay out','error');return;}
+  const pct=parseFloat(prompt('Bond payout for '+name+'\nBalance: ₱'+fmt(l.bond)+'\nBonus % (enter 0 for no bonus):'));
+  if(isNaN(pct)) return;
+  const bonus=l.bond*(pct/100);
+  const total=l.bond+bonus;
+  if(!confirm('Pay out ₱'+fmt(l.bond)+' + ₱'+fmt(bonus)+' bonus ('+pct+'%) = ₱'+fmt(total)+' to '+name+'?')) return;
+  const remark='Bond payout: ₱'+fmt(l.bond)+' + '+pct+'% bonus ₱'+fmt(bonus)+' = ₱'+fmt(total);
+  addTxn(name,'bond','payout',-l.bond,remark);
+  l.bond=0;
+  saveLedger();
+  toast('Bond payout processed','success');
+  renderLedgerSummary();
+  openLedgerDetail(name);
 }
 
 function exportPayrollCSV(){
