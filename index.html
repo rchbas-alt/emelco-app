@@ -645,6 +645,7 @@ body.role-operations .fin-only{display:none!important}
       <button class="btn btn-ghost btn-sm" onclick="openImportLedger(false)">📥 Import Opening Balances</button>
       <button class="btn btn-ghost btn-sm" onclick="openImportLedger(true)" title="Clears existing balances and re-imports from Excel data">🔄 Re-import (Reset Balances)</button>
       <button class="btn btn-danger btn-sm" onclick="clearLedgerData()">🗑 Clear All Ledger Data</button>
+      <button class="btn btn-danger btn-sm" onclick="freshStartPayroll()" title="Clears pay slips + ledger on ALL machines via sync — one-time reset for the Week 28 clean start">🧹 Fresh Start (All Payroll)</button>
     </div>
   </div>
   <div id="ledger-totals-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
@@ -1150,6 +1151,139 @@ async function fetchGhSha(){
   return false;
 }
 
+// ===== PAYROLL CLOUD FILE (emelco_payroll_2026.json) =====
+// Payroll slips + ledger sync through their OWN cloud file, separate from trip data.
+// Merge rules (nothing is ever wholesale-overridden):
+//   - Transactions: UNION by id — entries from different machines simply coexist
+//   - Ledger balances: per-staff newest-wins via _u timestamp (Jenny editing Ariel
+//     can never clobber Ellen's edit to Jerry)
+//   - Pay slips: per-slip newest finalizedAt wins
+//   - epoch: incremented by "Fresh Start" — machines holding an older epoch discard
+//     their local payroll data instead of resurrecting it into the merge
+const GH_PAYROLL_FILE='emelco_payroll_2026.json';
+const GH_PAYROLL_API=`${PROXY_URL}/contents/${GH_PAYROLL_FILE}`;
+const PAYROLL_EPOCH_KEY='emelco_payroll_epoch';
+let ghPayrollSha=null;
+let isPayrollSyncing=false;
+
+const PR_KEYS={slips:'emelco_payroll_slips_2026', office:'emelco_office_slips_2026', ledger:'emelco_ledger_2026', txn:'emelco_ledger_txn_2026'};
+function prGet(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
+function getPayrollEpoch(){ return parseInt(localStorage.getItem(PAYROLL_EPOCH_KEY)||'0',10)||0; }
+
+function mergeSlipStore(cloud, lsKey){
+  const local=prGet(lsKey);
+  const merged={...local};
+  Object.entries(cloud||{}).forEach(([k,v])=>{
+    if(!merged[k] || String(v.finalizedAt||'') >= String(merged[k].finalizedAt||'')) merged[k]=v;
+  });
+  localStorage.setItem(lsKey, JSON.stringify(merged));
+}
+function mergeLedgerBalances(cloud){
+  const local=prGet(PR_KEYS.ledger);
+  const merged={...local};
+  Object.entries(cloud||{}).forEach(([nm,rec])=>{
+    if(!merged[nm] || String(rec._u||'') >= String(merged[nm]._u||'')) merged[nm]=rec;
+  });
+  localStorage.setItem(PR_KEYS.ledger, JSON.stringify(merged));
+}
+function mergeLedgerTxns(cloud){
+  const local=prGet(PR_KEYS.txn);
+  const fp=t=>t.id||[t.date,t.type,t.amount,t.remark].join('|'); // id preferred; fingerprint for legacy entries
+  const mergeArr=(a,b)=>{
+    const seen=new Set(), out=[];
+    [...(a||[]),...(b||[])].forEach(t=>{ const f=fp(t); if(!seen.has(f)){ seen.add(f); out.push(t); } });
+    out.sort((x,y)=>String(y.date||'').localeCompare(String(x.date||'')));
+    return out;
+  };
+  const names=new Set([...Object.keys(local),...Object.keys(cloud||{})]);
+  const merged={};
+  names.forEach(nm=>{
+    const L=local[nm]||{}, C=(cloud||{})[nm]||{};
+    const phoneIds=new Set([...Object.keys(L.phone||{}),...Object.keys(C.phone||{})]);
+    const phone={};
+    phoneIds.forEach(id=>{ phone[id]=mergeArr((L.phone||{})[id],(C.phone||{})[id]); });
+    merged[nm]={ca:mergeArr(L.ca,C.ca), bond:mergeArr(L.bond,C.bond), phone};
+  });
+  localStorage.setItem(PR_KEYS.txn, JSON.stringify(merged));
+}
+
+function adoptPayrollContent(content){
+  const cloudEpoch=content.epoch||0;
+  if(cloudEpoch>getPayrollEpoch()){
+    // A Fresh Start happened elsewhere — discard local payroll data instead of merging it back
+    Object.values(PR_KEYS).forEach(k=>localStorage.removeItem(k));
+    localStorage.setItem(PAYROLL_EPOCH_KEY,String(cloudEpoch));
+  }
+  mergeSlipStore(content.payrollSlips, PR_KEYS.slips);
+  mergeSlipStore(content.officeSlips, PR_KEYS.office);
+  mergeLedgerBalances(content.ledgerData);
+  mergeLedgerTxns(content.ledgerTxn);
+}
+
+async function pullPayrollFromCloud(){
+  if(isPayrollSyncing) return;
+  try{
+    const metaRes=await fetch(GH_PAYROLL_API+'?t='+Date.now(),{ headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' } });
+    if(metaRes.status===404){ return; } // no payroll file yet — first save will create it
+    if(!metaRes.ok) throw new Error('Payroll meta status '+metaRes.status);
+    const meta=await metaRes.json();
+    if(meta.sha===ghPayrollSha) return; // unchanged
+    ghPayrollSha=meta.sha;
+    let text;
+    if(meta.content && meta.encoding==='base64'){ text=safeAtobUtf8(meta.content); }
+    else{
+      const blobRes=await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`,{ headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' } });
+      if(!blobRes.ok) throw new Error('Payroll blob status '+blobRes.status);
+      text=safeAtobUtf8((await blobRes.json()).content);
+    }
+    adoptPayrollContent(JSON.parse(text));
+    if(document.getElementById('page-payroll')?.classList.contains('active')){ renderPayroll(); renderPayrollTrend(); }
+    if(document.getElementById('page-ledger')?.classList.contains('active')){ renderLedgerSummary(); }
+  }catch(e){ console.warn('Payroll pull failed:',e); }
+}
+
+async function savePayrollToCloud(retrying){
+  if(isPayrollSyncing) return;
+  isPayrollSyncing=true;
+  try{
+    const payload={
+      epoch:getPayrollEpoch(),
+      payrollSlips:prGet(PR_KEYS.slips), officeSlips:prGet(PR_KEYS.office),
+      ledgerData:prGet(PR_KEYS.ledger), ledgerTxn:prGet(PR_KEYS.txn),
+      savedAt:new Date().toISOString(), savedBy:getDeviceName()
+    };
+    const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,1))));
+    const body={ message:`Payroll update ${new Date().toLocaleString('en-PH')}`, content };
+    if(ghPayrollSha) body.sha=ghPayrollSha;
+    const res=await fetch(GH_PAYROLL_API,{ method:'PUT', headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json', 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+    if(res.ok){
+      ghPayrollSha=(await res.json()).content.sha;
+      setSyncStatus('☁️ Payroll saved '+timeAgo(new Date()),'var(--green)');
+    } else if((res.status===409||res.status===422) && !retrying){
+      // Someone else saved payroll first — merge theirs in, then push the union once
+      isPayrollSyncing=false;
+      await pullPayrollFromCloud();
+      return savePayrollToCloud(true);
+    } else {
+      throw new Error('Payroll save status '+res.status);
+    }
+  }catch(e){
+    console.error('Payroll cloud save failed:',e);
+    toast('Payroll cloud save failed — data safe locally','error');
+  }
+  isPayrollSyncing=false;
+}
+
+// Debounced push — coalesces the several store writes inside one finalize into a single save
+let cloudPushTimer=null;
+function scheduleCloudPush(){
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer=setTimeout(()=>{
+    if(isPayrollSyncing){ scheduleCloudPush(); return; }
+    savePayrollToCloud();
+  }, 1500);
+}
+
 // Load from GitHub first, fallback to localStorage
 async function loadData(){
   setSyncStatus('⏳ Connecting to cloud…','var(--accent)');
@@ -1302,7 +1436,8 @@ async function pullFromGitHub(){
 
 function startAutoSync(){
   if(syncInterval) clearInterval(syncInterval);
-  syncInterval=setInterval(()=>{ pullFromGitHub(); }, 5*60*1000); // every 5 min — lighter on mobile
+  pullPayrollFromCloud(); // fetch payroll/ledger cloud file once at startup
+  syncInterval=setInterval(()=>{ pullFromGitHub(); pullPayrollFromCloud(); }, 5*60*1000); // every 5 min — lighter on mobile
   // Update "X min ago" text every 30s
   setInterval(()=>{ if(lastSyncTime) setSyncStatus('☁️ Synced '+timeAgo(lastSyncTime),'var(--green)'); },30000);
 }
@@ -3421,6 +3556,7 @@ function loadPayrollSlips(){
 }
 function savePayrollSlips(){
   localStorage.setItem(PAYROLL_SLIPS_KEY, JSON.stringify(payrollSlips));
+  scheduleCloudPush();
 }
 function slipKey(weekNum, name){ return weekNum+'__'+name; }
 
@@ -3787,7 +3923,7 @@ function finalizePaySlip(){
       if(ap.balance===0) ap.status='closed';
       if(!ledgerTxn[currentSlipName]) ledgerTxn[currentSlipName]={ca:[],bond:[],phone:{}};
       if(!ledgerTxn[currentSlipName].phone[ap.id]) ledgerTxn[currentSlipName].phone[ap.id]=[];
-      ledgerTxn[currentSlipName].phone[ap.id].unshift({date:new Date().toISOString().slice(0,10),type:'installment',amount:-data.phone,remark:weekLabel,by:currentRole||'ops'});
+      ledgerTxn[currentSlipName].phone[ap.id].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type:'installment',amount:-data.phone,remark:weekLabel,by:currentRole||'ops',dev:getDeviceName()});
       saveLedgerTxn();
     }
   }
@@ -3797,6 +3933,7 @@ function finalizePaySlip(){
   if(data.philhealth>0){ ldg.philhealth={lastDate:today,lastAmount:data.philhealth,lastPeriod:data.philhealthPeriod||'PhilHealth'}; }
   if(data.pagibig>0){ ldg.pagibig={lastDate:today,lastAmount:data.pagibig,lastPeriod:data.pagibigPeriod||'Pag-IBIG'}; }
 
+  touchLedger(currentSlipName);
   saveLedger();
 
   toast('Pay slip finalized and saved ✓','success');
@@ -3956,6 +4093,7 @@ function loadOfficeSlips(){
 }
 function saveOfficeSlips(){
   localStorage.setItem(OFFICE_SLIPS_KEY, JSON.stringify(officeSlips));
+  scheduleCloudPush();
 }
 function officeSlipKey(staffId,start,end){ return staffId+'__'+start+'_'+end; }
 
@@ -4192,7 +4330,8 @@ function printOfficeSlip(){
 
 
 // ===== STAFF LEDGER SYSTEM =====
-const LEDGER_OPENING_BALANCES = {"Henio Morales":{"ca":7383.0,"bond":4500.0,"rent":0,"electric":0,"water":0},"Kenneth Feguerra":{"ca":14804.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Joel Calimpusan":{"ca":13705.0,"bond":4200.0,"rent":500.0,"electric":0,"water":0},"Den Mark Gardon":{"ca":11933.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Rene Amorado":{"ca":0.0,"bond":4500.0,"rent":250.0,"electric":0,"water":0},"Roniel Mabansag":{"ca":0.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Tom Herrera":{"ca":14347.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Vladjamir Bibas":{"ca":2948.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Renato Delos Santos":{"ca":17443.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Jeffrey Surwez":{"ca":0.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Sherwin Capeding":{"ca":20253.0,"bond":1500.0,"rent":775.0,"electric":0,"water":0},"John Gabriel Dela Cruz":{"ca":3890.0,"bond":2700.0,"rent":500.0,"electric":757.0,"water":0},"Kevin Herrera":{"ca":20561.0,"rent":0,"electric":0,"water":0},"Angelo Macario Santos":{"ca":5209.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Jasper Rivera":{"ca":16622.0,"bond":3600.0,"rent":500.0,"electric":1215.0,"water":360.0},"Rolly Zarsa Obidos":{"ca":702.0,"bond":300.0,"rent":0,"electric":0,"water":0},"Jayson Bibas":{"ca":9138.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Ric Ronald Basilio Sepria":{"ca":17959.0,"bond":4500.0,"rent":0,"electric":172.0,"water":120.0},"James Florogo Gonzales":{"ca":0.0,"bond":1200.0,"rent":0,"electric":0,"water":0},"Michael Dorado Estornidos":{"ca":724.0,"bond":2700.0},"Arvin Blaza Dorado":{"ca":137.0,"bond":600.0,"rent":0,"electric":0,"water":0},"Richard Daniel Villarez Siazon":{"ca":2622.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Leonardo Berden":{"ca":2394.0,"bond":1800.0,"rent":250.0,"electric":172.0,"water":120.0},"Ariel Brinsa Bualoy":{"ca":0.0,"bond":4800.0,"rent":500.0,"electric":285.0,"water":240.0},"Randel Alvarez":{"ca":1551.0,"bond":1800.0,"rent":500.0,"electric":0,"water":0},"Angelo Samar":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0,"water":0},"Joel Guisan":{"ca":819.0,"bond":0.0},"Randy Santos":{"ca":1428.0,"bond":0.0,"rent":0.0,"electric":0,"water":0},"Marvin Castillo":{"ca":0.0,"bond":0.0},"Rolando Purgatorio":{"ca":15267.0,"bond":0.0,"rent":500.0,"electric":915.0,"water":240.0},"Syril Dacles":{"ca":0.0,"bond":3900.0,"rent":250.0,"electric":0,"water":0},"Kenneth Pimentel":{"ca":0.0,"bond":0.0,"rent":500.0,"electric":0,"water":0},"Marben Mag aso":{"ca":1970.0,"bond":900.0},"Noriel Bungayan":{"ca":14186.0,"bond":0.0,"rent":0,"electric":0,"water":0},"Janrey Villanueva Dorado":{"ca":8366.0,"bond":4800.0,"rent":500.0,"electric":585.0,"water":240.0},"Joseph Liberato":{"ca":3241.0,"rent":0,"electric":0,"water":0},"Jay Mark Villanueva Dorado":{"ca":0.0,"bond":0.0},"Marlou Balonquit":{"ca":0.0,"bond":0.0},"Jushua Fong":{"ca":1000.0},"Jerry Ramos":{"ca":10.0,"bond":4800.0,"rent":500.0,"electric":150.0,"water":120.0},"Christopher Peligrino":{"ca":0.0},"Jericho Templa":{"ca":2490.0},"John Rafael Lara":{"ca":0.0},"Junny Conol Cobera":{"ca":0.0,"bond":0.0},"Nelson Zarca":{"ca":0.0},"Christopher Santillan":{"ca":0.0,"bond":0.0},"Rodel Pacia":{"ca":0.0},"Philip Ternal":{"ca":204.0,"bond":0.0},"Nonito Quinto":{"ca":0.0},"Nomer Abaga":{"ca":0.0,"bond":3300.0},"Roldan Situal":{"ca":0.0},"Michael Marquez":{"ca":267.0,"bond":8000.0},"Jan Ellie Taylaran":{"ca":3749.0},"Ryan Anover":{"ca":0.0},"Arjhon Dorado":{"ca":0.0,"bond":0.0},"Gilbert Ariston":{"ca":786.0,"bond":900.0},"Lorenz Amorado":{"ca":1972.0,"bond":4500.0,"rent":250.0,"electric":0,"water":0},"Ricky Boy Amante":{"ca":5600.0,"bond":3000.0,"rent":500.0,"electric":930.0,"water":120.0},"John Paul Ellar":{"ca":1500.0,"bond":0.0},"Ryan Bautista":{"ca":0.0},"Jarel Carlo Casino":{"ca":600.0},"Eljun Abrasaldo":{"ca":2393.0,"bond":3300.0,"rent":500.0,"electric":0,"water":0},"Orlando Hilario":{"bond":0.0,"rent":0,"electric":0,"water":0},"Joseph S. Liberato":{"bond":0.0},"Samuel Subsilica":{"bond":0.0},"Angelo Azuela":{"bond":0.0,"rent":0,"electric":0,"water":0},"Roldan Sistual":{"bond":0.0},"Jan Taylaran":{"bond":0.0},"Michael Villanueva":{},"Alvin Mabeza":{},"Robert Encarnado Tahum":{},"Antonio Gabiana":{},"Gerald B Lucas":{},"Agnio Quipido Poja":{},"Ronnie Gonzales":{},"Arjay Sanchez":{},"Jerome Mabeza":{},"Roque Zacarias":{},"John Wilson Piandiong":{},"Norman Reyes Mirasol":{},"Xerxies Emmanual Rosell":{},"Acmad Saripada":{},"Christian Murillo Navida":{},"Jeremy Encarnado Campaner":{},"Raffy Mendoza":{}};
+const LEDGER_OPENING_AS_OF="2026-07-02"; // Excel payroll Wk27 (Jun26–Jul02), closes Week 27
+const LEDGER_OPENING_BALANCES = {"Adrian Ace F. Depena":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Azuela":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Macario Santos":{"ca":5209.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Samar":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSS DEC. 2025"}}},"Ariel Brinsa Bualoy":{"ca":0.0,"bond":4800.0,"rent":500.0,"electric":285.0,"water":240.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Arjhon Dorado":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Arvin Blaza Dorado":{"ca":137.0,"bond":600.0,"rent":0.0,"electric":0.0,"water":0.0},"Christopher Peligrino":{"ca":0.0},"Christopher Santillan":{"ca":0.0,"bond":0.0},"Den Mark Gardon":{"ca":11933.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Eljun Abrasaldo":{"gov":{"pagibig":{"lastAmount":500.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":250.0,"lastPeriod":"SSS MARCH2026"}}},"Gilbert Ariston":{"ca":786.0,"bond":900.0},"Henio Morales":{"ca":7383.0,"bond":4500.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS JAN. 2026"}}},"James Florogo Gonzales":{"ca":0.0,"bond":1200.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSS DEC. 2025"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH DEC"}},"phone":{"total":4800.0,"balance":4800.0}},"Jan Ellie Taylaran":{"ca":3749.0,"rent":0.0,"electric":0.0,"water":0.0},"Jan Taylaran":{"bond":0.0},"Janrey Villanueva Dorado":{"ca":8366.0,"bond":4800.0,"rent":500.0,"electric":585.0,"water":240.0,"gov":{"sss":{"lastAmount":250.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Jarel Carlo Casino":{"ca":600.0},"Jasper Rivera":{"ca":16622.0,"bond":3600.0,"rent":500.0,"electric":1215.0,"water":360.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}},"phone":{"total":6000.0,"balance":6000.0}},"Jay Mark Villanueva Dorado":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jayson Bibas":{"ca":9138.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jeffrey Surwez":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jericho Templa":{"ca":2490.0},"Jerry Ramos":{"ca":10.0,"bond":4800.0,"rent":500.0,"electric":150.0,"water":120.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Joel Calimpusan":{"ca":13705.0,"bond":4200.0,"rent":500.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Joel Guisan":{"ca":819.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"John Gabriel Dela Cruz":{"ca":3890.0,"bond":2700.0,"rent":500.0,"electric":757.0,"water":0.0,"gov":{"sss":{"lastAmount":250.0,"lastPeriod":"SSSMAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"}}},"John Paul Ellar":{"ca":1500.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":500.0,"lastPeriod":"SSS DEC. 2025"}}},"John Rafael Lara":{"ca":0.0},"Joseph Liberato":{"ca":3241.0,"rent":0.0,"electric":0.0,"water":0.0},"Joseph S. Liberato":{"bond":0.0},"Junny Conol Cobera":{"ca":0.0,"bond":0.0},"Jushua Fong":{"ca":1000.0},"Kenneth Feguerra":{"ca":14804.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Kenneth Pimentel":{"ca":0.0,"bond":0.0,"rent":500.0,"electric":0.0,"water":0.0},"Kevin Herrera":{"ca":20561.0,"rent":0.0,"electric":0.0,"water":0.0},"Leonardo Berden":{"ca":2394.0,"bond":1800.0,"rent":250.0,"electric":172.0,"water":120.0},"Lorenz Amorado":{"ca":1972.0,"bond":4500.0,"rent":250.0,"electric":0.0,"water":0.0},"Marben Mag aso":{"ca":1970.0,"bond":900.0},"Marlou Balonquit":{"ca":0.0,"bond":0.0},"Marvin Castillo":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Michael Dorado Estornidos":{"ca":724.0,"bond":2700.0,"rent":0.0,"electric":0.0,"water":0.0},"Michael Marquez":{"ca":267.0,"bond":8000.0,"gov":{"pagibig":{"lastAmount":600.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}}},"Nelson Zarca":{"ca":0.0},"Nomer Abaga":{"ca":0.0,"bond":3300.0},"Nonito Quinto":{"ca":0.0},"Noriel Bungayan":{"ca":14186.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Orlando Hilario":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Philip Ternal":{"ca":204.0,"bond":0.0},"Randel Alvarez":{"ca":1551.0,"bond":1800.0,"rent":500.0,"electric":0.0,"water":0.0},"Randy Santos":{"ca":1428.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Renato Delos Santos":{"ca":17443.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Rene Amorado":{"ca":0.0,"bond":4500.0,"rent":250.0,"electric":0.0,"water":0.0,"gov":{"pagibig":{"lastAmount":600.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS JAN. 2026"}}},"Ric Ronald Basilio Sepria":{"ca":17959.0,"bond":4500.0,"rent":0.0,"electric":172.0,"water":120.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":250.0,"lastPeriod":"SSS MARCH2026"}},"phone":{"total":4800.0,"balance":4800.0}},"Richard Daniel Villarez Siazon":{"ca":2622.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ricky Boy Amante":{"rent":500.0,"electric":930.0,"water":120.0},"Rodel Pacia":{"ca":0.0},"Rolando Purgatorio":{"ca":14767.0,"bond":0.0,"rent":500.0,"electric":915.0,"water":240.0,"gov":{"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}}},"Roldan Sistual":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Roldan Situal":{"ca":0.0},"Rolly Zarsa Obidos":{"ca":702.0,"bond":300.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":450.0,"lastPeriod":"SSS DEC. 2025"}}},"Roniel Mabansag":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ryan Anover":{"ca":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ryan Bautista":{"ca":0.0},"Samuel Subsilica":{"bond":0.0},"Sherwin Capeding":{"ca":19953.0,"bond":1500.0,"rent":775.0,"electric":0.0,"water":0.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"sss":{"lastAmount":600.0,"lastPeriod":"SSS JAN. 2026"}}},"Syril Dacles":{"ca":0.0,"bond":3900.0,"rent":250.0,"electric":0.0,"water":0.0,"phone":{"total":4800.0,"balance":4800.0}},"Tom Herrera":{"ca":14347.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Vladjamir Bibas":{"ca":2948.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0}};
 
 const LEDGER_TXN_STORE_KEY=LEDGER_TXN_KEY;
 let ledgerData={};
@@ -4202,13 +4341,14 @@ function loadLedger(){
   try{ ledgerData=JSON.parse(localStorage.getItem(LEDGER_KEY)||'{}'); }catch(e){ ledgerData={}; }
   try{ ledgerTxn=JSON.parse(localStorage.getItem(LEDGER_TXN_KEY)||'{}'); }catch(e){ ledgerTxn={}; }
 }
-function saveLedger(){ localStorage.setItem(LEDGER_KEY,JSON.stringify(ledgerData)); }
-function saveLedgerTxn(){ localStorage.setItem(LEDGER_TXN_KEY,JSON.stringify(ledgerTxn)); }
+function saveLedger(){ localStorage.setItem(LEDGER_KEY,JSON.stringify(ledgerData)); scheduleCloudPush(); }
+function saveLedgerTxn(){ localStorage.setItem(LEDGER_TXN_KEY,JSON.stringify(ledgerTxn)); scheduleCloudPush(); }
 
 function getLedger(name){
   if(!ledgerData[name]) ledgerData[name]={ca:0,bond:0,phone:[],rent:0,electric:0,water:0,sss:{lastDate:'',lastAmount:0,lastPeriod:''},philhealth:{lastDate:'',lastAmount:0,lastPeriod:''},pagibig:{lastDate:'',lastAmount:0,lastPeriod:''}};
   return ledgerData[name];
 }
+function touchLedger(name){ if(ledgerData[name]) ledgerData[name]._u=new Date().toISOString(); }
 function getTxn(name){
   if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
   return ledgerTxn[name];
@@ -4217,26 +4357,33 @@ function addTxn(name,item,type,amount,remark,by){
   loadLedger();
   const t=getTxn(name);
   if(!t[item]) t[item]=[];
-  t[item].unshift({date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||currentRole||'ops'});
+  t[item].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||currentRole||'ops',dev:getDeviceName()});
   saveLedgerTxn();
 }
 function addTxnDirect(name,item,type,amount,remark,by){
   if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
   const t=ledgerTxn[name];
   if(!t[item]) t[item]=[];
-  t[item].push({date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||'system'});
+  t[item].push({id:genId(),date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||'system',dev:getDeviceName()});
 }
 
 function openImportLedger(force){
-  if(force && !confirm('This will RESET all existing ledger balances and re-import from the Excel opening data. Any manual entries made after the last import will be lost. Continue?')) return;
+  if(force && !confirm('This will RESET all existing ledger balances and re-import from the Excel opening data (as of '+LEDGER_OPENING_AS_OF+', closing Week 27). Any manual entries made after the last import will be lost. Continue?')) return;
   loadLedger();
   let imported=0,skipped=0;
+  const remark='Opening balance — Excel payroll Wk27, as of '+LEDGER_OPENING_AS_OF;
   Object.entries(LEDGER_OPENING_BALANCES).forEach(([name,data])=>{
     const existing=ledgerData[name];
     if(!force && existing&&(existing.ca||existing.bond||existing.rent)){skipped++;return;}
-    ledgerData[name]={ca:data.ca||0,bond:data.bond||0,phone:[],rent:data.rent||0,electric:data.electric||0,water:data.water||0,sss:{lastDate:'',lastAmount:0,lastPeriod:''},philhealth:{lastDate:'',lastAmount:0,lastPeriod:''},pagibig:{lastDate:'',lastAmount:0,lastPeriod:''}};
-    if(data.ca>0) addTxnDirect(name,'ca','opening',data.ca,'Imported from Excel Jun 26-Jul 2 2026 payroll','system');
-    if(data.bond>0) addTxnDirect(name,'bond','opening',data.bond,'Imported from Excel Jun 26-Jul 2 2026 payroll','system');
+    const mk=g=>({lastDate:g?LEDGER_OPENING_AS_OF:'',lastAmount:g?g.lastAmount:0,lastPeriod:g?g.lastPeriod:''});
+    const gov=data.gov||{};
+    ledgerData[name]={ca:data.ca||0,bond:data.bond||0,phone:[],rent:data.rent||0,electric:data.electric||0,water:data.water||0,
+      sss:mk(gov.sss),philhealth:mk(gov.philhealth),pagibig:mk(gov.pagibig),_u:new Date().toISOString()};
+    if(data.phone&&data.phone.balance>0){
+      ledgerData[name].phone.push({id:'ph_open_'+genId(),brand:'Phone',model:'Installment (from Excel)',price:data.phone.total,date:LEDGER_OPENING_AS_OF,balance:data.phone.balance,status:'active'});
+    }
+    if(data.ca>0) addTxnDirect(name,'ca','opening',data.ca,remark,'system');
+    if(data.bond>0) addTxnDirect(name,'bond','opening',data.bond,remark,'system');
     imported++;
   });
   saveLedger(); saveLedgerTxn();
@@ -4244,8 +4391,22 @@ function openImportLedger(force){
   renderLedgerSummary();
 }
 
+// ===== FRESH START — clears ALL payroll data (slips + ledger) on every machine =====
+// Bumps the payroll epoch so other machines discard their local copies instead of
+// merging stale data back in. Use once for the Week 28 clean start, then Re-import.
+function freshStartPayroll(){
+  const typed=prompt('FRESH START will permanently delete ALL pay slips (driver, helper, office), CA/bond/phone balances and transaction logs — on THIS machine and, via sync, on every other machine.\n\nTrips, staff, and fleet data are NOT affected.\n\nType FRESH START (all caps) to confirm:');
+  if(typed!=='FRESH START'){ toast('Cancelled — nothing was deleted','success'); return; }
+  Object.values(PR_KEYS).forEach(k=>localStorage.removeItem(k));
+  localStorage.setItem(PAYROLL_EPOCH_KEY, String(getPayrollEpoch()+1));
+  payrollSlips={}; officeSlips={}; ledgerData={}; ledgerTxn={};
+  savePayrollToCloud(); // push the empty state + new epoch immediately
+  toast('Fresh start complete — all payroll data cleared ✓ Now use Import Opening Balances.','success');
+  renderLedgerSummary();
+}
+
 function clearLedgerData(){
-  const typed=prompt('This will permanently delete ALL ledger data (CA balances, bond, phone records, transaction logs) for all staff.\n\nType DELETE (all caps) to confirm:');
+  const typed=prompt('This clears ledger data (CA, bond, phone, transaction logs) on THIS machine only — the cloud copy will sync back within 5 minutes. Use 🧹 Fresh Start to wipe everywhere permanently.\n\nType DELETE (all caps) to confirm:');
   if(typed!=='DELETE'){ toast('Cancelled — no ledger data was deleted','success'); return; }
   localStorage.removeItem(LEDGER_KEY);
   localStorage.removeItem(LEDGER_TXN_KEY);
@@ -4466,9 +4627,10 @@ function saveLedgerEntry(name,item){
     if(ap.balance===0) ap.status='closed';
     if(!ledgerTxn[name]) ledgerTxn[name]={ca:[],bond:[],phone:{}};
     if(!ledgerTxn[name].phone[ap.id]) ledgerTxn[name].phone[ap.id]=[];
-    ledgerTxn[name].phone[ap.id].unshift({date:new Date().toISOString().slice(0,10),type:'installment',amount:-amount,remark,by:currentRole||'ops'});
+    ledgerTxn[name].phone[ap.id].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type:'installment',amount:-amount,remark,by:currentRole||'ops',dev:getDeviceName()});
     saveLedgerTxn();
   }
+  touchLedger(name);
   saveLedger();
   toast('Ledger updated','success');
   renderLedgerSummary();
@@ -4481,6 +4643,7 @@ function saveLedgerUtility(name){
   l.rent=n(document.getElementById('lrent').value);
   l.electric=n(document.getElementById('lelectric').value);
   l.water=n(document.getElementById('lwater').value);
+  touchLedger(name);
   saveLedger();
   toast('Utility settings saved','success');
   renderLedgerSummary();
@@ -4496,6 +4659,7 @@ function openAddPhone(name){
   const id='ph'+Date.now().toString(36);
   l.phone.push({id,brand,model,price,date,balance:price,status:'active'});
   addTxnDirect(name,'bond','phone_added',0,'Phone added: '+brand+' '+model+' ₱'+price,'ops');
+  touchLedger(name);
   saveLedger(); saveLedgerTxn();
   toast('Phone record added','success');
   renderLedgerSummary();
@@ -4514,6 +4678,7 @@ function openBondPayout(name){
   const remark='Bond payout: ₱'+fmt(l.bond)+' + '+pct+'% bonus ₱'+fmt(bonus)+' = ₱'+fmt(total);
   addTxn(name,'bond','payout',-l.bond,remark);
   l.bond=0;
+  touchLedger(name);
   saveLedger();
   toast('Bond payout processed','success');
   renderLedgerSummary();
