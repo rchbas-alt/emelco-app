@@ -59,7 +59,10 @@ tfoot td{background:var(--bg3);font-weight:700;text-align:center;border-top:2px 
 tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 .legend{display:flex;gap:18px;align-items:center;margin-top:10px;font-size:11px;color:var(--text2)}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.empty-state{padding:60px;text-align:center;color:var(--text3)}
+#daily-totals-row th{background:var(--bg2);padding:5px 6px;border-bottom:2px solid var(--border2);font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--text2)}
+#daily-totals-row th.plate-cell-h{text-align:left;padding-left:14px;position:sticky;left:0;background:var(--bg2);z-index:2;font-size:10px;color:var(--text3);border-right:1px solid var(--border)}
+#daily-totals-row .day-count{font-weight:700;color:var(--text)}
+#daily-totals-row .day-billing{font-size:10px;color:#e67e22;font-weight:700;margin-top:2px}
 </style>
 </head>
 <body>
@@ -97,13 +100,12 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
         <tr id="head-row">
           <th class="plate-h">Plate</th>
         </tr>
+        <tr id="daily-totals-row"></tr>
       </thead>
       <tbody id="grid-body">
         <tr><td colspan="8" class="empty-state">Loading…</td></tr>
       </tbody>
-      <tfoot>
-        <tr id="totals-row"><td class="plate-cell">Trips / day</td></tr>
-      </tfoot>
+      <tfoot><tr id="totals-row"></tr></tfoot>
     </table>
   </div>
   <div class="legend">
@@ -135,7 +137,10 @@ function startOfWeek(d){
   return x;
 }
 function fmtDate(d){
-  return d.toISOString().slice(0,10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 function fmtHeader(d){
   const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -266,11 +271,15 @@ function renderGrid(){
   }
 
   const totalsRow = document.getElementById('totals-row');
-  totalsRow.innerHTML = '<td class="plate-cell">Trips / Billing</td>' +
-    dayTotals.map((t,i) => {
+  if(totalsRow) totalsRow.innerHTML = '';
+
+  const dailyTotalsRow = document.getElementById('daily-totals-row');
+  dailyTotalsRow.innerHTML = '<th class="plate-cell-h">Trips / Billing</th>' +
+    dayTotals.map((t, i) => {
       const b = dayBilling[i];
       const bFmt = b ? '₱'+b.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
-      return `<td>${t?t+'&nbsp;trip'+(t>1?'s':''):'—'}${bFmt?`<div style="font-size:10px;color:var(--text2);margin-top:1px">${bFmt}</div>`:''}</td>`;
+      if(!t) return `<th><span style="color:var(--text3)">—</span></th>`;
+      return `<th><div class="day-count">${t} trip${t>1?'s':''}</div>${bFmt?`<div class="day-billing">${bFmt}</div>`:''}</th>`;
     }).join('');
 
   const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
