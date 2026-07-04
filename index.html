@@ -1049,7 +1049,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607021530'; // bumped: print/PDF slip fixed — omits zero deductions, removes repetitive driver name in own trip column, hides empty placeholder text
+const APP_VERSION = '202607021550'; // bumped: removed bond balance from printed pay slip (CA and Phone balance only)
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3752,6 +3752,14 @@ function printPaySlip(){
   const s=findStaffByName(currentSlipName)||{};
   const body=document.getElementById('slip-modal-body');
   const totalPay=n(body.dataset.totalPay), totalMano=n(body.dataset.totalMano), totalCA=n(body.dataset.totalCA);
+
+  // Load ledger for balance context
+  loadLedger();
+  const ldg=getLedger(currentSlipName);
+  const activePhone=ldg.phone.find(p=>p.status==='active');
+  const caBalAfter=Math.max(0,(ldg.ca||0)-n(data.caRequest));
+  const phoneBalAfter=activePhone?Math.max(0,activePhone.balance-n(data.phone)):0;
+  const bondBalAfter=(ldg.bond||0)+n(data.bond);
   const gross=totalPay+totalMano+n(data.otherPay)+n(data.thirteenthMonth)+n(data.bonus);
   const totalDed=totalCA+n(data.caRequest)+n(data.sss)+n(data.philhealth)+n(data.pagibig)+n(data.rent)+n(data.electric)+n(data.water)+n(data.phone)+n(data.bond)+n(data.otherDeduction);
   const net=gross-totalDed;
@@ -3788,22 +3796,24 @@ function printPaySlip(){
     ...(data.bonus?[['Bonus', fmt(data.bonus)]]:[]),
   ].map(([l,v])=>`<tr><td>${l}</td><td style="text-align:right">₱${v}</td></tr>`).join('');
 
-  // Deduction rows — omit zero/blank items
+  // Deduction rows — omit zero/blank items, show balances for CA and Phone
   const dedItems=[
-    ['CA from Trip', totalCA, '', true],
-    ['CA Request', data.caRequest, '', false],
-    ['SSS'+(data.sssPeriod?' ('+data.sssPeriod+')':''), data.sss, '', false],
-    ['PhilHealth'+(data.philhealthPeriod?' ('+data.philhealthPeriod+')':''), data.philhealth, '', false],
-    ['Pag-IBIG'+(data.pagibigPeriod?' ('+data.pagibigPeriod+')':''), data.pagibig, '', false],
-    ['Rent', data.rent, '', false],
-    ['Electric', data.electric, '', false],
-    ['Water', data.water, '', false],
-    ['Phone', data.phone, '', false],
-    ['Bond (Savings)', data.bond, '', false],
-    ['Other Deduction'+(data.otherDeductionRemark?' ('+data.otherDeductionRemark+')':''), data.otherDeduction, '', false],
+    {label:'CA from Trip', amount:totalCA, alwaysShow:true},
+    {label:'CA Request', amount:data.caRequest, balBefore:ldg.ca, balAfter:caBalAfter, balLabel:'CA Balance'},
+    {label:'SSS'+(data.sssPeriod?' ('+data.sssPeriod+')':''), amount:data.sss},
+    {label:'PhilHealth'+(data.philhealthPeriod?' ('+data.philhealthPeriod+')':''), amount:data.philhealth},
+    {label:'Pag-IBIG'+(data.pagibigPeriod?' ('+data.pagibigPeriod+')':''), amount:data.pagibig},
+    {label:'Rent', amount:data.rent},
+    {label:'Electric', amount:data.electric},
+    {label:'Water', amount:data.water},
+    {label:'Phone'+(activePhone?' ('+activePhone.brand+' '+activePhone.model+')':''), amount:data.phone, balBefore:activePhone?activePhone.balance:0, balAfter:phoneBalAfter, balLabel:'Phone Balance'},
+    {label:'Bond (Savings)', amount:data.bond},
+    {label:'Other Deduction'+(data.otherDeductionRemark?' ('+data.otherDeductionRemark+')':''), amount:data.otherDeduction},
   ];
-  const dedRows=dedItems.filter(([,v,, alwaysShow])=>alwaysShow||v>0)
-    .map(([l,v])=>`<tr><td>${l}</td><td style="text-align:right;color:#c0392b">₱${fmt(v)}</td></tr>`).join('');
+  const dedRows=dedItems.filter(d=>d.alwaysShow||d.amount>0).map(d=>`<tr>
+    <td>${d.label}${d.balBefore!==undefined&&d.amount>0?`<div style="font-size:9px;color:#5a6175">${d.balLabel}: ₱${fmt(d.balBefore)} → ₱${fmt(d.balAfter)} after</div>`:''}</td>
+    <td style="text-align:right;color:#c0392b;vertical-align:top">₱${fmt(d.amount)}</td>
+  </tr>`).join('');
 
   const licenseLine=s.position==='DRIVER'
     ?(s.licenseNumber?`License: ${s.licenseNumber}${s.licenseExpiry?' · exp '+s.licenseExpiry:''}`:'⚠️ No license on file'):'';
