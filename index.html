@@ -1218,6 +1218,7 @@ function adoptPayrollContent(content){
   mergeSlipStore(content.officeSlips, PR_KEYS.office);
   mergeLedgerBalances(content.ledgerData);
   mergeLedgerTxns(content.ledgerTxn);
+  ledgerLoaded=false; // in-memory copy is now stale — force reload on next access
 }
 
 async function pullPayrollFromCloud(){
@@ -4337,9 +4338,11 @@ const LEDGER_TXN_STORE_KEY=LEDGER_TXN_KEY;
 let ledgerData={};
 let ledgerTxn={};
 
+let ledgerLoaded=false;
 function loadLedger(){
   try{ ledgerData=JSON.parse(localStorage.getItem(LEDGER_KEY)||'{}'); }catch(e){ ledgerData={}; }
   try{ ledgerTxn=JSON.parse(localStorage.getItem(LEDGER_TXN_KEY)||'{}'); }catch(e){ ledgerTxn={}; }
+  ledgerLoaded=true;
 }
 function saveLedger(){ localStorage.setItem(LEDGER_KEY,JSON.stringify(ledgerData)); scheduleCloudPush(); }
 function saveLedgerTxn(){ localStorage.setItem(LEDGER_TXN_KEY,JSON.stringify(ledgerTxn)); scheduleCloudPush(); }
@@ -4354,7 +4357,7 @@ function getTxn(name){
   return ledgerTxn[name];
 }
 function addTxn(name,item,type,amount,remark,by){
-  loadLedger();
+  if(!ledgerLoaded) loadLedger(); // do NOT reload unconditionally — callers mutate balances in memory first
   const t=getTxn(name);
   if(!t[item]) t[item]=[];
   t[item].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||currentRole||'ops',dev:getDeviceName()});
@@ -4546,7 +4549,7 @@ document.getElementById('ledger-modal-body').innerHTML=
     +'<div><label style="font-size:10px;color:var(--text2)">Amount</label><input type="number" class="form-input" id="lca-amount" placeholder="0" style="font-size:11px"></div>'
     +'<div><label style="font-size:10px;color:var(--text2)">Type</label><select class="form-select" id="lca-type" style="font-size:11px"><option value="given">Given to staff (+CA)</option><option value="deducted">Deducted from staff (-CA)</option></select></div>'
     +'<div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark (optional)</label><input type="text" class="form-input" id="lca-remark" placeholder="e.g. Emergency advance" style="font-size:11px"></div>'
-    +'</div><button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,"ca")">Save CA Entry</button>'
+    +'</div><button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,\'ca\')">Save CA Entry</button>'
     +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
     +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('ca'))+'</div>'
     +'</div>'
@@ -4559,7 +4562,7 @@ document.getElementById('ledger-modal-body').innerHTML=
     +'<div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark (optional)</label><input type="text" class="form-input" id="lbond-remark" placeholder="e.g. Week 28 bond deduction" style="font-size:11px"></div>'
     +'</div>'
     +(currentRole==='owner'?'<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="openBondPayout(currentLedgerName)">&#128176; Process Bond Payout</button>':'')
-    +'<button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,"bond")">Save Bond Entry</button>'
+    +'<button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,\'bond\')">Save Bond Entry</button>'
     +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
     +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('bond'))+'</div>'
     +'</div>'
@@ -4571,7 +4574,7 @@ document.getElementById('ledger-modal-body').innerHTML=
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">'
         +'<div><label style="font-size:10px;color:var(--text2)">Deduction amount</label><input type="number" class="form-input" id="lphone-amount" placeholder="0" style="font-size:11px"></div>'
         +'<div><label style="font-size:10px;color:var(--text2)">Remark</label><input type="text" class="form-input" id="lphone-remark" placeholder="e.g. Week 28 installment" style="font-size:11px"></div>'
-        +'</div><button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:4px" onclick="saveLedgerEntry(currentLedgerName,"phone")">Save Phone Entry</button>'
+        +'</div><button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:4px" onclick="saveLedgerEntry(currentLedgerName,\'phone\')">Save Phone Entry</button>'
         +(t.phone&&t.phone[ap.id]?'<div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div><div style="max-height:120px;overflow-y:auto;margin-top:4px">'+txnTable(t.phone[ap.id].map(e=>'<tr><td style="font-size:10px;padding:3px 4px">'+e.date+'</td><td style="font-size:10px;color:var(--text2)">'+e.type+'</td><td style="font-size:10px;text-align:right;color:var(--accent)">-&#8369;'+fmt(Math.abs(e.amount))+'</td><td style="font-size:10px;color:var(--text2)">'+(e.remark||'&#8212;')+'</td><td style="font-size:10px;color:var(--text3)">'+e.by+'</td></tr>').join(''))+'</div>':'')
         :'<div style="font-size:11px;color:var(--text2);margin-bottom:8px">No active phone installment.</div>')
     +'<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px" onclick="openAddPhone(currentLedgerName)">+ Add Phone Record</button>'
