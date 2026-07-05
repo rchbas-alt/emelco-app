@@ -3901,6 +3901,7 @@ function finalizePaySlip(){
   data.snapTripCA=snapRows.reduce((a,r)=>a+r.ca,0);
   const s=findStaffByName(currentSlipName);
   data.staffId=s?s.staffId:'';
+  const prior=payrollSlips[key]; // capture BEFORE overwrite — needed to reverse a re-finalize
   payrollSlips[key]=data;
   savePayrollSlips();
 
@@ -3908,6 +3909,32 @@ function finalizePaySlip(){
   loadLedger();
   const ldg=getLedger(currentSlipName);
   const weekLabel='Week '+currentSlipWeek+' payroll';
+
+  // RE-FINALIZE SAFETY: if this slip was already finalized, undo its previous
+  // ledger movements first — otherwise fixing a typo would deduct CA twice
+  // and double-count bond savings.
+  if(prior && prior.finalizedAt){
+    const revLabel='Week '+currentSlipWeek+' re-finalize — reversing previous slip';
+    if(n(prior.caRequest)>0){
+      ldg.ca+=n(prior.caRequest);
+      addTxn(currentSlipName,'ca','reversal',n(prior.caRequest),revLabel);
+    }
+    if(n(prior.bond)>0){
+      ldg.bond=Math.max(0,ldg.bond-n(prior.bond));
+      addTxn(currentSlipName,'bond','reversal',-n(prior.bond),revLabel);
+    }
+    if(n(prior.phone)>0){
+      const pp=ldg.phone.find(p=>p.id===prior.phonePlanId)||ldg.phone.find(p=>p.status==='active')||ldg.phone[ldg.phone.length-1];
+      if(pp){
+        pp.balance+=n(prior.phone);
+        if(pp.status==='closed'&&pp.balance>0) pp.status='active';
+        if(!ledgerTxn[currentSlipName]) ledgerTxn[currentSlipName]={ca:[],bond:[],phone:{}};
+        if(!ledgerTxn[currentSlipName].phone[pp.id]) ledgerTxn[currentSlipName].phone[pp.id]=[];
+        ledgerTxn[currentSlipName].phone[pp.id].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type:'reversal',amount:n(prior.phone),remark:revLabel,by:currentRole||'ops',dev:getDeviceName()});
+        saveLedgerTxn();
+      }
+    }
+  }
 
   if(data.caRequest>0){
     ldg.ca=Math.max(0,ldg.ca-data.caRequest);
@@ -3920,6 +3947,7 @@ function finalizePaySlip(){
   if(data.phone>0){
     const ap=ldg.phone.find(p=>p.status==='active');
     if(ap){
+      data.phonePlanId=ap.id; // remembered so a future re-finalize reverses the right plan
       ap.balance=Math.max(0,ap.balance-data.phone);
       if(ap.balance===0) ap.status='closed';
       if(!ledgerTxn[currentSlipName]) ledgerTxn[currentSlipName]={ca:[],bond:[],phone:{}};
