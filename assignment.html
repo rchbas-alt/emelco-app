@@ -240,7 +240,14 @@ function renderGrid(){
   } else {
     activePlates.forEach(plate => {
       const tr = document.createElement('tr');
-      let html = `<td class="plate-cell">${plate}</td>`;
+      const hasToday = weekDays.some((d, idx) => {
+        const iso = fmtDate(d);
+        return iso === todayIso && (tripsByPlateDay[plate+'|'+iso]||[]).length > 0;
+      });
+      const plateCellStyle = (todayIso >= fmtDate(weekDays[0]) && todayIso <= fmtDate(weekDays[6]) && !hasToday)
+        ? 'background:var(--noassign-bg);border-right:2px solid var(--noassign-border);'
+        : '';
+      let html = `<td class="plate-cell" style="${plateCellStyle}">${plate}</td>`;
       weekDays.forEach((d, idx) => {
         const iso = fmtDate(d);
         const key = plate + '|' + iso;
@@ -248,7 +255,6 @@ function renderGrid(){
         dayTotals[idx] += dayTrips.length;
         const isToday = iso === todayIso;
         let cellClass = isToday ? 'today-col' : '';
-        if(isToday && dayTrips.length===0) cellClass += ' noassign';
         if(dayTrips.length===0){
           html += `<td class="${cellClass}"><div class="dash">—</div></td>`;
         } else {
