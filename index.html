@@ -1052,7 +1052,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607021550'; // bumped: removed bond balance from printed pay slip (CA and Phone balance only)
+const APP_VERSION = '202607111850'; // bumped: fixed re-finalized slip balance preview (CA/Bond/Phone), added weekly bond total card, hid Revenue card from Operations
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3518,11 +3518,21 @@ function renderPayroll(){
   const totalNet=totalDrvNet+totalHlpNet;
   const totalTrips=wt.length;
   let totalRS=0; wt.forEach(t=>{const c=computeAll(t);totalRS+=c.rs;});
+  // Total bond savings collected this week — from finalized slips (dedupe combined driver+helper people)
+  const bondNames=[...new Set([...drvList.map(p=>p.name),...hlpList.map(p=>p.name)])];
+  let totalBondWeek=0, bondContributors=0;
+  bondNames.forEach(nm=>{
+    const sl=payrollSlips[slipKey(weekNum,nm)];
+    if(sl && sl.finalizedAt && n(sl.bond)>0){ totalBondWeek+=n(sl.bond); bondContributors++; }
+  });
+  const revenueCard = currentRole==='operations' ? '' :
+    `<div class="stat-card income"><div class="stat-label">Revenue (R+S)</div><div class="stat-value">₱${fmtK(totalRS)}</div><div class="stat-sub">Rate + Surcharge</div></div>`;
   document.getElementById('payroll-summary-cards').innerHTML=`
     <div class="stat-card trips"><div class="stat-label">Trips This Week</div><div class="stat-value">${totalTrips}</div><div class="stat-sub">Fri–Thu Week ${weekNum}</div></div>
-    <div class="stat-card income"><div class="stat-label">Revenue (R+S)</div><div class="stat-value">₱${fmtK(totalRS)}</div><div class="stat-sub">Rate + Surcharge</div></div>
+    ${revenueCard}
     <div class="stat-card expense"><div class="stat-label">Driver Pay Out</div><div class="stat-value">₱${fmtK(totalDrvNet)}</div><div class="stat-sub">${drvList.length} drivers</div></div>
-    <div class="stat-card expense"><div class="stat-label">Helper Pay Out</div><div class="stat-value">₱${fmtK(totalHlpNet)}</div><div class="stat-sub">${hlpList.length} helpers</div></div>`;
+    <div class="stat-card expense"><div class="stat-label">Helper Pay Out</div><div class="stat-value">₱${fmtK(totalHlpNet)}</div><div class="stat-sub">${hlpList.length} helpers</div></div>
+    <div class="stat-card income"><div class="stat-label">Bond Savings This Week</div><div class="stat-value">₱${fmtK(totalBondWeek)}</div><div class="stat-sub">${bondContributors} staff · finalized slips only</div></div>`;
 
   // Trip detail
   document.getElementById('payroll-trip-body').innerHTML=wt.map(t=>`<tr>
@@ -3667,6 +3677,18 @@ function renderPaySlip(){
   const ldg=getLedger(name);
   const activePhone=ldg.phone.find(p=>p.status==='active');
 
+  // BALANCE PREVIEW FIX: if this slip was already finalized, its deductions are
+  // already inside the current ledger balance. Re-finalizing reverses them first,
+  // so the preview must show the pre-deduction (effective) balance — otherwise a
+  // reopened slip implies a double deduction (e.g. 5,900 → 5,200 instead of 6,600 → 5,900).
+  const wasFinalized=!!saved.finalizedAt;
+  const effCA=n(ldg.ca)+(wasFinalized?n(saved.caRequest):0);
+  const effBond=Math.max(0,n(ldg.bond)-(wasFinalized?n(saved.bond):0));
+  let effPhoneBal=activePhone?n(activePhone.balance):0;
+  if(wasFinalized && n(saved.phone)>0 && activePhone && (!saved.phonePlanId || saved.phonePlanId===activePhone.id)){
+    effPhoneBal+=n(saved.phone);
+  }
+
   // Helper to show balance hint next to deduction field
   const balHint=(label,bal,dir)=>{
     if(!bal && bal!==0) return '';
@@ -3753,7 +3775,7 @@ function renderPaySlip(){
         <tr><td style="padding:3px 0">CA from Trip</td><td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td></tr>
         <tr>
           <td style="padding:3px 0">CA Request
-            <div id="sl-ca-hint" style="font-size:10px;color:var(--text2)">Balance: <strong style="color:var(--red)">₱${fmt(ldg.ca)}</strong> → after: <strong id="sl-ca-after" style="color:var(--red)">₱${fmt(ldg.ca)}</strong></div>
+            <div id="sl-ca-hint" style="font-size:10px;color:var(--text2)">Balance: <strong style="color:var(--red)">₱${fmt(effCA)}</strong> → after: <strong id="sl-ca-after" style="color:var(--red)">₱${fmt(effCA)}</strong></div>
           </td>
           <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-carequest" value="${saved.caRequest||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td>
         </tr>
@@ -3785,12 +3807,12 @@ function renderPaySlip(){
           <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-water" value="${saved.water!==undefined?saved.water:(ldg.water||'')}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td>
         </tr>
         <tr>
-          <td style="padding:3px 0">Phone ${activePhone?`<div style="font-size:10px;color:var(--text2)">${activePhone.brand} ${activePhone.model} · Balance: <strong style="color:var(--accent)">₱${fmt(activePhone.balance)}</strong> → after: <strong id="sl-phone-after" style="color:var(--accent)">₱${fmt(activePhone.balance)}</strong></div>`:''}
+          <td style="padding:3px 0">Phone ${activePhone?`<div style="font-size:10px;color:var(--text2)">${activePhone.brand} ${activePhone.model} · Balance: <strong style="color:var(--accent)">₱${fmt(effPhoneBal)}</strong> → after: <strong id="sl-phone-after" style="color:var(--accent)">₱${fmt(effPhoneBal)}</strong></div>`:''}
           </td>
           <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-phone" value="${saved.phone||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td>
         </tr>
         <tr>
-          <td style="padding:3px 0">Bond <div style="font-size:10px;color:var(--text2)">Savings Balance: <strong style="color:var(--green)">₱${fmt(ldg.bond)}</strong> → after: <strong id="sl-bond-after" style="color:var(--green)">₱${fmt(ldg.bond)}</strong></div></td>
+          <td style="padding:3px 0">Bond <div style="font-size:10px;color:var(--text2)">Savings Balance: <strong style="color:var(--green)">₱${fmt(effBond)}</strong> → after: <strong id="sl-bond-after" style="color:var(--green)">₱${fmt(effBond)}</strong></div></td>
           <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-bond" value="${saved.bond||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td>
         </tr>
         <tr><td style="padding:3px 0">Other Deduction <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
@@ -3817,9 +3839,9 @@ function renderPaySlip(){
   document.getElementById('slip-modal-body').dataset.totalPay=totalPay;
   document.getElementById('slip-modal-body').dataset.totalMano=totalMano;
   document.getElementById('slip-modal-body').dataset.totalCA=totalCA;
-  document.getElementById('slip-modal-body').dataset.ldgCA=ldg.ca||0;
-  document.getElementById('slip-modal-body').dataset.ldgBond=ldg.bond||0;
-  document.getElementById('slip-modal-body').dataset.ldgPhone=activePhone?activePhone.balance:0;
+  document.getElementById('slip-modal-body').dataset.ldgCA=effCA;
+  document.getElementById('slip-modal-body').dataset.ldgBond=effBond;
+  document.getElementById('slip-modal-body').dataset.ldgPhone=effPhoneBal;
   updateSlipTotals();
 
   const finalizedNote=document.getElementById('slip-finalized-note');
