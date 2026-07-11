@@ -1052,7 +1052,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607111850'; // bumped: fixed re-finalized slip balance preview (CA/Bond/Phone), added weekly bond total card, hid Revenue card from Operations
+const APP_VERSION = '202607111925'; // bumped: fixed re-finalized slip balance preview (CA/Bond/Phone), added weekly bond total card, hid Revenue card from Operations
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3530,9 +3530,9 @@ function renderPayroll(){
   document.getElementById('payroll-summary-cards').innerHTML=`
     <div class="stat-card trips"><div class="stat-label">Trips This Week</div><div class="stat-value">${totalTrips}</div><div class="stat-sub">Fri–Thu Week ${weekNum}</div></div>
     ${revenueCard}
-    <div class="stat-card expense"><div class="stat-label">Driver Pay Out</div><div class="stat-value">₱${fmtK(totalDrvNet)}</div><div class="stat-sub">${drvList.length} drivers</div></div>
-    <div class="stat-card expense"><div class="stat-label">Helper Pay Out</div><div class="stat-value">₱${fmtK(totalHlpNet)}</div><div class="stat-sub">${hlpList.length} helpers</div></div>
-    <div class="stat-card income"><div class="stat-label">Bond Savings This Week</div><div class="stat-value">₱${fmtK(totalBondWeek)}</div><div class="stat-sub">${bondContributors} staff · finalized slips only</div></div>`;
+    <div class="stat-card expense"><div class="stat-label">Driver Pay Out</div><div class="stat-value">₱${fmt(totalDrvNet)}</div><div class="stat-sub">${drvList.length} drivers</div></div>
+    <div class="stat-card expense"><div class="stat-label">Helper Pay Out</div><div class="stat-value">₱${fmt(totalHlpNet)}</div><div class="stat-sub">${hlpList.length} helpers</div></div>
+    <div class="stat-card income"><div class="stat-label">Bond Savings This Week</div><div class="stat-value">₱${fmt(totalBondWeek)}</div><div class="stat-sub">${bondContributors} staff · finalized slips only</div></div>`;
 
   // Trip detail
   document.getElementById('payroll-trip-body').innerHTML=wt.map(t=>`<tr>
