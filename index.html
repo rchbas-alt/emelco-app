@@ -641,6 +641,7 @@ body.role-operations .fin-only{display:none!important}
         <option value="all">All Staff</option>
         <option value="DRIVER">Drivers</option>
         <option value="HELPER">Helpers</option>
+        <option value="OAT">Office / Admin / Tech</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="openImportLedger(false)">📥 Import Opening Balances</button>
       <button class="btn btn-ghost btn-sm" onclick="openImportLedger(true)" title="Clears existing balances and re-imports from Excel data">🔄 Re-import (Reset Balances)</button>
@@ -1052,7 +1053,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607111925'; // bumped: fixed re-finalized slip balance preview (CA/Bond/Phone), added weekly bond total card, hid Revenue card from Operations
+const APP_VERSION = '202607112130'; // bumped: office payroll now posts CA/bond/phone to ledger with reversal safety, balance previews, ledger page includes Office/Admin/Tech
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -3520,11 +3521,18 @@ function renderPayroll(){
   let totalRS=0; wt.forEach(t=>{const c=computeAll(t);totalRS+=c.rs;});
   // Total bond savings collected this week — from finalized slips (dedupe combined driver+helper people)
   const bondNames=[...new Set([...drvList.map(p=>p.name),...hlpList.map(p=>p.name)])];
-  let totalBondWeek=0, bondContributors=0;
+  let totalBondWeek=0, bondContributors=0, totalCAReqWeek=0;
   bondNames.forEach(nm=>{
     const sl=payrollSlips[slipKey(weekNum,nm)];
-    if(sl && sl.finalizedAt && n(sl.bond)>0){ totalBondWeek+=n(sl.bond); bondContributors++; }
+    if(sl && sl.finalizedAt){
+      if(n(sl.bond)>0){ totalBondWeek+=n(sl.bond); bondContributors++; }
+      totalCAReqWeek+=n(sl.caRequest);
+    }
   });
+  // CA taken during trips this week (recovered from same week's pay)
+  let totalCATripWeek=0;
+  wt.forEach(t=>{ totalCATripWeek+=n(t.caDrv)+n(t.caH1)+n(t.caH2); });
+  const totalCAWeek=totalCATripWeek+totalCAReqWeek;
   const revenueCard = currentRole==='operations' ? '' :
     `<div class="stat-card income"><div class="stat-label">Revenue (R+S)</div><div class="stat-value">₱${fmtK(totalRS)}</div><div class="stat-sub">Rate + Surcharge</div></div>`;
   document.getElementById('payroll-summary-cards').innerHTML=`
@@ -3532,7 +3540,8 @@ function renderPayroll(){
     ${revenueCard}
     <div class="stat-card expense"><div class="stat-label">Driver Pay Out</div><div class="stat-value">₱${fmt(totalDrvNet)}</div><div class="stat-sub">${drvList.length} drivers</div></div>
     <div class="stat-card expense"><div class="stat-label">Helper Pay Out</div><div class="stat-value">₱${fmt(totalHlpNet)}</div><div class="stat-sub">${hlpList.length} helpers</div></div>
-    <div class="stat-card income"><div class="stat-label">Bond Savings This Week</div><div class="stat-value">₱${fmt(totalBondWeek)}</div><div class="stat-sub">${bondContributors} staff · finalized slips only</div></div>`;
+    <div class="stat-card income"><div class="stat-label">Bond Savings This Week</div><div class="stat-value">₱${fmt(totalBondWeek)}</div><div class="stat-sub">${bondContributors} staff · finalized slips only</div></div>
+    <div class="stat-card income"><div class="stat-label">CA Recovered This Week</div><div class="stat-value">₱${fmt(totalCAWeek)}</div><div class="stat-sub">₱${fmt(totalCATripWeek)} trip CA + ₱${fmt(totalCAReqWeek)} CA payback (finalized)</div></div>`;
 
   // Trip detail
   document.getElementById('payroll-trip-body').innerHTML=wt.map(t=>`<tr>
@@ -3774,7 +3783,7 @@ function renderPaySlip(){
       <table style="width:100%;font-size:12px">
         <tr><td style="padding:3px 0">CA from Trip</td><td class="num-cell" style="color:var(--red)">₱${fmt(totalCA)}</td></tr>
         <tr>
-          <td style="padding:3px 0">CA Request
+          <td style="padding:3px 0">CA Payback
             <div id="sl-ca-hint" style="font-size:10px;color:var(--text2)">Balance: <strong style="color:var(--red)">₱${fmt(effCA)}</strong> → after: <strong id="sl-ca-after" style="color:var(--red)">₱${fmt(effCA)}</strong></div>
           </td>
           <td class="num-cell"><input type="number" class="form-input slip-input" id="sl-carequest" value="${saved.caRequest||''}" placeholder="0" style="width:90px;text-align:right" oninput="updateSlipTotals()"></td>
@@ -4003,9 +4012,20 @@ function printPaySlip(){
   loadLedger();
   const ldg=getLedger(currentSlipName);
   const activePhone=ldg.phone.find(p=>p.status==='active');
-  const caBalAfter=Math.max(0,(ldg.ca||0)-n(data.caRequest));
-  const phoneBalAfter=activePhone?Math.max(0,activePhone.balance-n(data.phone)):0;
-  const bondBalAfter=(ldg.bond||0)+n(data.bond);
+  // Same fix as renderPaySlip: if this slip is already finalized, its deductions are
+  // already inside the current ledger balance — add them back so the printed
+  // before → after line reflects the true movement of THIS slip.
+  const savedPrint=payrollSlips[slipKey(currentSlipWeek,currentSlipName)]||{};
+  const wasFinalizedPrint=!!savedPrint.finalizedAt;
+  const effCAPrint=n(ldg.ca)+(wasFinalizedPrint?n(savedPrint.caRequest):0);
+  const effBondPrint=Math.max(0,n(ldg.bond)-(wasFinalizedPrint?n(savedPrint.bond):0));
+  let effPhonePrint=activePhone?n(activePhone.balance):0;
+  if(wasFinalizedPrint && n(savedPrint.phone)>0 && activePhone && (!savedPrint.phonePlanId || savedPrint.phonePlanId===activePhone.id)){
+    effPhonePrint+=n(savedPrint.phone);
+  }
+  const caBalAfter=Math.max(0,effCAPrint-n(data.caRequest));
+  const phoneBalAfter=activePhone?Math.max(0,effPhonePrint-n(data.phone)):0;
+  const bondBalAfter=effBondPrint+n(data.bond);
   const gross=totalPay+totalMano+n(data.otherPay)+n(data.thirteenthMonth)+n(data.bonus);
   const totalDed=totalCA+n(data.caRequest)+n(data.sss)+n(data.philhealth)+n(data.pagibig)+n(data.rent)+n(data.electric)+n(data.water)+n(data.phone)+n(data.bond)+n(data.otherDeduction);
   const net=gross-totalDed;
@@ -4045,14 +4065,14 @@ function printPaySlip(){
   // Deduction rows — omit zero/blank items, show balances for CA and Phone
   const dedItems=[
     {label:'CA from Trip', amount:totalCA, alwaysShow:true},
-    {label:'CA Request', amount:data.caRequest, balBefore:ldg.ca, balAfter:caBalAfter, balLabel:'CA Balance'},
+    {label:'CA Payback', amount:data.caRequest, balBefore:effCAPrint, balAfter:caBalAfter, balLabel:'CA Balance'},
     {label:'SSS'+(data.sssPeriod?' ('+data.sssPeriod+')':''), amount:data.sss},
     {label:'PhilHealth'+(data.philhealthPeriod?' ('+data.philhealthPeriod+')':''), amount:data.philhealth},
     {label:'Pag-IBIG'+(data.pagibigPeriod?' ('+data.pagibigPeriod+')':''), amount:data.pagibig},
     {label:'Rent', amount:data.rent},
     {label:'Electric', amount:data.electric},
     {label:'Water', amount:data.water},
-    {label:'Phone'+(activePhone?' ('+activePhone.brand+' '+activePhone.model+')':''), amount:data.phone, balBefore:activePhone?activePhone.balance:0, balAfter:phoneBalAfter, balLabel:'Phone Balance'},
+    {label:'Phone'+(activePhone?' ('+activePhone.brand+' '+activePhone.model+')':''), amount:data.phone, balBefore:activePhone?effPhonePrint:0, balAfter:phoneBalAfter, balLabel:'Phone Balance'},
     {label:'Bond (Savings)', amount:data.bond},
     {label:'Other Deduction'+(data.otherDeductionRemark?' ('+data.otherDeductionRemark+')':''), amount:data.otherDeduction},
   ];
@@ -4204,6 +4224,20 @@ function renderOfficeSlip(){
   const saved=officeSlips[key]||{};
   const defaultDays=officeDaysInPeriod(currentOfficeStart,currentOfficeEnd);
 
+  // Ledger balances for previews — same effective-balance rule as weekly slips:
+  // if this slip is already finalized, its deductions are already inside the
+  // current balance, so add them back before previewing.
+  loadLedger();
+  const ldg=getLedger(s.name||'');
+  const activePhone=ldg.phone.find(p=>p.status==='active');
+  const wasFinalized=!!saved.finalizedAt;
+  const effCA=n(ldg.ca)+(wasFinalized?n(saved.cashAdvance):0);
+  const effBond=Math.max(0,n(ldg.bond)-(wasFinalized?n(saved.bond):0));
+  let effPhoneBal=activePhone?n(activePhone.balance):0;
+  if(wasFinalized && n(saved.phone)>0 && activePhone && (!saved.phonePlanId || saved.phonePlanId===activePhone.id)){
+    effPhoneBal+=n(saved.phone);
+  }
+
   document.getElementById('office-slip-modal-body').innerHTML=`
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
     <div><span style="color:var(--text2)">Name</span><div style="font-weight:700">${s.name||''}</div></div>
@@ -4237,7 +4271,8 @@ function renderOfficeSlip(){
     <div>
       <div style="font-size:12px;font-weight:700;margin-bottom:8px">Deductions</div>
       <table style="width:100%;font-size:12px">
-        <tr><td style="padding:3px 0">Cash Advance</td>
+        <tr><td style="padding:3px 0">CA Payback
+          <div style="font-size:10px;color:var(--text2)">Balance: <strong style="color:var(--red)">₱${fmt(effCA)}</strong> → after: <strong id="os-ca-after" style="color:var(--red)">₱${fmt(effCA)}</strong></div></td>
           <td class="num-cell"><input type="number" class="form-input" id="os-ca" value="${saved.cashAdvance||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
         <tr><td style="padding:3px 0">SSS</td>
           <td class="num-cell"><input type="number" class="form-input" id="os-sss" value="${saved.sss||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
@@ -4251,9 +4286,10 @@ function renderOfficeSlip(){
           <td class="num-cell"><input type="number" class="form-input" id="os-electric" value="${saved.electric||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
         <tr><td style="padding:3px 0">Water</td>
           <td class="num-cell"><input type="number" class="form-input" id="os-water" value="${saved.water||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
-        <tr><td style="padding:3px 0">Phone</td>
+        <tr><td style="padding:3px 0">Phone ${activePhone?`<div style="font-size:10px;color:var(--text2)">${activePhone.brand} ${activePhone.model} · Balance: <strong style="color:var(--accent)">₱${fmt(effPhoneBal)}</strong> → after: <strong id="os-phone-after" style="color:var(--accent)">₱${fmt(effPhoneBal)}</strong></div>`:''}</td>
           <td class="num-cell"><input type="number" class="form-input" id="os-phone" value="${saved.phone||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
-        <tr><td style="padding:3px 0">Bond</td>
+        <tr><td style="padding:3px 0">Bond
+          <div style="font-size:10px;color:var(--text2)">Savings Balance: <strong style="color:var(--green)">₱${fmt(effBond)}</strong> → after: <strong id="os-bond-after" style="color:var(--green)">₱${fmt(effBond)}</strong></div></td>
           <td class="num-cell"><input type="number" class="form-input" id="os-bond" value="${saved.bond||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
         <tr><td style="padding:3px 0">Other Deduction <span style="color:var(--text2);font-size:10px">(needs remark)</span></td>
           <td class="num-cell"><input type="number" class="form-input" id="os-otherded" value="${saved.otherDeduction||''}" placeholder="0" style="width:100px;text-align:right" oninput="updateOfficeSlipTotals()"></td></tr>
@@ -4276,6 +4312,10 @@ function renderOfficeSlip(){
     </div>
   </div>
   `;
+  const obody=document.getElementById('office-slip-modal-body');
+  obody.dataset.ldgCA=effCA;
+  obody.dataset.ldgBond=effBond;
+  obody.dataset.ldgPhone=effPhoneBal;
   updateOfficeSlipTotals();
   const note=document.getElementById('office-slip-finalized-note');
   note.textContent = saved.finalizedAt ? ('Last finalized: '+new Date(saved.finalizedAt).toLocaleString()) : 'Not yet finalized for this period.';
@@ -4313,6 +4353,16 @@ function updateOfficeSlipTotals(){
     note.textContent = net<0 ? '⚠️ Negative — staff owes this amount' : '';
     note.style.display = net<0 ? '' : 'none';
   }
+
+  // Live after-deduction previews (effective balances stored by renderOfficeSlip)
+  const obody=document.getElementById('office-slip-modal-body');
+  const ldgCA=n(obody.dataset.ldgCA), ldgBond=n(obody.dataset.ldgBond), ldgPhone=n(obody.dataset.ldgPhone);
+  const caAfter=document.getElementById('os-ca-after');
+  if(caAfter){ const v=ldgCA-ca; caAfter.textContent='₱'+fmt(v); caAfter.style.color=v<0?'var(--accent)':'var(--red)'; }
+  const bondAfter=document.getElementById('os-bond-after');
+  if(bondAfter){ bondAfter.textContent='₱'+fmt(ldgBond+bond); }
+  const phoneAfter=document.getElementById('os-phone-after');
+  if(phoneAfter){ phoneAfter.textContent='₱'+fmt(Math.max(0,ldgPhone-phone)); }
 }
 
 function collectOfficeSlipData(){
@@ -4337,8 +4387,70 @@ function finalizeOfficeSlip(){
   data.finalizedAt=new Date().toISOString();
   data.staffId=s?s.staffId:''; data.name=s?s.name:'';
   data.periodStart=currentOfficeStart; data.periodEnd=currentOfficeEnd;
+  const prior=officeSlips[key]; // capture BEFORE overwrite — needed to reverse a re-finalize
   officeSlips[key]=data;
   saveOfficeSlips();
+
+  // ---- Ledger posting (same pattern as weekly finalizePaySlip) ----
+  loadLedger();
+  const ldg=getLedger(data.name);
+  const periodLabel='Payroll '+fmtDate(currentOfficeStart)+' – '+fmtDate(currentOfficeEnd);
+
+  // RE-FINALIZE SAFETY: undo the previous slip's ledger movements first,
+  // otherwise fixing a typo would deduct CA twice and double-count bond.
+  if(prior && prior.finalizedAt){
+    const revLabel=periodLabel+' re-finalize — reversing previous slip';
+    if(n(prior.cashAdvance)>0){
+      ldg.ca+=n(prior.cashAdvance);
+      addTxn(data.name,'ca','reversal',n(prior.cashAdvance),revLabel);
+    }
+    if(n(prior.bond)>0){
+      ldg.bond=Math.max(0,ldg.bond-n(prior.bond));
+      addTxn(data.name,'bond','reversal',-n(prior.bond),revLabel);
+    }
+    if(n(prior.phone)>0){
+      const pp=ldg.phone.find(p=>p.id===prior.phonePlanId)||ldg.phone.find(p=>p.status==='active')||ldg.phone[ldg.phone.length-1];
+      if(pp){
+        pp.balance+=n(prior.phone);
+        if(pp.status==='closed'&&pp.balance>0) pp.status='active';
+        if(!ledgerTxn[data.name]) ledgerTxn[data.name]={ca:[],bond:[],phone:{}};
+        if(!ledgerTxn[data.name].phone[pp.id]) ledgerTxn[data.name].phone[pp.id]=[];
+        ledgerTxn[data.name].phone[pp.id].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type:'reversal',amount:n(prior.phone),remark:revLabel,by:currentRole||'ops',dev:getDeviceName()});
+        saveLedgerTxn();
+      }
+    }
+  }
+
+  if(data.cashAdvance>0){
+    ldg.ca=Math.max(0,ldg.ca-data.cashAdvance);
+    addTxn(data.name,'ca','deducted',-data.cashAdvance,periodLabel);
+  }
+  if(data.bond>0){
+    ldg.bond+=data.bond;
+    addTxn(data.name,'bond','deducted',data.bond,periodLabel+' (bond savings)');
+  }
+  if(data.phone>0){
+    const ap=ldg.phone.find(p=>p.status==='active');
+    if(ap){
+      data.phonePlanId=ap.id; // remembered so a future re-finalize reverses the right plan
+      ap.balance=Math.max(0,ap.balance-data.phone);
+      if(ap.balance===0) ap.status='closed';
+      if(!ledgerTxn[data.name]) ledgerTxn[data.name]={ca:[],bond:[],phone:{}};
+      if(!ledgerTxn[data.name].phone[ap.id]) ledgerTxn[data.name].phone[ap.id]=[];
+      ledgerTxn[data.name].phone[ap.id].unshift({id:genId(),date:new Date().toISOString().slice(0,10),type:'installment',amount:-data.phone,remark:periodLabel,by:currentRole||'ops',dev:getDeviceName()});
+      saveLedgerTxn();
+      officeSlips[key]=data; saveOfficeSlips(); // persist phonePlanId
+    }
+  }
+  // Update SSS/PhilHealth/Pag-IBIG last deducted
+  const today=new Date().toISOString().slice(0,10);
+  if(data.sss>0){ ldg.sss={lastDate:today,lastAmount:data.sss,lastPeriod:'SSS '+periodLabel.replace('Payroll ','')}; }
+  if(data.philhealth>0){ ldg.philhealth={lastDate:today,lastAmount:data.philhealth,lastPeriod:'PhilHealth '+periodLabel.replace('Payroll ','')}; }
+  if(data.pagibig>0){ ldg.pagibig={lastDate:today,lastAmount:data.pagibig,lastPeriod:'Pag-IBIG '+periodLabel.replace('Payroll ','')}; }
+
+  touchLedger(data.name);
+  saveLedger();
+
   toast('Office pay slip finalized and saved ✓','success');
   renderOfficeSlip();
   renderRecentOfficeSlips();
@@ -4472,8 +4584,9 @@ function clearLedgerData(){
 function renderLedgerSummary(){
   loadLedger();
   const filter=document.getElementById('ledger-filter').value;
-  let filtered=staff.filter(s=>['DRIVER','HELPER'].includes(s.position));
-  if(filter!=='all') filtered=filtered.filter(s=>s.position===filter);
+  let filtered=staff.filter(s=>['DRIVER','HELPER','OFFICE','ADMIN','TECH'].includes(s.position));
+  if(filter==='OAT') filtered=filtered.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position));
+  else if(filter!=='all') filtered=filtered.filter(s=>s.position===filter);
   const statusOrder={Active:0,'On Call':1,Idle:2,Resigned:3};
   filtered.sort((a,b)=>{
     const so=(statusOrder[a.status]??9)-(statusOrder[b.status]??9);
@@ -4482,12 +4595,14 @@ function renderLedgerSummary(){
   });
   const el=document.getElementById('ledger-summary-table');
   if(!filtered.length){el.innerHTML='<div style="color:var(--text2);padding:16px">No staff to show.</div>';return;}
-  // Always compute all three groups for the top bar
+  // Always compute all groups for the top bar
   const allDH=staff.filter(s=>['DRIVER','HELPER'].includes(s.position));
+  const allOAT=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position));
   const groups=[
-    {label:'All Staff', members:allDH},
+    {label:'All Staff', members:[...allDH,...allOAT]},
     {label:'Drivers', members:allDH.filter(s=>s.position==='DRIVER')},
     {label:'Helpers', members:allDH.filter(s=>s.position==='HELPER')},
+    {label:'Office / Admin / Tech', members:allOAT},
   ];
   const bar=document.getElementById('ledger-totals-bar');
   if(bar){
