@@ -405,17 +405,39 @@ body.role-operations .fin-only{display:none!important}
 <!-- ====== GUIDE PAGE ====== -->
 <div class="page" id="page-guide">
   <div class="guide-section">
-    <h3>🚀 How to Use EMELCO Trip Manager</h3>
+    <h3>🗂 Tabs at a Glance</h3>
     <div class="guide-steps">
-      <div class="guide-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">Your data is already loaded</div><div class="step-desc">628 trips from your CSV have been pre-loaded into the app. They are saved in your browser's local storage — they stay even after closing the browser tab or the file.</div></div></div>
-      <div class="guide-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">Adding a new trip daily</div><div class="step-desc">Click <strong>"+ New Trip"</strong> in the top right. Fill in the required fields (Trip Date, Client, Driver, Plate). Formula fields like Rate+Surcharge, Income, %Profit, and Week numbers compute automatically as you type.</div></div></div>
-      <div class="guide-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">Editing a trip</div><div class="step-desc">Find the trip in the table and click the ✏️ button on the right. Update any field. All formula fields recalculate live.</div></div></div>
-      <div class="guide-step"><div class="step-num">4</div><div class="step-content"><div class="step-title">Managing Staff (Drivers & Helpers)</div><div class="step-desc">Go to the <strong>👤 Staff</strong> tab to view all drivers and helpers. Click <strong>Edit</strong> on any card to update their name, start date, status (Active/Idle), or position. Add new staff with the "+ Add Staff" button. Staff changes immediately reflect in the trip entry dropdowns.</div></div></div>
-      <div class="guide-step"><div class="step-num">5</div><div class="step-content"><div class="step-title">Managing the Fleet</div><div class="step-desc">Go to the <strong>🚛 Fleet</strong> tab to view all trucks with their plates, types, and usage stats. Add or edit trucks as needed. Fleet changes appear immediately in the truck dropdown when adding trips.</div></div></div>
-      <div class="guide-step"><div class="step-num">6</div><div class="step-content"><div class="step-title">Filtering & Searching</div><div class="step-desc">Use the search box and dropdown filters (Client, Area, Week, Driver, Doc Status) to quickly find trips. All filters work together.</div></div></div>
-      <div class="guide-step"><div class="step-num">7</div><div class="step-content"><div class="step-title">Exporting data back to Excel</div><div class="step-desc">Click <strong>"⬇ Export CSV"</strong> to download all trips with all computed columns. Open in Excel and the layout matches your original Trip List format.</div></div></div>
-      <div class="guide-step"><div class="step-num">8</div><div class="step-content"><div class="step-title">Backup & Restore</div><div class="step-desc">Go to the <strong>⬆ Data</strong> tab. Click <strong>"Backup Full Data (JSON)"</strong> regularly to save a copy. To move data to another PC or browser, backup on the old one, then use <strong>"Restore from JSON Backup"</strong> on the new one.</div></div></div>
-      <div class="guide-step"><div class="step-num">9</div><div class="step-content"><div class="step-title">Where is data stored?</div><div class="step-desc">All data lives in your browser's <strong>localStorage</strong> for the HTML file. As long as you open the same HTML file in the same browser, your data persists. Do NOT clear browser data/cache for this file. Use JSON Backup to be safe.</div></div></div>
+      <div class="guide-step"><div class="step-num">🚚</div><div class="step-content"><div class="step-title">Trips</div><div class="step-desc">The daily workspace. Add, edit, search and filter trips. Formula fields (Week numbers, computed totals) fill in automatically as you type.</div></div></div>
+      <div class="guide-step"><div class="step-num">👤</div><div class="step-content"><div class="step-title">Staff</div><div class="step-desc">Drivers, helpers, and office staff — names, status (Active / On Call / Idle / Resigned), start dates, licenses. Changes reflect immediately in trip and payroll dropdowns. Idle days are tracked automatically from trip history.</div></div></div>
+      <div class="guide-step"><div class="step-num">🚛</div><div class="step-content"><div class="step-title">Fleet</div><div class="step-desc">All trucks with plates, types, status and usage stats. Mark a truck Under Maintenance here to flag it on the assignment board.</div></div></div>
+      <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, plus a JSON backup download of trips/staff/fleet for an extra offline copy.</div></div></div>
+      <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
+      <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
+      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and office/admin bi-monthly payroll are visible to the Owner account only. If you don't see these tabs, that's by design — not a bug.</div></div></div>
+    </div>
+
+    <h3 style="margin-top:24px">🚀 Daily Essentials</h3>
+    <div class="guide-steps">
+      <div class="guide-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">Adding a new trip</div><div class="step-desc">Click <strong>"+ New Trip"</strong> in the top right. Fill in the required fields (Trip Date, Client, Driver, Plate). Computed fields update live as you type.</div></div></div>
+      <div class="guide-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">Editing a trip</div><div class="step-desc">Find the trip in the table and click the ✏️ button on the right. All formula fields recalculate automatically.</div></div></div>
+      <div class="guide-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">Filtering &amp; searching</div><div class="step-desc">Use the search box and dropdown filters (Client, Area, Week, Driver, Doc Status) together to quickly find trips.</div></div></div>
+      <div class="guide-step"><div class="step-num">4</div><div class="step-content"><div class="step-title">Exporting to Excel</div><div class="step-desc">Click <strong>"⬇ Export CSV"</strong> on the Trips tab to download trips in the original Trip List layout. Staff and Fleet tabs have their own Excel exports.</div></div></div>
+    </div>
+
+    <h3 style="margin-top:24px">💰 Payroll &amp; Ledger Basics</h3>
+    <div class="guide-steps">
+      <div class="guide-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">Weekly slips</div><div class="step-desc">On the Payroll tab, pick the week and the staff member — trip pay for that week loads automatically. Enter deductions, review the balance preview, then <strong>Finalize</strong>. Finalizing posts the deductions to the Ledger.</div></div></div>
+      <div class="guide-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">Fixing a finalized slip</div><div class="step-desc">Re-open and re-finalize the slip. The system safely reverses the earlier ledger postings before applying the corrected ones — balances stay accurate, no double-deductions.</div></div></div>
+      <div class="guide-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">Ledger balances — what they mean</div><div class="step-desc"><strong>CA</strong> = cash the staff member still owes (goes up when cash is given, down when deducted from pay). <strong>Bond</strong> = the staff member's savings held for year-end (goes up with deductions, down when returned/paid out). <strong>Phone</strong> = remaining installment per device.</div></div></div>
+      <div class="guide-step"><div class="step-num">4</div><div class="step-content"><div class="step-title">Correcting a ledger entry (✎)</div><div class="step-desc">In a staff member's ledger detail, click the ✎ icon on any CA or Bond entry to fix its amount, date, or remark. The balance adjusts automatically. <strong>Every edit is permanently recorded</strong> — who made it, when, from which device, and the before/after values — so use it for genuine corrections and add a short reason when you can. Entries that were edited show a small ✎ mark.</div></div></div>
+      <div class="guide-step"><div class="step-num">5</div><div class="step-content"><div class="step-title">Phone installment corrections</div><div class="step-desc">Phone deduction entries can't be edited directly because they're tied to pay slips — correct them by re-finalizing the slip they came from.</div></div></div>
+    </div>
+
+    <h3 style="margin-top:24px">🔐 Roles, Data &amp; Backups</h3>
+    <div class="guide-steps">
+      <div class="guide-step"><div class="step-num">1</div><div class="step-content"><div class="step-title">Where is data stored?</div><div class="step-desc">Everything syncs automatically to a secure private cloud store — your browser only keeps a working copy. Log in from any machine and the latest data loads. Multiple people can work at the same time; changes merge automatically.</div></div></div>
+      <div class="guide-step"><div class="step-num">2</div><div class="step-content"><div class="step-title">Backups &amp; recovery</div><div class="step-desc">The cloud keeps full history of every save, plus automatic monthly snapshots — recovery is handled by the Owner if ever needed. The JSON backup button on the Data tab is an optional extra offline copy, not something you need to do routinely.</div></div></div>
+      <div class="guide-step"><div class="step-num">3</div><div class="step-content"><div class="step-title">App updates</div><div class="step-desc">When a new version is published, the app shows an update screen and reloads itself — just let it finish. Your data is never affected by app updates.</div></div></div>
     </div>
 
     <h3 style="margin-top:24px">📋 Data Entry Rules & CSV Import Guide</h3>
@@ -1075,7 +1097,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607152230'; // bumped: ledger safety cleanup (import/clear/fresh-start removed), monthly snapshots, scannable commit msgs, Owner ledger Excel export, Operations CSV fin-column fix, audited CA/Bond entry editing with reversal-reapply + newer-wins txn merge
+const APP_VERSION = '202607152300'; // bumped: ledger safety cleanup (import/clear/fresh-start removed), monthly snapshots, scannable commit msgs, Owner ledger Excel export, Operations CSV fin-column fix, audited CA/Bond entry editing with reversal-reapply + newer-wins txn merge; Guide tab rewritten for Operations
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
