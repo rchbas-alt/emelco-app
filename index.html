@@ -218,6 +218,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="header-right">
     <span class="role-badge" id="role-badge" style="display:none"></span>
     <span id="sync-status" style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace">⏳ Connecting…</span>
+    <span id="version-badge" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;cursor:default;border:1px solid var(--border);border-radius:4px;padding:1px 5px"></span>
     <a href="https://rchbas-alt.github.io/emelco-app/assignment.html" target="_blank" class="btn btn-ghost btn-sm" title="View weekly truck assignment grid">📅 Assignment</a>
     <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
     <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
@@ -1097,7 +1098,16 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607152300'; // bumped: ledger safety cleanup (import/clear/fresh-start removed), monthly snapshots, scannable commit msgs, Owner ledger Excel export, Operations CSV fin-column fix, audited CA/Bond entry editing with reversal-reapply + newer-wins txn merge; Guide tab rewritten for Operations
+const APP_VERSION = '202607152315'; // bumped: always-visible version badge in header (hover decodes build date/time)
+// Header version badge — always visible, hover shows the decoded build date/time
+document.addEventListener('DOMContentLoaded',()=>{
+  const vb=document.getElementById('version-badge');
+  if(vb){
+    const v=APP_VERSION;
+    vb.textContent='v'+v;
+    vb.title='App version '+v+' · built '+v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8)+' '+v.slice(8,10)+':'+v.slice(10,12)+' (YYYYMMDDHHII)';
+  }
+});
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
