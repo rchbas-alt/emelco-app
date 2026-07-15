@@ -643,10 +643,11 @@ body.role-operations .fin-only{display:none!important}
         <option value="HELPER">Helpers</option>
         <option value="OAT">Office / Admin / Tech</option>
       </select>
-      <button class="btn btn-ghost btn-sm" onclick="openImportLedger(false)">📥 Import Opening Balances</button>
-      <button class="btn btn-ghost btn-sm" onclick="openImportLedger(true)" title="Clears existing balances and re-imports from Excel data">🔄 Re-import (Reset Balances)</button>
-      <button class="btn btn-danger btn-sm" onclick="clearLedgerData()">🗑 Clear All Ledger Data</button>
-      <button class="btn btn-danger btn-sm" onclick="freshStartPayroll()" title="Clears pay slips + ledger on ALL machines via sync — one-time reset for the Week 28 clean start">🧹 Fresh Start (All Payroll)</button>
+      <!-- Import/Re-import/Clear/Fresh-Start buttons removed (v202607152200).
+           The Wk27 Excel opening data is now history — the live ledger is the source of truth.
+           DISASTER RECOVERY: restore emelco_payroll_2026.json from the emelco-data repo's
+           commit History on GitHub (or from a backups/payroll_YYYY-MM.json monthly snapshot). -->
+      <button class="btn btn-ghost btn-sm fin-only" onclick="exportLedgerExcel()" title="Owner only — full ledger balances + transaction history as Excel">📊 Export Ledger (Excel)</button>
     </div>
   </div>
   <div id="ledger-totals-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
@@ -663,6 +664,27 @@ body.role-operations .fin-only{display:none!important}
     <div class="modal-close" onclick="closeLedgerModal()">✕</div>
   </div>
   <div class="modal-body" id="ledger-modal-body" style="max-height:75vh;overflow-y:auto"></div>
+</div>
+</div>
+
+<!-- ====== LEDGER TXN EDIT MODAL (audited) ====== -->
+<div class="modal-overlay" id="txn-edit-modal">
+<div class="modal" style="max-width:420px">
+  <div class="modal-header">
+    <div><div class="modal-title">Edit Ledger Entry</div><div class="modal-subtitle" id="txn-edit-subtitle"></div></div>
+    <div class="modal-close" onclick="closeEditTxn()">&#10005;</div>
+  </div>
+  <div class="modal-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><label style="font-size:10px;color:var(--text2)">Date</label><input type="date" class="form-input" id="txn-edit-date" style="font-size:12px"></div>
+      <div><label style="font-size:10px;color:var(--text2)">Amount</label><input type="number" class="form-input" id="txn-edit-amount" min="0" step="0.01" style="font-size:12px"></div>
+      <div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Direction</label><select class="form-select" id="txn-edit-dir" style="font-size:12px"></select></div>
+      <div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark</label><input type="text" class="form-input" id="txn-edit-remark" style="font-size:12px"></div>
+      <div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Reason for edit (optional, kept in audit trail)</label><input type="text" class="form-input" id="txn-edit-reason" placeholder="e.g. wrong amount encoded" style="font-size:12px"></div>
+    </div>
+    <div id="txn-edit-preview" style="margin-top:10px;font-size:11px;color:var(--text2)"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="saveEditTxn()">Save Changes</button>
+  </div>
 </div>
 </div>
 
@@ -1053,7 +1075,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607112130'; // bumped: office payroll now posts CA/bond/phone to ledger with reversal safety, balance previews, ledger page includes Office/Admin/Tech
+const APP_VERSION = '202607152230'; // bumped: ledger safety cleanup (import/clear/fresh-start removed), monthly snapshots, scannable commit msgs, Owner ledger Excel export, Operations CSV fin-column fix, audited CA/Bond entry editing with reversal-reapply + newer-wins txn merge
 
 // ===== INIT =====
 // ===== GITHUB SYNC CONFIG =====
@@ -1167,7 +1189,7 @@ const PAYROLL_EPOCH_KEY='emelco_payroll_epoch';
 let ghPayrollSha=null;
 let isPayrollSyncing=false;
 
-const PR_KEYS={slips:'emelco_payroll_slips_2026', office:'emelco_office_slips_2026', ledger:'emelco_ledger_2026', txn:'emelco_ledger_txn_2026'};
+const PR_KEYS={slips:'emelco_payroll_slips_2026', office:'emelco_office_slips_2026', ledger:'emelco_ledger_2026', txn:'emelco_ledger_txn_2026', audit:'emelco_ledger_audit_2026'};
 function prGet(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
 function getPayrollEpoch(){ return parseInt(localStorage.getItem(PAYROLL_EPOCH_KEY)||'0',10)||0; }
 
@@ -1191,8 +1213,14 @@ function mergeLedgerTxns(cloud){
   const local=prGet(PR_KEYS.txn);
   const fp=t=>t.id||[t.date,t.type,t.amount,t.remark].join('|'); // id preferred; fingerprint for legacy entries
   const mergeArr=(a,b)=>{
-    const seen=new Set(), out=[];
-    [...(a||[]),...(b||[])].forEach(t=>{ const f=fp(t); if(!seen.has(f)){ seen.add(f); out.push(t); } });
+    // Union by id; when the same txn exists on both sides, keep the version with the
+    // newer _u edit-timestamp — otherwise a machine's stale copy would undo an edit.
+    const byId=new Map();
+    [...(a||[]),...(b||[])].forEach(t=>{
+      const f=fp(t), prev=byId.get(f);
+      if(!prev || String(t._u||'') > String(prev._u||'')) byId.set(f,t);
+    });
+    const out=[...byId.values()];
     out.sort((x,y)=>String(y.date||'').localeCompare(String(x.date||'')));
     return out;
   };
@@ -1207,6 +1235,11 @@ function mergeLedgerTxns(cloud){
   });
   localStorage.setItem(PR_KEYS.txn, JSON.stringify(merged));
 }
+function mergeLedgerAudit(cloud){
+  // Append-only records keyed by unique id — plain union, existing records never change
+  const local=prGet(PR_KEYS.audit);
+  localStorage.setItem(PR_KEYS.audit, JSON.stringify({...(cloud||{}),...local}));
+}
 
 function adoptPayrollContent(content){
   const cloudEpoch=content.epoch||0;
@@ -1219,6 +1252,7 @@ function adoptPayrollContent(content){
   mergeSlipStore(content.officeSlips, PR_KEYS.office);
   mergeLedgerBalances(content.ledgerData);
   mergeLedgerTxns(content.ledgerTxn);
+  mergeLedgerAudit(content.ledgerAudit);
   ledgerLoaded=false; // in-memory copy is now stale — force reload on next access
 }
 
@@ -1252,15 +1286,23 @@ async function savePayrollToCloud(retrying){
       epoch:getPayrollEpoch(),
       payrollSlips:prGet(PR_KEYS.slips), officeSlips:prGet(PR_KEYS.office),
       ledgerData:prGet(PR_KEYS.ledger), ledgerTxn:prGet(PR_KEYS.txn),
+      ledgerAudit:prGet(PR_KEYS.audit),
       savedAt:new Date().toISOString(), savedBy:getDeviceName()
     };
     const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,1))));
-    const body={ message:`Payroll update ${new Date().toLocaleString('en-PH')}`, content };
+    // Scannable commit message — makes finding a restore point in GitHub History easy
+    const txnCount=Object.values(payload.ledgerTxn||{}).reduce((n,t)=>{
+      Object.entries(t).forEach(([k,v])=>{ if(k==='phone'){ Object.values(v||{}).forEach(a=>n+=Array.isArray(a)?a.length:0); } else if(Array.isArray(v)) n+=v.length; });
+      return n;
+    },0);
+    const msgSummary=`${Object.keys(payload.payrollSlips||{}).length} slips · ${Object.keys(payload.officeSlips||{}).length} office · ${Object.keys(payload.ledgerData||{}).length} ledger staff · ${txnCount} txns`;
+    const body={ message:`Payroll sync ${new Date().toLocaleString('en-PH')} — ${msgSummary} [${getDeviceName()}]`, content };
     if(ghPayrollSha) body.sha=ghPayrollSha;
     const res=await fetch(GH_PAYROLL_API,{ method:'PUT', headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json', 'Content-Type':'application/json' }, body:JSON.stringify(body) });
     if(res.ok){
       ghPayrollSha=(await res.json()).content.sha;
       setSyncStatus('☁️ Payroll saved '+timeAgo(new Date()),'var(--green)');
+      maybeMonthlySnapshot(content); // fire-and-forget monthly backup file
     } else if((res.status===409||res.status===422) && !retrying){
       // Someone else saved payroll first — merge theirs in, then push the union once
       isPayrollSyncing=false;
@@ -1274,6 +1316,36 @@ async function savePayrollToCloud(retrying){
     toast('Payroll cloud save failed — data safe locally','error');
   }
   isPayrollSyncing=false;
+}
+
+// ===== MONTHLY SNAPSHOT — writes backups/payroll_YYYY-MM.json once per month =====
+// Gives a clearly-named restore point so recovery never needs commit archaeology.
+// Non-fatal by design: if the Worker's ALLOWED_PATHS doesn't include "backups/" yet,
+// it warns once and the normal save is unaffected.
+const SNAP_MONTH_KEY='emelco_payroll_snap_month';
+async function maybeMonthlySnapshot(content){
+  try{
+    const ym=new Date().toISOString().slice(0,7); // e.g. "2026-07"
+    if(localStorage.getItem(SNAP_MONTH_KEY)===ym) return; // already done this month
+    const snapApi=`${PROXY_URL}/contents/backups/payroll_${ym}.json`;
+    const hdrs={ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
+    // If the file already exists (e.g. snapshot from another machine), we need its sha to update
+    let sha=null;
+    const meta=await fetch(snapApi+'?t='+Date.now(),{headers:hdrs});
+    if(meta.ok) sha=(await meta.json()).sha;
+    const body={ message:`Monthly payroll snapshot ${ym}`, content };
+    if(sha) body.sha=sha;
+    const res=await fetch(snapApi,{method:'PUT',headers:{...hdrs,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(res.ok){
+      localStorage.setItem(SNAP_MONTH_KEY,ym);
+      console.log('Monthly payroll snapshot saved: backups/payroll_'+ym+'.json');
+    } else if(res.status===403||res.status===404){
+      if(!localStorage.getItem('emelco_snap_path_warned')){
+        localStorage.setItem('emelco_snap_path_warned','1');
+        toast('Monthly backup skipped — add "backups/" to the Worker ALLOWED_PATHS to enable snapshots','error');
+      }
+    }
+  }catch(e){ console.warn('Monthly snapshot failed (non-fatal):',e); }
 }
 
 // Debounced push — coalesces the several store writes inside one finalize into a single save
@@ -2856,8 +2928,16 @@ function nCSV(v){ if(!v)return 0; return parseFloat(String(v).replace(/,/g,'').r
 function exportCSV(){
   if(!trips.length){toast('No trips to export','error');return;}
   const hdrs=['Code','Dispatched Date','Trip Start Date','Trp cut off Date','Client','Area','Destination','Dr #/Urc Shipment','Tripticket','Budget','Drv_Name','H1_Name','H2_Name','Vehicle Plate','tripkey','Truck Type','Rate','Surcharge','Mano_Ccac_Drv','Mano_Ccac_H1','Mano_Ccac_H2','Mano_Others','Drv_Pay','H1_Pay','H2_Pay','Ca_Drv','Ca_H1','Ca_H2','D_Price Per Liter','D-Liter','Diesel','Toll','Food','Passway','Parking','Checker','Load','Gcash Charge','Maintenance','Other Expenses','Gen Remarks','Docs Status','Doc Status Remarks','Payment Status','Payment Status Remarks','Paid-Rate variance','Distance to San Pedro/KM','Rate+Surcharge','R+S+Vat','Expenses','Expenses+Staff Pay','Income','%Profit','Vat','Income With Vat','%Income','Opex','Income After Opex','% Final','week Fri-Thu','Week Mon-Sun'];
-  const rows=trips.map(t=>{const c=computeAll(t);return[t.code,t.dispatchedDate,t.tripStartDate,t.cutoff,t.client,t.area,t.destination,t.dr,t.tripticket,t.budget,t.driver,t.h1,t.h2,t.plate,t.tripKey||'',t.truckType,t.rate,t.surcharge,t.manoDrv,t.manoH1,t.manoH2,t.manoOthers,t.drvPay,t.h1Pay,t.h2Pay,t.caDrv,t.caH1,t.caH2,t.dieselPrice,t.dieselLiter,c.diesel,t.toll,t.food,t.passway,t.parking,t.checker,t.load,t.gcash,t.maint,t.otherExp,t.genRemarks,t.docsStatus,t.docsRemarks,t.payStatus,t.payRemarks,t.paidVariance,t.km,c.rs,c.rsvat,c.expenses,c.expStaff,c.income,pct(c.pctProfit),c.vat,c.incomeVat,pct(c.pctIncome),c.opex,c.incomeAfterOpex,pct(c.pctFinal),t.weekFri,t.weekMon];});
-  const csv=[hdrs,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  let rows=trips.map(t=>{const c=computeAll(t);return[t.code,t.dispatchedDate,t.tripStartDate,t.cutoff,t.client,t.area,t.destination,t.dr,t.tripticket,t.budget,t.driver,t.h1,t.h2,t.plate,t.tripKey||'',t.truckType,t.rate,t.surcharge,t.manoDrv,t.manoH1,t.manoH2,t.manoOthers,t.drvPay,t.h1Pay,t.h2Pay,t.caDrv,t.caH1,t.caH2,t.dieselPrice,t.dieselLiter,c.diesel,t.toll,t.food,t.passway,t.parking,t.checker,t.load,t.gcash,t.maint,t.otherExp,t.genRemarks,t.docsStatus,t.docsRemarks,t.payStatus,t.payRemarks,t.paidVariance,t.km,c.rs,c.rsvat,c.expenses,c.expStaff,c.income,pct(c.pctProfit),c.vat,c.incomeVat,pct(c.pctIncome),c.opex,c.incomeAfterOpex,pct(c.pctFinal),t.weekFri,t.weekMon];});
+  let outHdrs=hdrs;
+  if(currentRole==='operations'){
+    // Same visibility rule as the in-app fin-only gating: rate/income/profit hidden from Operations
+    const FIN_COLS=new Set(['Rate','Surcharge','Paid-Rate variance','Rate+Surcharge','R+S+Vat','Income','%Profit','Vat','Income With Vat','%Income','Opex','Income After Opex','% Final']);
+    const keep=hdrs.map((h,i)=>FIN_COLS.has(h)?-1:i).filter(i=>i>=0);
+    outHdrs=keep.map(i=>hdrs[i]);
+    rows=rows.map(r=>keep.map(i=>r[i]));
+  }
+  const csv=[outHdrs,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`EMELCO_Trips_${new Date().toISOString().slice(0,10)}.csv`;a.click();
   toast('CSV exported ✓','success');
 }
@@ -2872,6 +2952,62 @@ function backupJSON(){
   const data={trips,staff,fleet,exportedAt:new Date().toISOString()};
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=`EMELCO_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();
   toast('Backup saved ✓','success');
+}
+
+// ===== LEDGER EXCEL EXPORT (Owner only) =====
+// Replaces the old Excel workbook's role: readable balances + full movement history.
+// Read-only by design — the live ledger stays the single source of truth.
+function exportLedgerExcel(){
+  if(currentRole!=='owner'){ toast('Ledger export is restricted to Owner access','error'); return; }
+  if(typeof XLSX==='undefined'){ toast('Excel library not loaded — check internet connection','error'); return; }
+  loadLedger();
+  const staffByName={}; staff.forEach(s=>staffByName[s.name]=s);
+  const num=v=>{ const x=parseFloat(v); return isNaN(x)?0:x; };
+
+  // --- Sheet 1: Balances summary ---
+  const govCell=g=>g&&(g.lastAmount||g.lastPeriod)?`${g.lastPeriod||''} (₱${num(g.lastAmount)})`.trim():'';
+  const hdr1=['Name','Position','Status','CA Balance','Bond Saved','Phone Remaining','Rent','Electric','Water','SSS Last Paid','PhilHealth Last Paid','Pag-IBIG Last Paid','Last Updated'];
+  const rows1=[];
+  const names=Object.keys(ledgerData).sort((a,b)=>a.localeCompare(b));
+  const totals={ca:0,bond:0,phone:0,rent:0,electric:0,water:0};
+  names.forEach(name=>{
+    const d=ledgerData[name]||{}; const s=staffByName[name]||{};
+    const phoneRem=(d.phone||[]).filter(p=>p.status==='active').reduce((n,p)=>n+num(p.balance),0);
+    totals.ca+=num(d.ca); totals.bond+=num(d.bond); totals.phone+=phoneRem;
+    totals.rent+=num(d.rent); totals.electric+=num(d.electric); totals.water+=num(d.water);
+    rows1.push([name,s.position||'',s.status||'',num(d.ca),num(d.bond),phoneRem,num(d.rent),num(d.electric),num(d.water),
+      govCell(d.sss),govCell(d.philhealth),govCell(d.pagibig),d._u?d._u.slice(0,10):'']);
+  });
+  rows1.push([]);
+  rows1.push(['TOTAL','','',totals.ca,totals.bond,totals.phone,totals.rent,totals.electric,totals.water,'','','','']);
+
+  // --- Sheet 2: Transaction history (newest first) ---
+  const hdr2=['Date','Staff','Item','Type','Amount','Remark','By','Device'];
+  const rows2=[];
+  Object.entries(ledgerTxn||{}).forEach(([name,items])=>{
+    Object.entries(items||{}).forEach(([item,val])=>{
+      if(item==='phone'){
+        Object.entries(val||{}).forEach(([phoneId,arr])=>{
+          const ph=((ledgerData[name]||{}).phone||[]).find(p=>p.id===phoneId);
+          const label=ph?`Phone: ${ph.brand||''} ${ph.model||''}`.trim():'Phone';
+          (arr||[]).forEach(t=>rows2.push([t.date,name,label,t.type,num(t.amount),t.remark||'',t.by||'',t.dev||'']));
+        });
+      } else if(Array.isArray(val)){
+        val.forEach(t=>rows2.push([t.date,name,item.toUpperCase(),t.type,num(t.amount),t.remark||'',t.by||'',t.dev||'']));
+      }
+    });
+  });
+  rows2.sort((a,b)=>String(b[0]).localeCompare(String(a[0]))||String(a[1]).localeCompare(String(b[1])));
+
+  const wb=XLSX.utils.book_new();
+  const ws1=XLSX.utils.aoa_to_sheet([hdr1,...rows1]);
+  ws1['!cols']=[{wch:28},{wch:10},{wch:9},{wch:11},{wch:11},{wch:14},{wch:8},{wch:8},{wch:8},{wch:22},{wch:22},{wch:22},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Balances');
+  const ws2=XLSX.utils.aoa_to_sheet([hdr2,...rows2]);
+  ws2['!cols']=[{wch:11},{wch:28},{wch:22},{wch:14},{wch:11},{wch:40},{wch:10},{wch:14}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Transactions');
+  XLSX.writeFile(wb,`EMELCO_Ledger_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Ledger exported to Excel ✓ ('+names.length+' staff, '+rows2.length+' transactions)','success');
 }
 
 function exportStaffExcel(){
@@ -4493,8 +4629,7 @@ function printOfficeSlip(){
 
 
 // ===== STAFF LEDGER SYSTEM =====
-const LEDGER_OPENING_AS_OF="2026-07-02"; // Excel payroll Wk27 (Jun26–Jul02), closes Week 27
-const LEDGER_OPENING_BALANCES = {"Adrian Ace F. Depena":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Azuela":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Macario Santos":{"ca":5209.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Angelo Samar":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSS DEC. 2025"}}},"Ariel Brinsa Bualoy":{"ca":0.0,"bond":4800.0,"rent":500.0,"electric":285.0,"water":240.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Arjhon Dorado":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Arvin Blaza Dorado":{"ca":137.0,"bond":600.0,"rent":0.0,"electric":0.0,"water":0.0},"Christopher Peligrino":{"ca":0.0},"Christopher Santillan":{"ca":0.0,"bond":0.0},"Den Mark Gardon":{"ca":11933.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Eljun Abrasaldo":{"gov":{"pagibig":{"lastAmount":500.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":250.0,"lastPeriod":"SSS MARCH2026"}}},"Gilbert Ariston":{"ca":786.0,"bond":900.0},"Henio Morales":{"ca":7383.0,"bond":4500.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS JAN. 2026"}}},"James Florogo Gonzales":{"ca":0.0,"bond":1200.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSS DEC. 2025"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH DEC"}},"phone":{"total":4800.0,"balance":4800.0}},"Jan Ellie Taylaran":{"ca":3749.0,"rent":0.0,"electric":0.0,"water":0.0},"Jan Taylaran":{"bond":0.0},"Janrey Villanueva Dorado":{"ca":8366.0,"bond":4800.0,"rent":500.0,"electric":585.0,"water":240.0,"gov":{"sss":{"lastAmount":250.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Jarel Carlo Casino":{"ca":600.0},"Jasper Rivera":{"ca":16622.0,"bond":3600.0,"rent":500.0,"electric":1215.0,"water":360.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}},"phone":{"total":6000.0,"balance":6000.0}},"Jay Mark Villanueva Dorado":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jayson Bibas":{"ca":9138.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jeffrey Surwez":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Jericho Templa":{"ca":2490.0},"Jerry Ramos":{"ca":10.0,"bond":4800.0,"rent":500.0,"electric":150.0,"water":120.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Joel Calimpusan":{"ca":13705.0,"bond":4200.0,"rent":500.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":350.0,"lastPeriod":"SSSMAY2026"},"pagibig":{"lastAmount":250.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"}}},"Joel Guisan":{"ca":819.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"John Gabriel Dela Cruz":{"ca":3890.0,"bond":2700.0,"rent":500.0,"electric":757.0,"water":0.0,"gov":{"sss":{"lastAmount":250.0,"lastPeriod":"SSSMAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"}}},"John Paul Ellar":{"ca":1500.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":500.0,"lastPeriod":"SSS DEC. 2025"}}},"John Rafael Lara":{"ca":0.0},"Joseph Liberato":{"ca":3241.0,"rent":0.0,"electric":0.0,"water":0.0},"Joseph S. Liberato":{"bond":0.0},"Junny Conol Cobera":{"ca":0.0,"bond":0.0},"Jushua Fong":{"ca":1000.0},"Kenneth Feguerra":{"ca":14804.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Kenneth Pimentel":{"ca":0.0,"bond":0.0,"rent":500.0,"electric":0.0,"water":0.0},"Kevin Herrera":{"ca":20561.0,"rent":0.0,"electric":0.0,"water":0.0},"Leonardo Berden":{"ca":2394.0,"bond":1800.0,"rent":250.0,"electric":172.0,"water":120.0},"Lorenz Amorado":{"ca":1972.0,"bond":4500.0,"rent":250.0,"electric":0.0,"water":0.0},"Marben Mag aso":{"ca":1970.0,"bond":900.0},"Marlou Balonquit":{"ca":0.0,"bond":0.0},"Marvin Castillo":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Michael Dorado Estornidos":{"ca":724.0,"bond":2700.0,"rent":0.0,"electric":0.0,"water":0.0},"Michael Marquez":{"ca":267.0,"bond":8000.0,"gov":{"pagibig":{"lastAmount":600.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}}},"Nelson Zarca":{"ca":0.0},"Nomer Abaga":{"ca":0.0,"bond":3300.0},"Nonito Quinto":{"ca":0.0},"Noriel Bungayan":{"ca":14186.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Orlando Hilario":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Philip Ternal":{"ca":204.0,"bond":0.0},"Randel Alvarez":{"ca":1551.0,"bond":1800.0,"rent":500.0,"electric":0.0,"water":0.0},"Randy Santos":{"ca":1428.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Renato Delos Santos":{"ca":17443.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Rene Amorado":{"ca":0.0,"bond":4500.0,"rent":250.0,"electric":0.0,"water":0.0,"gov":{"pagibig":{"lastAmount":600.0,"lastPeriod":"PAGIBIG APRIL2026"},"philhealth":{"lastAmount":350.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS JAN. 2026"}}},"Ric Ronald Basilio Sepria":{"ca":17959.0,"bond":4500.0,"rent":0.0,"electric":172.0,"water":120.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":250.0,"lastPeriod":"SSS MARCH2026"}},"phone":{"total":4800.0,"balance":4800.0}},"Richard Daniel Villarez Siazon":{"ca":2622.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ricky Boy Amante":{"rent":500.0,"electric":930.0,"water":120.0},"Rodel Pacia":{"ca":0.0},"Rolando Purgatorio":{"ca":14767.0,"bond":0.0,"rent":500.0,"electric":915.0,"water":240.0,"gov":{"philhealth":{"lastAmount":250.0,"lastPeriod":"PHEALTH MARCH2026"},"sss":{"lastAmount":350.0,"lastPeriod":"SSS MARCH2026"}}},"Roldan Sistual":{"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Roldan Situal":{"ca":0.0},"Rolly Zarsa Obidos":{"ca":702.0,"bond":300.0,"rent":0.0,"electric":0.0,"water":0.0,"gov":{"sss":{"lastAmount":450.0,"lastPeriod":"SSS DEC. 2025"}}},"Roniel Mabansag":{"ca":0.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ryan Anover":{"ca":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Ryan Bautista":{"ca":0.0},"Samuel Subsilica":{"bond":0.0},"Sherwin Capeding":{"ca":19953.0,"bond":1500.0,"rent":775.0,"electric":0.0,"water":0.0,"gov":{"pagibig":{"lastAmount":200.0,"lastPeriod":"PAGIBIG MAY2026"},"sss":{"lastAmount":600.0,"lastPeriod":"SSS JAN. 2026"}}},"Syril Dacles":{"ca":0.0,"bond":3900.0,"rent":250.0,"electric":0.0,"water":0.0,"phone":{"total":4800.0,"balance":4800.0}},"Tom Herrera":{"ca":14347.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0},"Vladjamir Bibas":{"ca":2948.0,"bond":0.0,"rent":0.0,"electric":0.0,"water":0.0}};
+// Wk27 Excel opening-balance snapshot removed (v202607152200) — migration complete, live ledger is source of truth.
 
 const LEDGER_TXN_STORE_KEY=LEDGER_TXN_KEY;
 let ledgerData={};
@@ -4530,55 +4665,6 @@ function addTxnDirect(name,item,type,amount,remark,by){
   const t=ledgerTxn[name];
   if(!t[item]) t[item]=[];
   t[item].push({id:genId(),date:new Date().toISOString().slice(0,10),type,amount,remark:remark||'',by:by||'system',dev:getDeviceName()});
-}
-
-function openImportLedger(force){
-  if(force && !confirm('This will RESET all existing ledger balances and re-import from the Excel opening data (as of '+LEDGER_OPENING_AS_OF+', closing Week 27). Any manual entries made after the last import will be lost. Continue?')) return;
-  loadLedger();
-  let imported=0,skipped=0;
-  const remark='Opening balance — Excel payroll Wk27, as of '+LEDGER_OPENING_AS_OF;
-  Object.entries(LEDGER_OPENING_BALANCES).forEach(([name,data])=>{
-    const existing=ledgerData[name];
-    if(!force && existing&&(existing.ca||existing.bond||existing.rent)){skipped++;return;}
-    const mk=g=>({lastDate:g?LEDGER_OPENING_AS_OF:'',lastAmount:g?g.lastAmount:0,lastPeriod:g?g.lastPeriod:''});
-    const gov=data.gov||{};
-    ledgerData[name]={ca:data.ca||0,bond:data.bond||0,phone:[],rent:data.rent||0,electric:data.electric||0,water:data.water||0,
-      sss:mk(gov.sss),philhealth:mk(gov.philhealth),pagibig:mk(gov.pagibig),_u:new Date().toISOString()};
-    if(data.phone&&data.phone.balance>0){
-      ledgerData[name].phone.push({id:'ph_open_'+genId(),brand:'Phone',model:'Installment (from Excel)',price:data.phone.total,date:LEDGER_OPENING_AS_OF,balance:data.phone.balance,status:'active'});
-    }
-    if(data.ca>0) addTxnDirect(name,'ca','opening',data.ca,remark,'system');
-    if(data.bond>0) addTxnDirect(name,'bond','opening',data.bond,remark,'system');
-    imported++;
-  });
-  saveLedger(); saveLedgerTxn();
-  toast(imported+' staff ledger records imported'+(skipped?' ('+skipped+' skipped — already had data)':''),'success');
-  renderLedgerSummary();
-}
-
-// ===== FRESH START — clears ALL payroll data (slips + ledger) on every machine =====
-// Bumps the payroll epoch so other machines discard their local copies instead of
-// merging stale data back in. Use once for the Week 28 clean start, then Re-import.
-function freshStartPayroll(){
-  const typed=prompt('FRESH START will permanently delete ALL pay slips (driver, helper, office), CA/bond/phone balances and transaction logs — on THIS machine and, via sync, on every other machine.\n\nTrips, staff, and fleet data are NOT affected.\n\nType FRESH START (all caps) to confirm:');
-  if(typed!=='FRESH START'){ toast('Cancelled — nothing was deleted','success'); return; }
-  Object.values(PR_KEYS).forEach(k=>localStorage.removeItem(k));
-  localStorage.setItem(PAYROLL_EPOCH_KEY, String(getPayrollEpoch()+1));
-  payrollSlips={}; officeSlips={}; ledgerData={}; ledgerTxn={};
-  savePayrollToCloud(); // push the empty state + new epoch immediately
-  toast('Fresh start complete — all payroll data cleared ✓ Now use Import Opening Balances.','success');
-  renderLedgerSummary();
-}
-
-function clearLedgerData(){
-  const typed=prompt('This clears ledger data (CA, bond, phone, transaction logs) on THIS machine only — the cloud copy will sync back within 5 minutes. Use 🧹 Fresh Start to wipe everywhere permanently.\n\nType DELETE (all caps) to confirm:');
-  if(typed!=='DELETE'){ toast('Cancelled — no ledger data was deleted','success'); return; }
-  localStorage.removeItem(LEDGER_KEY);
-  localStorage.removeItem(LEDGER_TXN_KEY);
-  ledgerData={};
-  ledgerTxn={};
-  toast('All ledger data cleared ✓','success');
-  renderLedgerSummary();
 }
 
 function renderLedgerSummary(){
@@ -4692,16 +4778,17 @@ function openLedgerDetail(name){
   const t=getTxn(name);
   document.getElementById('ledger-modal-title').textContent='Ledger: '+name;
   document.getElementById('ledger-modal-subtitle').textContent=(s.staffId||'')+(s.position?' · '+s.position:'');
-  const txnTable=(rows)=>'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="font-size:10px;text-align:left;padding:3px 4px">Date</th><th style="font-size:10px;text-align:left">Type</th><th style="font-size:10px;text-align:right">Amount</th><th style="font-size:10px;text-align:left">Remark</th><th style="font-size:10px;text-align:left">By</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  const txnTable=(rows,editable)=>'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="font-size:10px;text-align:left;padding:3px 4px">Date</th><th style="font-size:10px;text-align:left">Type</th><th style="font-size:10px;text-align:right">Amount</th><th style="font-size:10px;text-align:left">Remark</th><th style="font-size:10px;text-align:left">By</th>'+(editable?'<th></th>':'')+'</tr></thead><tbody>'+rows+'</tbody></table>';
   const txnRows=(item)=>{
     const entries=(t[item]||[]);
-    if(!entries.length) return '<tr><td colspan="5" style="color:var(--text2);font-size:11px;padding:6px">No transactions yet.</td></tr>';
+    if(!entries.length) return '<tr><td colspan="6" style="color:var(--text2);font-size:11px;padding:6px">No transactions yet.</td></tr>';
     return entries.map(e=>'<tr>'
       +'<td style="font-size:10px;padding:3px 4px">'+e.date+'</td>'
-      +'<td style="font-size:10px;color:var(--text2)">'+e.type+'</td>'
+      +'<td style="font-size:10px;color:var(--text2)">'+e.type+(e._edited?' <span title="This entry was edited — see audit trail" style="color:var(--accent)">&#9998;</span>':'')+'</td>'
       +'<td style="font-size:10px;text-align:right;color:'+(e.amount>=0?'var(--red)':'var(--green)')+';">'+(e.amount>=0?'+':'')+'&#8369;'+fmt(Math.abs(e.amount))+'</td>'
       +'<td style="font-size:10px;color:var(--text2)">'+(e.remark||'&#8212;')+'</td>'
       +'<td style="font-size:10px;color:var(--text3)">'+e.by+'</td>'
+      +'<td style="font-size:10px;text-align:right;padding-right:4px"><span style="cursor:pointer" title="Edit this entry (audited)" onclick="openEditTxn(\''+item+'\',\''+e.id+'\')">&#9998;</span></td>'
       +'</tr>').join('');
   };
   const ap=l.phone.find(p=>p.status==='active');
@@ -4716,7 +4803,7 @@ document.getElementById('ledger-modal-body').innerHTML=
     +'<div style="grid-column:span 2"><label style="font-size:10px;color:var(--text2)">Remark (optional)</label><input type="text" class="form-input" id="lca-remark" placeholder="e.g. Emergency advance" style="font-size:11px"></div>'
     +'</div><button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,\'ca\')">Save CA Entry</button>'
     +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
-    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('ca'))+'</div>'
+    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('ca'),true)+'</div>'
     +'</div>'
     // BOND
     +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
@@ -4729,7 +4816,7 @@ document.getElementById('ledger-modal-body').innerHTML=
     +(currentRole==='owner'?'<button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px" onclick="openBondPayout(currentLedgerName)">&#128176; Process Bond Payout</button>':'')
     +'<button class="btn btn-primary btn-sm" style="width:100%" onclick="saveLedgerEntry(currentLedgerName,\'bond\')">Save Bond Entry</button>'
     +'<div style="margin-top:10px;font-size:11px;font-weight:700;color:var(--text2)">Transaction Log</div>'
-    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('bond'))+'</div>'
+    +'<div style="max-height:160px;overflow-y:auto;margin-top:4px">'+txnTable(txnRows('bond'),true)+'</div>'
     +'</div>'
     // PHONE
     +'<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px">'
@@ -4765,6 +4852,70 @@ document.getElementById('ledger-modal-body').innerHTML=
 }
 
 function closeLedgerModal(){ document.getElementById('ledger-modal').classList.remove('open'); }
+
+// ===== LEDGER TXN EDIT (audited, reversal-reapply) =====
+// Editing reverses the entry's original effect on the balance and applies the corrected
+// one — balance and history can never diverge. Every edit appends an audit record.
+let editingTxn=null; // {name,item,id}
+function openEditTxn(item,txnId){
+  const name=currentLedgerName;
+  loadLedger();
+  const arr=(getTxn(name)[item])||[];
+  const e=arr.find(x=>x.id===txnId);
+  if(!e){ toast('Entry not found','error'); return; }
+  editingTxn={name,item,id:txnId};
+  document.getElementById('txn-edit-subtitle').textContent=name+' · '+item.toUpperCase()+' · '+e.type;
+  document.getElementById('txn-edit-date').value=e.date||'';
+  document.getElementById('txn-edit-amount').value=Math.abs(n(e.amount));
+  const dir=document.getElementById('txn-edit-dir');
+  if(item==='ca'){
+    dir.innerHTML='<option value="1">+ Given to staff (CA up)</option><option value="-1">&#8722; Deducted / repaid (CA down)</option>';
+  } else {
+    dir.innerHTML='<option value="1">+ Deducted from pay (savings up)</option><option value="-1">&#8722; Returned to staff (savings down)</option>';
+  }
+  dir.value=n(e.amount)>=0?'1':'-1';
+  document.getElementById('txn-edit-remark').value=e.remark||'';
+  document.getElementById('txn-edit-reason').value='';
+  document.getElementById('txn-edit-preview').innerHTML='Current: '+(n(e.amount)>=0?'+':'&#8722;')+'&#8369;'+fmt(Math.abs(n(e.amount)))+' on '+e.date+' &middot; balance will adjust automatically.';
+  document.getElementById('txn-edit-modal').classList.add('open');
+}
+function closeEditTxn(){ editingTxn=null; document.getElementById('txn-edit-modal').classList.remove('open'); }
+function saveEditTxn(){
+  if(!editingTxn) return;
+  const {name,item,id}=editingTxn;
+  loadLedger();
+  const arr=(getTxn(name)[item])||[];
+  const e=arr.find(x=>x.id===id);
+  if(!e){ toast('Entry not found','error'); closeEditTxn(); return; }
+  const newDate=document.getElementById('txn-edit-date').value;
+  const absAmt=Math.abs(parseFloat(document.getElementById('txn-edit-amount').value)||0);
+  const sign=parseInt(document.getElementById('txn-edit-dir').value,10)||1;
+  const newAmount=sign*absAmt;
+  const newRemark=document.getElementById('txn-edit-remark').value.trim();
+  const reason=document.getElementById('txn-edit-reason').value.trim();
+  if(!newDate){ toast('Date is required','error'); return; }
+  const oldSnap={date:e.date,amount:n(e.amount),remark:e.remark||''};
+  if(oldSnap.date===newDate && oldSnap.amount===newAmount && oldSnap.remark===newRemark){ toast('No changes to save','error'); return; }
+  // Reversal-reapply: balance -= old effect, += new effect (net: delta)
+  const delta=newAmount-oldSnap.amount;
+  const l=getLedger(name);
+  l[item]=n(l[item])+delta;
+  touchLedger(name);
+  // Update the entry; _u lets multi-machine merge keep the newest version
+  e.date=newDate; e.amount=newAmount; e.remark=newRemark; e._edited=true; e._u=new Date().toISOString();
+  // Append-only audit record
+  const audit=prGet(PR_KEYS.audit);
+  const aid='aud_'+genId();
+  audit[aid]={id:aid, ts:new Date().toISOString(), staff:name, item, txnId:id,
+    old:oldSnap, new:{date:newDate,amount:newAmount,remark:newRemark},
+    reason, by:currentRole||'ops', dev:getDeviceName()};
+  localStorage.setItem(PR_KEYS.audit, JSON.stringify(audit));
+  saveLedger(); saveLedgerTxn(); scheduleCloudPush();
+  closeEditTxn();
+  toast('Entry updated — balance adjusted by '+(delta>=0?'+':'&#8722;')+'&#8369;'+fmt(Math.abs(delta))+' (audited) &#10003;','success');
+  openLedgerDetail(name); // re-render the modal with fresh figures
+  renderLedgerSummary();
+}
 
 function saveLedgerEntry(name,item){
   loadLedger();
