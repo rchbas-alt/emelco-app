@@ -312,7 +312,7 @@ body.role-operations .fin-only{display:none!important}
 <!-- ====== SUMMARY PAGE ====== -->
 <div class="page" id="page-summary">
   <!-- Grand Total Bar -->
-  <div id="summary-grand-total" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;display:grid;grid-template-columns:repeat(5,1fr);gap:10px"></div>
+  <div id="summary-grand-total" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px"></div>
   <!-- Monthly Breakdown full-width -->
   <div class="summary-card" style="margin-bottom:14px;grid-column:span 2">
     <h3>📅 Monthly Financial Breakdown</h3>
@@ -320,6 +320,7 @@ body.role-operations .fin-only{display:none!important}
   </div>
   <div class="summary-grid" id="summary-content">
     <div class="summary-card"><h3>📈 Financial Overview</h3><div id="summary-financial"></div></div>
+    <div class="summary-card"><h3>％ Profitability — Before &amp; After OPEX</h3><div id="summary-profitability"></div></div>
     <div class="summary-card"><h3>🗂 Trip Breakdown by Client</h3><div id="summary-breakdown"></div></div>
     <div class="summary-card" style="grid-column:span 2">
       <h3 style="display:flex;align-items:center;justify-content:space-between">
@@ -1098,7 +1099,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607160230'; // bumped: header version badge; versions now follow real Philippine time (UTC+8)
+const APP_VERSION = '202607160245'; // bumped: Summary profitability detail — pre/after-OPEX % tiles, waterfall card, monthly % columns (Rhoda request)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -2526,6 +2527,17 @@ function renderSummary(){
     monthMap[mo].diesel+=dieselAmt;
   });
 
+  // ---- Profitability percentages (Rhoda): before vs after 25% OPEX ----
+  // Pre-OPEX % = (income+VAT)/(revenue+VAT); Final % = after-OPEX income/(revenue+VAT).
+  // Same denominator, so the gap between the two is exactly the OPEX effect.
+  const pct1=v=>(Math.round(v*1000)/10).toFixed(1)+'%';
+  const moPctPre=d=>{ const rsvat=d.rs*(1+VAT_RATE); return rsvat>0?(d.income+d.rs*VAT_RATE)/rsvat:0; };
+  const moPctFin=d=>{ const rsvat=d.rs*(1+VAT_RATE); return rsvat>0?d.afterOpex/rsvat:0; };
+  const gtRsvat=sumRS+sumVat;
+  const gtPctPre=gtRsvat>0?sumIncVat/gtRsvat:0;
+  const gtPctFin=gtRsvat>0?sumAfterOpex/gtRsvat:0;
+  const gtPctProfit=sumRS>0?sumIncome/sumRS:0;
+
   // ---- Grand Total Bar ----
   const gtItems=[
     {label:'Total Trips',value:sumTrips,color:'var(--blue)',prefix:'',suffix:' trips'},
@@ -2533,6 +2545,8 @@ function renderSummary(){
     {label:'Net Income',value:sumIncome,color:sumIncome>=0?'var(--green)':'var(--red)'},
     {label:'After VAT',value:sumIncVat,color:'var(--blue)'},
     {label:'After OPEX',value:sumAfterOpex,color:sumAfterOpex>=0?'var(--accent)':'var(--red)'},
+    {label:'Profit % pre-OPEX',value:Math.round(gtPctPre*1000)/10,color:gtPctPre>=0?'var(--green)':'var(--red)',prefix:'',suffix:'%'},
+    {label:'Final % after OPEX',value:Math.round(gtPctFin*1000)/10,color:gtPctFin>=0?'#BA7517':'var(--red)',prefix:'',suffix:'%'},
   ];
   document.getElementById('summary-grand-total').innerHTML=gtItems.map(g=>`
     <div style="text-align:center;padding:8px 4px;background:var(--bg3);border-radius:8px">
@@ -2545,14 +2559,14 @@ function renderSummary(){
   // ---- Monthly Breakdown ----
   const months=Object.keys(monthMap).filter(m=>m!=='Unknown').sort();
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const moHeader=`<div style="display:grid;grid-template-columns:90px 60px 1fr 1fr 1fr 1fr 1fr;gap:4px;padding:4px 6px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
-    <div>Month</div><div style="text-align:center">Trips</div><div style="text-align:right">Revenue</div><div style="text-align:right">Expenses</div><div style="text-align:right">Diesel</div><div style="text-align:right">Net Income</div><div style="text-align:right">After OPEX</div>
+  const moHeader=`<div style="display:grid;grid-template-columns:90px 50px 1fr 1fr 1fr 1fr 1fr 56px 56px;gap:4px;padding:4px 6px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
+    <div>Month</div><div style="text-align:center">Trips</div><div style="text-align:right">Revenue</div><div style="text-align:right">Expenses</div><div style="text-align:right">Diesel</div><div style="text-align:right">Net Income</div><div style="text-align:right">After OPEX</div><div style="text-align:right" title="(Income+VAT) / (Revenue+VAT)">% Pre-OPEX</div><div style="text-align:right" title="After-OPEX income / (Revenue+VAT)">% Final</div>
   </div>`;
   const moRows=months.map(m=>{
     const d=monthMap[m];
     const [yr,mo]=m.split('-');
     const label=`${monthNames[parseInt(mo)-1]} ${yr}`;
-    return `<div style="display:grid;grid-template-columns:90px 60px 1fr 1fr 1fr 1fr 1fr;gap:4px;padding:5px 6px;border-radius:5px;font-size:11px;background:var(--bg3);margin-bottom:3px;align-items:center">
+    return `<div style="display:grid;grid-template-columns:90px 50px 1fr 1fr 1fr 1fr 1fr 56px 56px;gap:4px;padding:5px 6px;border-radius:5px;font-size:11px;background:var(--bg3);margin-bottom:3px;align-items:center">
       <div style="font-weight:700;color:var(--text)">${label}</div>
       <div style="text-align:center;color:var(--blue);font-weight:600">${d.trips}</div>
       <div style="text-align:right;color:var(--green);font-family:'DM Mono',monospace">₱${fmtK(d.rs)}</div>
@@ -2560,10 +2574,12 @@ function renderSummary(){
       <div style="text-align:right;color:var(--text2);font-family:'DM Mono',monospace">₱${fmtK(d.diesel)}</div>
       <div style="text-align:right;font-weight:600;font-family:'DM Mono',monospace;color:${d.income>=0?'var(--green)':'var(--red)'}">₱${fmtK(d.income)}</div>
       <div style="text-align:right;font-weight:600;font-family:'DM Mono',monospace;color:${d.afterOpex>=0?'var(--accent)':'var(--red)'}">₱${fmtK(d.afterOpex)}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;color:${moPctPre(d)>=0?'var(--green)':'var(--red)'}">${pct1(moPctPre(d))}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;color:${moPctFin(d)>=0?'var(--amber,#BA7517)':'var(--red)'}">${pct1(moPctFin(d))}</div>
     </div>`;
   }).join('');
   // Grand total row at bottom of monthly table
-  const moTotalRow=`<div style="display:grid;grid-template-columns:90px 60px 1fr 1fr 1fr 1fr 1fr;gap:4px;padding:6px 6px;border-radius:5px;font-size:11px;background:var(--bg);border:1px solid var(--border);margin-top:4px;align-items:center">
+  const moTotalRow=`<div style="display:grid;grid-template-columns:90px 50px 1fr 1fr 1fr 1fr 1fr 56px 56px;gap:4px;padding:6px 6px;border-radius:5px;font-size:11px;background:var(--bg);border:1px solid var(--border);margin-top:4px;align-items:center">
     <div style="font-weight:700;color:var(--accent)">GRAND TOTAL</div>
     <div style="text-align:center;color:var(--blue);font-weight:700">${sumTrips}</div>
     <div style="text-align:right;color:var(--green);font-family:'DM Mono',monospace;font-weight:700">₱${fmtK(sumRS)}</div>
@@ -2571,8 +2587,27 @@ function renderSummary(){
     <div style="text-align:right;color:var(--text2);font-family:'DM Mono',monospace;font-weight:700">—</div>
     <div style="text-align:right;font-weight:700;font-family:'DM Mono',monospace;color:${sumIncome>=0?'var(--green)':'var(--red)'}">₱${fmtK(sumIncome)}</div>
     <div style="text-align:right;font-weight:700;font-family:'DM Mono',monospace;color:${sumAfterOpex>=0?'var(--accent)':'var(--red)'}">₱${fmtK(sumAfterOpex)}</div>
+    <div style="text-align:right;font-weight:700;font-family:'DM Mono',monospace;color:${gtPctPre>=0?'var(--green)':'var(--red)'}">${pct1(gtPctPre)}</div>
+    <div style="text-align:right;font-weight:700;font-family:'DM Mono',monospace;color:${gtPctFin>=0?'var(--amber,#BA7517)':'var(--red)'}">${pct1(gtPctFin)}</div>
   </div>`;
   document.getElementById('summary-monthly').innerHTML=moHeader+moRows+moTotalRow;
+
+  // ---- Profitability waterfall card ----
+  const wfRow=(label,amt,pctTxt,opts={})=>`
+    <div style="display:grid;grid-template-columns:1fr 110px 58px;gap:4px;padding:${opts.total?'6px':'4px'} 6px;font-size:11px;align-items:center;${opts.line?'border-top:1px solid var(--border);':''}${opts.strong?'border-top:2px solid var(--border);':''}">
+      <div style="${opts.total||opts.sub===false?'font-weight:700;color:var(--text)':'color:var(--text2)'}">${label}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;${opts.total?'font-weight:700;':''}color:${opts.neg?'var(--red)':(opts.color||'var(--text)')}">₱${fmt(amt)}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${opts.pctColor||'var(--text2)'}">${pctTxt}</div>
+    </div>`;
+  document.getElementById('summary-profitability').innerHTML=
+     wfRow('Revenue (R+S)',sumRS,'100%',{sub:false})
+    +wfRow('− Expenses + staff pay',sumExpStaff,'',{neg:true})
+    +wfRow('Net Income',sumIncome,pct1(gtPctProfit),{line:true,total:true,color:sumIncome>=0?'var(--green)':'var(--red)',pctColor:'var(--green)'})
+    +wfRow('+ VAT (12%)',sumVat,'')
+    +wfRow('Income before OPEX',sumIncVat,pct1(gtPctPre),{line:true,total:true,color:'var(--blue)',pctColor:'var(--green)'})
+    +wfRow('− OPEX (25% of revenue)',sumOpex,'',{neg:true})
+    +wfRow('Final income after OPEX',sumAfterOpex,pct1(gtPctFin),{strong:true,total:true,color:sumAfterOpex>=0?'var(--accent)':'var(--red)',pctColor:'#BA7517'})
+    +`<div style="font-size:10px;color:var(--text3);padding:6px 6px 0">Percentages of Revenue+VAT. Net Income % is of Revenue only — same as the trip form.</div>`;
 
   // ---- Billing by Cut-off ----
   const cutoffMap = {};
