@@ -559,7 +559,10 @@ body.role-operations .fin-only{display:none!important}
       <button class="btn btn-ghost" onclick="exportPayrollCSV()">⬇ Export CSV</button>
     </div>
   </div>
-  <div id="payroll-week-label" style="font-size:13px;color:var(--text2);margin-bottom:4px"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+    <div id="payroll-week-label" style="font-size:13px;color:var(--text2)"></div>
+    <button class="btn btn-ghost btn-sm" onclick="printAllPaySlips()" title="Opens a preview of all finalized slips for the selected week — two per page, review then print">🖨 Print All Finalized — 2/page</button>
+  </div>
   <div id="payroll-finalized-count" style="font-size:12px;color:var(--text2);margin-bottom:14px"></div>
 
   <!-- ====== TRIP HISTORY LOOKUP (standalone, read-only) ====== -->
@@ -1099,7 +1102,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607160245'; // bumped: Summary profitability detail — pre/after-OPEX % tiles, waterfall card, monthly % columns (Rhoda request)
+const APP_VERSION = '202607160310'; // bumped: bulk pay slip print — all finalized slips for selected week, 2/page with cut line, never splits a slip, preview window before printing
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -4357,6 +4360,125 @@ function printPaySlip(){
   </body></html>`);
   w.document.close();
   setTimeout(()=>{ w.print(); }, 300);
+}
+
+// ===== BULK PAY SLIP PRINT (finalized only, 2 per page) =====
+// Builds each slip from the SAVED finalized data (not the modal form), so what prints
+// is exactly what was finalized. Slips never split across pages (break-inside:avoid);
+// two fit per A4 in typical weeks, long slips flow naturally to the next page.
+function buildBulkSlipHTML(weekNum, name, saved){
+  const s=findStaffByName(name)||{};
+  const d=saved||{};
+  const ldg=getLedger(name);
+  // Finalized deductions are already posted — reconstruct the pre-slip balances
+  const effCA=n(ldg.ca)+n(d.caRequest);
+  const effBond=n(ldg.bond)-n(d.bond);
+  const activePhone=(ldg.phone||[]).find(p=>d.phonePlanId?p.id===d.phonePlanId:p.status==='active');
+  let effPhone=activePhone?n(activePhone.balance):0;
+  if(n(d.phone)>0 && activePhone) effPhone+=n(d.phone);
+  const caBalAfter=Math.max(0,effCA-n(d.caRequest));
+  const phoneBalAfter=activePhone?Math.max(0,effPhone-n(d.phone)):0;
+  const tripRows=getTripRowsForPerson(weekNum,name);
+  let totPay=0,totMano=0,totCA=0;
+  const tripHtml=tripRows.map(r=>{
+    totPay+=r.pay; totMano+=r.mano; totCA+=r.ca;
+    const otherName=r.pos==='D'?(r.trip.h1||'—'):(r.trip.driver||'—');
+    const otherLabel=r.pos==='D'?'Helper':'Driver';
+    return `<tr><td>${fmtDate(r.trip.tripStartDate)}</td><td style="text-align:center;font-weight:700">${r.pos}</td><td>${otherLabel}: ${otherName}</td><td>${r.trip.plate||'—'}</td><td>${r.trip.client||'—'}</td><td>${r.trip.area||'—'}</td><td>${shortenDest(r.trip.destination)}</td><td style="text-align:center">${dropCount(r.trip)}</td><td style="text-align:right">₱${fmt(r.pay)}</td><td style="text-align:right">₱${fmt(r.mano)}</td><td style="text-align:right;color:#c0392b">₱${fmt(r.ca)}</td></tr>`;
+  }).join('')||'<tr><td colspan="11" style="text-align:center;color:#888;padding:8px">No trips this period.</td></tr>';
+  const gross=totPay+totMano+n(d.otherPay)+n(d.thirteenthMonth)+n(d.bonus);
+  const totalDed=totCA+n(d.caRequest)+n(d.sss)+n(d.philhealth)+n(d.pagibig)+n(d.rent)+n(d.electric)+n(d.water)+n(d.phone)+n(d.bond)+n(d.otherDeduction);
+  const net=gross-totalDed;
+  const earnRows=[
+    ['Driver/Helper Pay',fmt(totPay)],['Mano (CCAC)',fmt(totMano)],
+    ...(n(d.otherPay)?[['Other Pay'+(d.otherPayRemark?' ('+d.otherPayRemark+')':''),fmt(d.otherPay)]]:[]),
+    ...(n(d.thirteenthMonth)?[['13th Month',fmt(d.thirteenthMonth)]]:[]),
+    ...(n(d.bonus)?[['Bonus',fmt(d.bonus)]]:[]),
+  ].map(([l,v])=>`<tr><td>${l}</td><td style="text-align:right">₱${v}</td></tr>`).join('');
+  const dedItems=[
+    {label:'CA from Trip',amount:totCA,alwaysShow:true},
+    {label:'CA Payback',amount:n(d.caRequest),balBefore:effCA,balAfter:caBalAfter,balLabel:'CA Balance'},
+    {label:'SSS'+(d.sssPeriod?' ('+d.sssPeriod+')':''),amount:n(d.sss)},
+    {label:'PhilHealth'+(d.philhealthPeriod?' ('+d.philhealthPeriod+')':''),amount:n(d.philhealth)},
+    {label:'Pag-IBIG'+(d.pagibigPeriod?' ('+d.pagibigPeriod+')':''),amount:n(d.pagibig)},
+    {label:'Rent',amount:n(d.rent)},{label:'Electric',amount:n(d.electric)},{label:'Water',amount:n(d.water)},
+    {label:'Phone'+(activePhone?' ('+activePhone.brand+' '+activePhone.model+')':''),amount:n(d.phone),balBefore:activePhone?effPhone:0,balAfter:phoneBalAfter,balLabel:'Phone Balance'},
+    {label:'Bond (Savings)',amount:n(d.bond)},
+    {label:'Other Deduction'+(d.otherDeductionRemark?' ('+d.otherDeductionRemark+')':''),amount:n(d.otherDeduction)},
+  ];
+  const dedRows=dedItems.filter(x=>x.alwaysShow||x.amount>0).map(x=>`<tr><td>${x.label}${x.balBefore!==undefined&&x.amount>0?`<div style="font-size:9px;color:#5a6175">${x.balLabel}: ₱${fmt(x.balBefore)} → ₱${fmt(x.balAfter)} after</div>`:''}</td><td style="text-align:right;color:#c0392b;vertical-align:top">₱${fmt(x.amount)}</td></tr>`).join('');
+  const licenseLine=s.position==='DRIVER'?(s.licenseNumber?`License: ${s.licenseNumber}${s.licenseExpiry?' · exp '+s.licenseExpiry:''}`:'No license on file'):'';
+  return `<div class="slip">
+    <h2>EMELCO Logistics Services — Pay Slip</h2>
+    <div class="sub">${name} · ${getWeekFriLabel(weekNum)} · FINALIZED</div>
+    <div class="header-grid">
+      <div><div class="lbl">Name</div><div style="font-weight:700">${name}</div></div>
+      <div><div class="lbl">Staff ID</div><div style="font-weight:700">${s.staffId||'—'}</div></div>
+      <div><div class="lbl">Position</div><div>${s.position||''}${s.duty?' · '+s.duty:''}</div></div>
+      ${licenseLine?`<div><div class="lbl">License</div><div>${licenseLine}</div></div>`:'<div></div>'}
+    </div>
+    <div class="section-title">Trip Detail</div>
+    <table><thead><tr><th>Date</th><th>Pos</th><th>Crew</th><th>Plate</th><th>Client</th><th>Area</th><th>Destination</th><th style="text-align:center">Drops</th><th style="text-align:right">Pay</th><th style="text-align:right">Mano</th><th style="text-align:right">CA Trip</th></tr></thead>
+    <tbody>${tripHtml}</tbody>
+    <tfoot><tr class="total-row"><td colspan="8">TOTAL</td><td style="text-align:right">₱${fmt(totPay)}</td><td style="text-align:right">₱${fmt(totMano)}</td><td style="text-align:right;color:#c0392b">₱${fmt(totCA)}</td></tr></tfoot></table>
+    <div class="two-col">
+      <div><div class="section-title">Earnings</div><table><tbody>${earnRows}</tbody><tfoot><tr class="total-row"><td>Gross Pay</td><td style="text-align:right">₱${fmt(gross)}</td></tr></tfoot></table></div>
+      <div><div class="section-title">Deductions</div><table><tbody>${dedRows}</tbody><tfoot><tr class="total-row"><td>Total Deductions</td><td style="text-align:right;color:#c0392b">₱${fmt(totalDed)}</td></tr></tfoot></table></div>
+    </div>
+    ${d.remarks?`<div class="remarks"><strong>Remarks:</strong> ${d.remarks}</div>`:''}
+    <div class="net-pay-row">
+      <div class="sig">Prepared by: ______________________ &nbsp;&nbsp; Received by: ______________________</div>
+      <div style="text-align:right"><div style="font-size:10px;color:#5a6175">Net Pay</div>
+      <div style="font-size:18px;font-weight:700;color:${net<0?'#c0392b':'#1a8c52'}">₱${fmt(net)}</div>
+      ${net<0?'<div style="font-size:9px;color:#c0392b">Negative — amount owed added to CA balance</div>':''}</div>
+    </div>
+  </div>`;
+}
+function printAllPaySlips(){
+  const weekNum=document.getElementById('payroll-week-sel').value;
+  if(!weekNum){ toast('Select a payroll week first','error'); return; }
+  loadPayrollSlips(); loadLedger();
+  const prefix=weekNum+'__';
+  const finalized=[], drafts=[];
+  Object.entries(payrollSlips).forEach(([k,v])=>{
+    if(!k.startsWith(prefix)) return;
+    const name=k.slice(prefix.length);
+    (v.finalizedAt?finalized:drafts).push(name);
+  });
+  finalized.sort((a,b)=>a.localeCompare(b));
+  if(!finalized.length){ toast('No finalized slips for '+getWeekFriLabel(weekNum)+(drafts.length?' — '+drafts.length+' draft(s) not included':''),'error'); return; }
+  const slips=finalized.map(nm=>buildBulkSlipHTML(weekNum,nm,payrollSlips[slipKey(weekNum,nm)])).join('<div class="cut"></div>');
+  const draftNote=drafts.length?`<span style="color:#c0392b"> · ${drafts.length} draft slip(s) NOT included: ${drafts.sort().join(', ')}</span>`:'';
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Pay Slips — ${getWeekFriLabel(weekNum)}</title>
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1e2e;font-size:11px;background:#e8eaf0}
+  .toolbar{position:sticky;top:0;background:#1a1e2e;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;font-size:12px;z-index:9}
+  .toolbar button{background:#1a8c52;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer}
+  .sheet{background:#fff;max-width:820px;margin:12px auto;padding:20px}
+  .slip{break-inside:avoid;page-break-inside:avoid;padding:6px 0 12px}
+  .cut{border-top:1px dashed #aab;margin:6px 0;position:relative}
+  h2{font-size:14px;margin-bottom:1px}
+  .sub{color:#5a6175;margin-bottom:8px;font-size:10px}
+  .header-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #dde1e9}
+  .lbl{font-size:8px;color:#9099b0;text-transform:uppercase}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px}
+  th{font-size:8px;text-align:left;color:#5a6175;padding:3px 3px 2px;border-bottom:1px solid #dde1e9}
+  td{padding:2px 3px;font-size:9px;border-bottom:1px solid #f0f0f0}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  .section-title{font-size:10px;font-weight:700;margin:5px 0 3px}
+  .total-row td{font-weight:700;border-top:2px solid #dde1e9;padding-top:4px}
+  .net-pay-row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px;padding-top:6px;border-top:1px solid #dde1e9}
+  .sig{font-size:9px;color:#5a6175}
+  .remarks{margin-top:4px;font-size:9px;color:#5a6175}
+  @media print{ .toolbar{display:none} body{background:#fff} .sheet{max-width:none;margin:0;padding:0} }
+  @page{size:A4 portrait;margin:10mm}
+  </style></head><body>
+  <div class="toolbar"><span>Preview — ${getWeekFriLabel(weekNum)} · ${finalized.length} finalized slip(s) · review below, then print${draftNote}</span><button onclick="window.print()">🖨 Print</button></div>
+  <div class="sheet">${slips}</div>
+  </body></html>`);
+  w.document.close();
 }
 
 // ===== OFFICE / ADMIN / TECH PAYROLL (bi-monthly, salary-based) =====
