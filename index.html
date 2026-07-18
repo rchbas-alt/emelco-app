@@ -1102,7 +1102,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607160310'; // bumped: bulk pay slip print — all finalized slips for selected week, 2/page with cut line, never splits a slip, preview window before printing
+const APP_VERSION = '202607181500'; // bumped: trip model migration step 2 — status/billing/workRecords fields (additive, auto-derived, reversible), dual-shape payroll reading. No UI changes, no math changes.
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -1531,6 +1531,7 @@ async function pullFromGitHub(){
     staff=content.staff||[];
     fleet=content.fleet||[];
     trips.forEach(t=>{ if(t.cutoff) t.cutoff=normalizeCutoff(t.cutoff); });
+    migrateAllTrips(); // in-memory + localStorage only — a pull never triggers a cloud write
     localStorage.setItem(TRIPS_KEY,JSON.stringify(trips));
     localStorage.setItem(STAFF_KEY,JSON.stringify(staff));
     localStorage.setItem(FLEET_KEY,JSON.stringify(fleet));
@@ -1569,8 +1570,61 @@ function timeAgo(date){
   return Math.floor(s/3600)+'h ago';
 }
 
+// ===== TRIP MODEL MIGRATION (step 2 — additive, idempotent, reversible) =====
+// Adds lifecycle/billing/workRecords to every trip WITHOUT touching any existing
+// field or value. Legacy driver/h1/h2 fields remain authoritative until the entry
+// UI writes workRecords natively (step 4). Until then, auto-derived workRecords
+// (workRecordsAuto:true) are a computed mirror regenerated on every load — they
+// can never go stale from old-form edits, and rolling back the app loses nothing
+// because they are re-derivable from legacy fields at any time.
+// HARD RULES: finalized payslips are never recomputed; no field is renamed,
+// removed, or altered in value; billing code never writes trips.
+function migrateTrip(t){
+  if(!t || typeof t!=='object') return t;
+  // Lifecycle status — every pre-migration trip was billed/paid historically, so it happened.
+  if(!t.status) t.status='completed';
+  if(!Array.isArray(t.statusLog)) t.statusLog=[];
+  // Billing disposition — default: normal client-billed trip.
+  if(!t.billing || typeof t.billing!=='object') t.billing={mode:'client',reason:null,log:[]};
+  if(!t.billing.mode) t.billing.mode='client';
+  if(!Array.isArray(t.billing.log)) t.billing.log=[];
+  // Work records — auto-mirror from legacy fields (regenerated each load while auto).
+  if(t.workRecordsAuto!==false){
+    const wr=[];
+    if(t.driver) wr.push({name:t.driver, role:'driver', part:'full'});
+    if(t.h1)     wr.push({name:t.h1,     role:'h1',     part:'full'});
+    if(t.h2)     wr.push({name:t.h2,     role:'h2',     part:'full'});
+    t.workRecords=wr;
+    t.workRecordsAuto=true;
+  } else if(!Array.isArray(t.workRecords)){
+    t.workRecords=[];
+  }
+  if(!t._migrated) t._migrated=Date.now();
+  return t;
+}
+function migrateAllTrips(){
+  if(!Array.isArray(trips)) return;
+  trips.forEach(migrateTrip);
+}
+// Dual-shape reader — THE single entry point for "who worked on this trip".
+// Prefers workRecords (kept fresh by migrateTrip); falls back to legacy fields
+// for any unmigrated record that surfaces via sync from an older app version.
+// Payroll math downstream is unchanged: roles map to the same per-role pay slots.
+function getTripWorkers(t){
+  if(!t) return [];
+  if(Array.isArray(t.workRecords) && t.workRecords.length){
+    return t.workRecords.filter(w=>w && w.name);
+  }
+  const wr=[];
+  if(t.driver) wr.push({name:t.driver, role:'driver', part:'full'});
+  if(t.h1)     wr.push({name:t.h1,     role:'h1',     part:'full'});
+  if(t.h2)     wr.push({name:t.h2,     role:'h2',     part:'full'});
+  return wr;
+}
+
 // Save to both localStorage AND GitHub
 function saveTripsData(){
+  migrateAllTrips(); // idempotent — guarantees every persisted trip carries the new shape
   localStorage.setItem(TRIPS_KEY,JSON.stringify(trips));
   saveToGitHub();
 }
@@ -3466,6 +3520,7 @@ async function publishAppVersion(note){
   checkAppVersion(); // non-blocking, runs in background
   // Normalize all cutoff values including preloaded
   trips.forEach(t=>{ if(t.cutoff) t.cutoff=normalizeCutoff(t.cutoff); });
+  migrateAllTrips(); // trip model step 2 — additive shape upgrade, no values changed
   renderTable();
   updateStats();
   updateFilterOptions();
@@ -3609,9 +3664,13 @@ function renderPayroll(){
     }
   }
   wt.forEach(t=>{
-    if(t.driver) addPerson(drvMap, t.driver, 'driver', t);
-    if(t.h1) addPerson(hlpMap, t.h1, 'h1', t);
-    if(t.h2) addPerson(hlpMap, t.h2, 'h2', t);
+    // Dual-shape read: workRecords when present, legacy driver/h1/h2 as fallback.
+    // Auto-derived records mirror legacy fields 1:1, so totals are identical by construction.
+    getTripWorkers(t).forEach(w=>{
+      if(w.role==='driver') addPerson(drvMap, w.name, 'driver', t);
+      else if(w.role==='h1') addPerson(hlpMap, w.name, 'h1', t);
+      else if(w.role==='h2') addPerson(hlpMap, w.name, 'h2', t);
+    });
   });
 
   // Build driver table
@@ -3856,9 +3915,13 @@ function getTripRowsForPerson(weekNum, name){
   const wt=trips.filter(t=>String(t.weekFri)===String(weekNum));
   const rows=[];
   wt.forEach(t=>{
-    if(t.driver===name) rows.push({trip:t, pos:'D', rate:n(t.rate), mano:n(t.manoDrv), ca:n(t.caDrv), pay:n(t.drvPay)});
-    if(t.h1===name) rows.push({trip:t, pos:'H1', rate:n(t.rate), mano:n(t.manoH1), ca:n(t.caH1), pay:n(t.h1Pay)});
-    if(t.h2===name) rows.push({trip:t, pos:'H2', rate:n(t.rate), mano:n(t.manoH2), ca:n(t.caH2), pay:n(t.h2Pay)});
+    // Dual-shape read via getTripWorkers — same per-role pay slots, identical math.
+    getTripWorkers(t).forEach(w=>{
+      if(w.name!==name) return;
+      if(w.role==='driver') rows.push({trip:t, pos:'D', rate:n(t.rate), mano:n(t.manoDrv), ca:n(t.caDrv), pay:n(t.drvPay)});
+      else if(w.role==='h1') rows.push({trip:t, pos:'H1', rate:n(t.rate), mano:n(t.manoH1), ca:n(t.caH1), pay:n(t.h1Pay)});
+      else if(w.role==='h2') rows.push({trip:t, pos:'H2', rate:n(t.rate), mano:n(t.manoH2), ca:n(t.caH2), pay:n(t.h2Pay)});
+    });
   });
   rows.sort((a,b)=>(a.trip.tripStartDate||'').localeCompare(b.trip.tripStartDate||''));
   return rows;
