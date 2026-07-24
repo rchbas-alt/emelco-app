@@ -1089,7 +1089,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607242000'; // removed redundant status/billing fields + Remarks column; stripped stale seed data; Staff badge now shows Active count and refreshes on load.
+const APP_VERSION = '202607242030'; // removed redundant status/billing fields + Remarks column; stripped stale seed data; Staff badge = Active count; version gate now deployed-based with local-testing guard.
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -3436,13 +3436,19 @@ async function checkAppVersion(){
     const text = meta.content ? safeAtobUtf8(meta.content) : null;
     if(!text) return;
     const data = JSON.parse(text);
-    if(data.latestVersion && data.latestVersion !== APP_VERSION){
-      showForceReloadBlock(data.latestVersion, data.note||'');
+    // app_version.json records the version that is CURRENTLY DEPLOYED — not the newest ever built.
+    // Equality (not ">") is deliberate: on a rollback the deployed version is older than what a
+    // client is running, and those clients must still be pulled back down to it.
+    const deployed = data.deployedVersion || data.latestVersion; // legacy field name still honoured
+    // Don't gate a build opened straight from disk / localhost — it isn't deployed yet by definition.
+    const isLocal = location.protocol === 'file:' || ['localhost','127.0.0.1'].includes(location.hostname);
+    if(!isLocal && deployed && deployed !== APP_VERSION){
+      showForceReloadBlock(deployed, data.note||'');
     }
   } catch(e){ console.warn('Version check skipped:',e); }
 }
 
-function showForceReloadBlock(latest, note){
+function showForceReloadBlock(deployedVer, note){
   if(document.getElementById('force-reload-block')) return; // already showing
   const block = document.createElement('div');
   block.id = 'force-reload-block';
@@ -3450,8 +3456,8 @@ function showForceReloadBlock(latest, note){
   block.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:30px 28px;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
       <div style="font-size:34px;margin-bottom:10px">🔄</div>
-      <div style="font-weight:700;font-size:16px;margin-bottom:8px">An updated version is required</div>
-      <div style="font-size:12.5px;color:#5a6175;margin-bottom:4px">You're on <strong>${APP_VERSION}</strong>. Latest is <strong>${latest}</strong>.</div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:8px">A different version is deployed</div>
+      <div style="font-size:12.5px;color:#5a6175;margin-bottom:4px">You're on <strong>${APP_VERSION}</strong>. Deployed is <strong>${deployedVer}</strong>.</div>
       ${note?`<div style="font-size:12px;color:#5a6175;margin-bottom:14px">${note}</div>`:'<div style="margin-bottom:14px"></div>'}
       <button onclick="location.reload(true)" style="width:100%;background:#d4820a;color:#000;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer">Reload Now</button>
       <div style="font-size:10.5px;color:#9099b0;margin-top:10px">This screen will stay until you reload — the old file can no longer be used.</div>
@@ -3462,9 +3468,11 @@ function showForceReloadBlock(latest, note){
 // Re-check periodically in case someone leaves a tab open on the old version
 setInterval(checkAppVersion, 3*60*1000); // every 3 min
 
-// Run once manually after bumping APP_VERSION, to publish the new version number to GitHub
+// Run once manually AFTER deploying index.html, to record which version is now deployed.
+// Also run it after a ROLLBACK — from the rolled-back build — so the recorded version follows
+// the file that is actually live. Any drift between the two locks clients out.
 async function publishAppVersion(note){
-  const payload = { latestVersion: APP_VERSION, note: note||'', publishedAt: new Date().toISOString() };
+  const payload = { deployedVersion: APP_VERSION, latestVersion: APP_VERSION, note: note||'', publishedAt: new Date().toISOString() };
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
   let sha = null;
   try{
