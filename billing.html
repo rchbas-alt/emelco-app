@@ -228,6 +228,9 @@ body.role-operations .fin-only{display:none!important}
       <span class="muted" id="clStats"></span>
     </div>
     <p class="hint">Tick a trip once you've confirmed it was billed under this SI. Rows matched to a logged app trip show a green edge; unmatched client rows show an amber edge — check whether we logged that trip. A DR that used two trucks shows a “convoy” tag and each truck ticks on its own.</p>
+    <div id="clNoSiBanner" style="display:none;background:var(--warn-bg,#fff6e5);border:1px solid var(--warn,#e0a500);color:#946a00;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
+      ⚠ <strong>Pick an SI above before ticking.</strong> Choose the invoice these trips belong to (or create one on the Service Invoices tab). Ticks are saved <em>onto</em> an SI — without one selected, confirmations can't be recorded.
+    </div>
     <div class="table-wrapper">
       <table id="cl-table">
         <thead><tr>
@@ -346,7 +349,7 @@ body.role-operations .fin-only{display:none!important}
 /* ============================================================
    EMELCO Billing — billing.html  (matches index.html app)
    ============================================================ */
-const APP_VERSION = '202607272200';
+const APP_VERSION = '202607272330';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -381,12 +384,12 @@ function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
 /* ============================================================
    RBAC (login gate — same codes/classes as index.html)
    ============================================================ */
-let currentRole=null, pickedRole='owner';
+let currentRole=null, pickedRole='owner', currentName='';
 function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
-function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
+function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ let saved=localStorage.getItem('emelco_user_name')||''; let nm=(prompt('Your name (for the confirmed-by record):', saved)||saved||'').trim(); if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); } setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
 function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; }
 function doLogout(){ if(!confirm('Switch user / lock billing?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations'); $('#role-badge').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
-function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
+function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
 
 /* ============================================================
    Version gate (deployed-based, with local-testing guard)
@@ -787,11 +790,16 @@ function parseClientFile(file,cb){
 }
 
 function renderChecklistControls(){
-  $('#clSi').innerHTML=STATE.invoices.map(i=>`<option value="${i.id}">${esc(i.si)} — ${esc(i.period||'')}</option>`).join('')||`<option value="">(no invoices yet)</option>`;
+  const opts=STATE.invoices.map(i=>`<option value="${i.id}">${esc(i.si)} — ${esc(i.period||'')}</option>`).join('');
+  $('#clSi').innerHTML = `<option value="">${STATE.invoices.length?'— pick an SI —':'(no invoices yet — create one first)'}</option>`+opts;
   renderChecklist();
 }
 function renderChecklist(){
   const siId=$('#clSi').value, idx=buildTripIndex(), ticks=STATE.ticks[siId]||{}, tb=$('#cl-table tbody');
+  const noSI = !siId;
+  // banner when trips are loaded but no SI is chosen to attach ticks to
+  const banner=$('#clNoSiBanner');
+  if(banner) banner.style.display = (noSI && CLIENT_ROWS.length) ? 'block' : 'none';
   if(!CLIENT_ROWS.length){ tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No client trips loaded</div>Load the client file for this SI to list its trips.</div></td></tr>`; $('#clStats').textContent=''; return; }
   const drCount={}; CLIENT_ROWS.forEach(r=>{drCount[normDR(r.dr)]=(drCount[normDR(r.dr)]||0)+1;});
   let matched=0,verify=0,none=0,confirmed=0;
@@ -820,7 +828,7 @@ function renderChecklist(){
       appCell=`<span class="badge badge-pending">no app trip</span>`;
     }
     const main=`<tr class="match-row ${rowCls}" ${expandable?`onclick="toggleDetail(${ri})" style="cursor:pointer"`:''}>
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="tick" ${tk?'checked':''} onchange="toggleTick('${siId}','${rowKey}',this.checked)"></td>
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="tick" ${tk?'checked':''} ${noSI?'disabled title="Pick an SI above first"':''} onchange="toggleTick('${siId}','${rowKey}',this.checked)"></td>
       <td class="muted mono">${esc(r.date||'')}</td><td class="mono">${esc(r.dr||'')} ${convoy}</td>
       <td class="mono">${esc(r.plate||'')}</td><td>${esc(r.driver||'')}</td><td>${esc(r.sbu||'')}</td>
       <td>${appCell}</td>
@@ -847,7 +855,7 @@ function renderChecklist(){
   $('#clStats').innerHTML=`${CLIENT_ROWS.length} trips · <span style="color:var(--green)">${matched} matched</span> · <span style="color:var(--accent)">${verify} to verify</span> · <span style="color:var(--red)">${none} unmatched</span> · ${confirmed} confirmed`;
 }
 function toggleDetail(ri){ const d=document.getElementById('det'+ri); if(d) d.style.display = d.style.display==='none'?'table-row':'none'; }
-function toggleTick(siId,rowKey,on){ if(!siId)return; STATE.ticks[siId]=STATE.ticks[siId]||{}; if(on)STATE.ticks[siId][rowKey]={by:currentRole||'?',at:todayISO()}; else delete STATE.ticks[siId][rowKey]; renderChecklist(); saveBilling(); }
+function toggleTick(siId,rowKey,on){ if(!siId){ toast('Pick an SI first','error'); return; } STATE.ticks[siId]=STATE.ticks[siId]||{}; if(on)STATE.ticks[siId][rowKey]={by:(currentName||currentRole||'?'),at:todayISO()}; else delete STATE.ticks[siId][rowKey]; renderChecklist(); saveBilling(); }
 
 /* ---- paste-rows fallback (immune to sheet-name AND column-layout drift) ---- */
 function openPaste(){ $('#pasteBox').value=''; $('#pastePreview').textContent=''; $('#pasteModal').classList.add('open'); setTimeout(()=>$('#pasteBox').focus(),50); }
