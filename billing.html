@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMELCO — Billing 2026 (CCAC)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* Fallback if the primary CDN is blocked/slow — load an alternate host synchronously-ish.
+   We check on DOMContentLoaded and again before any import. */
+(function(){
+  if(typeof XLSX==='undefined'){
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload=function(){ if(window.__xlsxReady)window.__xlsxReady(); };
+    document.head.appendChild(s);
+  }
+})();
+</script>
+<style>
+:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--accent2:#c04a18;--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--purple:#7c3aed;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--card:#ffffff;--input-bg:#f8f9fb;--shadow:0 2px 12px rgba(0,0,0,0.08);--radius:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-mark{width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-weight:500;font-size:13px;color:#000;letter-spacing:-.5px}
+.logo-text{font-weight:700;font-size:16px;letter-spacing:.5px}
+.logo-sub{font-size:11px;color:var(--text2);font-weight:300}
+.header-right{display:flex;align-items:center;gap:8px}
+.client-pill{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.5px}
+.role-badge{display:none;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;cursor:pointer}
+.role-badge.owner{background:rgba(212,130,10,.15);color:var(--accent)}
+.role-badge.operations{background:rgba(37,99,235,.15);color:var(--blue)}
+#sync-status{font-size:11px;color:var(--text2)}
+.btn{padding:8px 14px;border-radius:var(--radius);border:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#000}.btn-primary:hover{background:#ffc02a;transform:translateY(-1px)}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--border2)}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#a93226}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#157a45}
+.btn-sm{padding:4px 9px;font-size:11px}
+.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:60px;z-index:99}
+.tab{padding:13px 18px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-badge{background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
+.main{padding:20px;max-width:1500px}
+.page{display:none}.page.active{display:block}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:3px}
+.stat-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px}
+.stat-value{font-size:22px;font-weight:700}
+.stat-sub{font-size:10px;color:var(--text2)}
+.stat-card.collected .stat-value{color:var(--green)}.stat-card.processing .stat-value{color:var(--accent)}.stat-card.overdue .stat-value{color:var(--red)}.stat-card.total .stat-value{color:var(--blue)}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+.search-box{min-width:180px;background:var(--input-bg);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px}
+.search-box:focus{outline:none;border-color:var(--accent)}
+.filter-select{background:var(--input-bg);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;cursor:pointer}
+.filter-select:focus{outline:none;border-color:var(--accent)}
+.table-wrapper{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 300px)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead{position:sticky;top:0;z-index:10}
+th{background:var(--bg3);border-bottom:1px solid var(--border2);padding:9px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);white-space:nowrap}
+td{padding:8px 8px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+tr:hover td{background:rgba(0,0,0,.015)}
+tr:last-child td{border-bottom:none}
+.mono{font-family:'DM Mono',monospace}
+.num-cell{text-align:right;font-family:'DM Mono',monospace;white-space:nowrap}
+.code-cell{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2)}
+.muted{color:var(--text3)}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.badge-paid{background:rgba(46,204,113,.15);color:var(--green)}
+.badge-pending{background:rgba(240,165,0,.15);color:var(--accent)}
+.badge-unpaid{background:rgba(231,76,60,.15);color:var(--red)}
+.badge-submitted{background:rgba(58,134,255,.15);color:var(--blue)}
+.badge-default{background:var(--bg3);color:var(--text2)}
+.chip{display:inline-block;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;margin:1px 2px}
+.empty-state{text-align:center;padding:50px 20px;color:var(--text3)}
+.empty-icon{font-size:40px;margin-bottom:12px}.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.hint{font-size:11px;color:var(--text3);margin:6px 0 14px;line-height:1.5}
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:22px 0 12px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+body.role-operations .fin-only{display:none!important}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:1000px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:16px;font-weight:700}.modal-subtitle{font-size:11px;color:var(--text2);margin-top:2px}
+.modal-close{width:30px;height:30px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}.modal-close:hover{background:var(--border2)}
+.modal-body{padding:20px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.form-grid{display:grid;gap:10px}.form-grid-4{grid-template-columns:repeat(4,1fr)}.form-grid-3{grid-template-columns:repeat(3,1fr)}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.form-input,.form-select{background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;padding:8px 11px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;width:100%}
+.form-input:focus,.form-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(212,130,10,.1)}
+.form-input.calc{background:rgba(124,58,237,.06);color:var(--purple);border-color:rgba(124,58,237,.2);font-family:'DM Mono',monospace;text-align:right}
+
+/* lines editor */
+.lines-tbl input.form-input,.lines-tbl select.form-select{padding:5px 7px;font-size:11px}
+.lines-tbl td{padding:4px 5px}
+.grand td{font-weight:700;background:var(--bg3)}
+
+/* checklist */
+.tick{width:17px;height:17px;cursor:pointer;accent-color:var(--green)}
+.match-row.matched td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+.match-row.verify td:first-child{box-shadow:inset 3px 0 0 #e0a500}
+.match-row.verify td{background:rgba(224,165,0,.05)}
+.match-row.unmatched td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.badge-verify{background:rgba(224,165,0,.18);color:#946a00}
+
+/* login */
+.login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-overlay.hidden{display:none}
+.login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;width:100%;max-width:380px;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-title{font-weight:800;font-size:18px}
+.login-desc{font-size:11px;color:var(--text2);margin-bottom:20px}
+.role-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.role-opt{border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);transition:all .15s}
+.role-opt:hover{border-color:var(--accent)}
+.role-opt.active{border-color:var(--accent);background:rgba(212,130,10,.08);color:var(--accent)}
+.role-opt .em{font-size:20px;display:block;margin-bottom:4px}
+.login-error{color:var(--red);font-size:11px;min-height:16px;margin-top:8px}
+
+/* toast + version gate */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:6px}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:8px;font-size:12px;box-shadow:var(--shadow);animation:toastIn .3s ease;min-width:220px}
+.toast.success{border-left:3px solid var(--green)}.toast.error{border-left:3px solid var(--red)}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.version-block{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:4000;display:none;align-items:center;justify-content:center;padding:20px}
+.version-block.show{display:flex}
+.version-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;max-width:420px;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo"><div class="logo-mark">EM</div><div class="login-title">EMELCO Billing</div></div>
+    <div class="login-desc">CCAC billing &amp; collections · select role and enter access code</div>
+    <div class="role-picker">
+      <div class="role-opt active" id="pick-owner" onclick="pickRole('owner')"><span class="em">👑</span>Owner</div>
+      <div class="role-opt" id="pick-operations" onclick="pickRole('operations')"><span class="em">🧭</span>Operations</div>
+    </div>
+    <input type="password" class="form-input" id="login-pass" placeholder="Access code" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="login-error" id="login-error"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="doLogin()">Unlock</button>
+  </div>
+</div>
+
+<!-- VERSION GATE -->
+<div class="version-block" id="version-block">
+  <div class="version-card">
+    <div style="font-size:34px;margin-bottom:10px">🔄</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">Update required</div>
+    <div id="version-msg" style="font-size:12px;color:var(--text2);margin-bottom:18px"></div>
+    <button class="btn btn-primary" style="justify-content:center;width:100%" onclick="location.reload(true)">Reload now</button>
+  </div>
+</div>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark">EM</div>
+    <div><div class="logo-text">EMELCO Billing</div><div class="logo-sub">Service Invoices &amp; Collections</div></div>
+  </div>
+  <div class="header-right">
+    <span class="client-pill">CCAC · 2026</span>
+    <span id="sync-status">local</span>
+    <span class="role-badge" id="role-badge" onclick="doLogout()" title="Click to switch user"></span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">📊 Overview</div>
+  <div class="tab" onclick="switchTab('invoices')">🧾 Service Invoices</div>
+  <div class="tab" onclick="switchTab('checklist')">✅ Trip Checklist</div>
+  <div class="tab fin-only" onclick="switchTab('unbilled')">💰 Unbilled</div>
+  <div class="tab fin-only" onclick="switchTab('setup')">⚙️ BU / SBU Setup</div>
+</div>
+
+<div class="main">
+  <!-- OVERVIEW -->
+  <div class="page active" id="page-overview">
+    <div class="stats-row" id="ov-stats"></div>
+    <div class="section-title">Collection status <span id="ov-count"></span></div>
+    <div class="table-wrapper">
+      <table id="ov-table">
+        <thead><tr>
+          <th>SI #</th><th>Period</th><th class="num-cell">Net billing</th>
+          <th>Status</th><th>Due</th><th class="num-cell fin-only">Net due</th>
+        </tr></thead><tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- INVOICES -->
+  <div class="page" id="page-invoices">
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="openSI(null)">+ New Service Invoice</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('soaFile').click()">📄 Import client file…</button>
+      <input type="file" id="soaFile" accept=".xlsx,.xls" style="display:none">
+      <div class="spacer"></div>
+      <input type="search" class="search-box" id="siSearch" placeholder="Search SI, period…" oninput="renderInvoices()">
+    </div>
+    <div class="table-wrapper">
+      <table id="si-table">
+        <thead><tr>
+          <th>SI #</th><th>Period</th><th>Submitted</th><th>Due date</th>
+          <th class="num-cell">Sales (net)</th><th class="num-cell fin-only">VAT</th>
+          <th class="num-cell">Net due</th><th>Status</th><th></th>
+        </tr></thead><tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <div class="page" id="page-checklist">
+    <div class="toolbar">
+      <span class="form-label">SI</span>
+      <select class="filter-select" id="clSi" onchange="renderChecklist()"></select>
+      <button class="btn btn-ghost" onclick="document.getElementById('clFile').click()">📄 Load client trips…</button>
+      <input type="file" id="clFile" accept=".xlsx,.xls" style="display:none">
+      <button class="btn btn-ghost" onclick="openPaste()">📋 Paste rows…</button>
+      <div class="spacer"></div>
+      <span class="muted" id="clStats"></span>
+    </div>
+    <p class="hint">Tick a trip once you've confirmed it was billed under this SI. Rows matched to a logged app trip show a green edge; unmatched client rows show an amber edge — check whether we logged that trip. A DR that used two trucks shows a “convoy” tag and each truck ticks on its own.</p>
+    <div class="table-wrapper">
+      <table id="cl-table">
+        <thead><tr>
+          <th style="width:34px"></th><th>Date</th><th>DR</th><th>Plate</th>
+          <th>Driver</th><th>SBU</th><th>App trip</th><th>Confirmed by</th>
+        </tr></thead><tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- UNBILLED -->
+  <div class="page fin-only" id="page-unbilled">
+    <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
+    <p class="hint">Completed CCAC trips that are <strong>not yet on any invoice</strong>. Expected amount = trip Rate + Surcharge (what your team logged). This is a forecast of revenue still to be billed — the client's final figure may differ. A trip drops off this list once it's ticked onto any SI in the Trip Checklist.</p>
+    <div class="toolbar">
+      <span class="muted" id="ub-coverage"></span>
+      <div class="spacer"></div>
+      <input type="search" class="search-box" id="ubSearch" placeholder="Search plate, driver, area…" oninput="renderUnbilled()">
+    </div>
+    <div class="table-wrapper">
+      <table id="ub-table">
+        <thead><tr>
+          <th>Date</th><th>Code</th><th>Plate</th><th>Driver</th><th>Area / Destination</th>
+          <th class="num-cell">Rate</th><th class="num-cell">Surcharge</th><th class="num-cell">Expected</th>
+        </tr></thead><tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="page fin-only" id="page-setup">
+    <p class="hint">Add business units and their sub-units once here, then pick them from dropdowns when building an SI. Keeping this list clean is what makes totals reconcile — avoid re-typing variants of the same name.</p>
+    <div class="toolbar">
+      <input class="search-box" id="newBu" placeholder="New BU (e.g. CMIP)" style="flex:0 0 200px">
+      <button class="btn btn-primary btn-sm" onclick="addBU()">Add BU</button>
+    </div>
+    <div id="buList"></div>
+  </div>
+</div>
+
+<!-- SI EDITOR -->
+<div class="modal-overlay" id="siModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div><div class="modal-title" id="siModalTitle">New Service Invoice</div>
+      <div class="modal-subtitle">Enter net-of-VAT amounts per BU / SBU / type — VAT, gross and withholding compute automatically</div></div>
+      <div class="modal-close" onclick="closeSI()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid form-grid-4">
+        <div class="form-group"><label class="form-label">SI #</label><input class="form-input" id="mSi" placeholder="auto if blank"></div>
+        <div class="form-group"><label class="form-label">Period label</label><input class="form-input" id="mPeriod" placeholder="CCAC June 21-30"></div>
+        <div class="form-group"><label class="form-label">Date submitted</label><input type="date" class="form-input" id="mSubmitted"></div>
+        <div class="form-group"><label class="form-label">Due days</label><input type="number" class="form-input" id="mDueDays" value="30"></div>
+      </div>
+      <div class="form-grid form-grid-3" style="margin-top:10px">
+        <div class="form-group"><label class="form-label">Payment status</label>
+          <select class="form-select" id="mStatus" onchange="onStatusChange()">
+            <option value="submitted">Submitted (processing)</option>
+            <option value="open">Open (not yet paid)</option>
+            <option value="paid">Paid</option>
+          </select></div>
+        <div class="form-group" id="mPaidWrap" style="display:none"><label class="form-label">Paid date</label><input type="date" class="form-input" id="mPaidDate"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:20px">Billing lines
+        <button class="btn btn-ghost btn-sm" onclick="addDraftLine()">+ line</button></div>
+      <div class="table-wrapper" style="max-height:none">
+        <table class="lines-tbl" id="lines-table">
+          <thead><tr>
+            <th style="width:120px">BU</th><th style="width:140px">SBU</th><th style="width:120px">Type</th>
+            <th class="num-cell">Net of VAT</th><th class="num-cell">DR penalty</th>
+            <th class="num-cell">VAT 12%</th><th class="num-cell">Gross</th>
+            <th class="num-cell">WHT 2%</th><th class="num-cell">Net due</th><th style="width:28px"></th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr class="grand">
+            <td colspan="3">Grand total</td>
+            <td class="num-cell" id="tNet">0.00</td><td class="num-cell" id="tPen">0.00</td>
+            <td class="num-cell" id="tVat">0.00</td><td class="num-cell" id="tGross">0.00</td>
+            <td class="num-cell" id="tWht">0.00</td><td class="num-cell" id="tDue">0.00</td><td></td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSI()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSI()">Save invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- PASTE ROWS MODAL -->
+<div class="modal-overlay" id="pasteModal">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-header">
+      <div><div class="modal-title">Paste client trip rows</div>
+      <div class="modal-subtitle">Fallback for when the file won't upload — copy the columns from Excel and paste below</div></div>
+      <div class="modal-close" onclick="closePaste()">✕</div>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-top:0">In the client's detail sheet, select the rows including the header row — make sure the columns <strong>DR</strong>, the date column, <strong>Actual Plate Number</strong>, <strong>Actual Driver's Name</strong>, and <strong>SBU</strong> are among them — copy (Ctrl+C), and paste here. Column order doesn't matter; it reads the header. If there's no header, use exactly: <span class="mono">DR • date • plate • driver • SBU</span>.</p>
+      <textarea id="pasteBox" class="form-input" style="width:100%;height:200px;font-family:'DM Mono',monospace;font-size:11px;white-space:pre" placeholder="DR&#9;Shipment Document Date&#9;Actual Plate Number&#9;Actual Driver's Name&#9;SBU&#10;5020386770&#9;15-Jul-26&#9;MAZ6896&#9;AREIL BUALOY&#9;ACS"></textarea>
+      <div id="pastePreview" class="muted" style="font-size:11px;margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePaste()">Cancel</button>
+      <button class="btn btn-primary" onclick="applyPaste()">Load these rows</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+/* ============================================================
+   EMELCO Billing — billing.html  (matches index.html app)
+   ============================================================ */
+const APP_VERSION = '202607262100';
+const CLIENT   = 'CCAC';
+const YEAR     = 2026;
+const VAT_RATE = 0.12, WHT_RATE = 0.02;
+
+// ---- proxy wiring: identical mechanism to index.html ----
+const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
+const PROXY_SECRET = 'emelco1254rch';
+const TRIPS_FILE   = 'emelco_data.json';                 // read-only source of trips
+const BILLING_FILE = 'emelco_billing_2026.json';         // read-write billing store (ADD to Worker ALLOWED_PATHS)
+const VERSION_FILE = 'app_version.json';
+const TRIPS_API    = `${PROXY_URL}/contents/${TRIPS_FILE}`;
+const BILLING_API  = `${PROXY_URL}/contents/${BILLING_FILE}`;
+const VERSION_API  = `${PROXY_URL}/contents/${VERSION_FILE}`;
+const HDRS = { 'X-Proxy-Auth':PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
+let billingSha = null;
+
+const ACCESS_CODES = { owner:'emelco2026', operations:'ops2026' };
+
+/* ---- helpers ---- */
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const peso=n=>(Number(n)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const uid=()=>'si'+Math.random().toString(36).slice(2,8);
+const todayISO=()=>new Date().toISOString().slice(0,10);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function addDays(iso,d){ const t=new Date(iso); t.setDate(t.getDate()+d); return t.toISOString().slice(0,10); }
+function getDeviceName(){ return localStorage.getItem('emelco_device')||'billing-web'; }
+function toast(msg,type='success'){ const c=$('#toasts'); const t=document.createElement('div'); t.className='toast '+type; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.remove(),3600); }
+function safeAtobUtf8(b64){ const bin=atob(b64.replace(/\n/g,'')); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i); return new TextDecoder('utf-8').decode(b); }
+function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
+
+/* ============================================================
+   RBAC (login gate — same codes/classes as index.html)
+   ============================================================ */
+let currentRole=null, pickedRole='owner';
+function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
+function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
+function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; }
+function doLogout(){ if(!confirm('Switch user / lock billing?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations'); $('#role-badge').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
+function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
+
+/* ============================================================
+   Version gate (deployed-based, with local-testing guard)
+   ============================================================ */
+async function checkVersion(){
+  const isLocal = location.protocol==='file:'||/localhost|127\.0\.0\.1/.test(location.host);
+  if(isLocal) return;
+  try{
+    const r=await fetch(VERSION_API+'?t='+Date.now(),{headers:HDRS});
+    if(!r.ok) return;
+    const meta=await r.json();
+    const txt=safeAtobUtf8(meta.content);
+    const deployed=(JSON.parse(txt).deployedVersion)||'';
+    if(deployed && deployed!==APP_VERSION){
+      $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed is <strong>${deployed}</strong>.`;
+      $('#version-block').classList.add('show');
+    }
+  }catch(e){ /* non-fatal */ }
+}
+
+/* ============================================================
+   State + cloud I/O
+   ============================================================ */
+let STATE={ meta:{client:CLIENT,year:YEAR}, bus:[], invoices:[], ticks:{} };
+let TRIPS=[], CLIENT_ROWS=[];
+const TYPES=['Recon','Surcharge','Incremental'];
+
+function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
+
+async function cloudGetJSON(api){
+  const r=await fetch(api+'?t='+Date.now(),{headers:HDRS});
+  if(r.status===404) return {__missing:true};
+  if(!r.ok) throw new Error('GET '+r.status);
+  const meta=await r.json();
+  let text;
+  if(meta.content && meta.encoding==='base64'){ text=safeAtobUtf8(meta.content); }
+  else { const b=await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`,{headers:HDRS}); if(!b.ok)throw new Error('blob '+b.status); text=safeAtobUtf8((await b.json()).content); }
+  return { sha:meta.sha, data:JSON.parse(text) };
+}
+
+let saveTimer=null, isSaving=false;
+function saveBilling(){
+  clearTimeout(saveTimer);
+  setSync('⏳ saving…','var(--accent)');
+  saveTimer=setTimeout(doSaveBilling,800);
+}
+async function doSaveBilling(){
+  if(isSaving) return; isSaving=true;
+  try{
+    STATE.meta={client:CLIENT,year:YEAR}; STATE.savedAt=new Date().toISOString(); STATE.savedBy=getDeviceName();
+    const content=toB64Utf8(JSON.stringify(STATE,null,2));
+    const body={ message:`Billing update ${new Date().toLocaleString('en-PH')}`, content };
+    if(billingSha) body.sha=billingSha;
+    const r=await fetch(BILLING_API,{method:'PUT',headers:{...HDRS,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){ const d=await r.json(); billingSha=d.content.sha; setSync('☁️ saved','var(--green)'); }
+    else if(r.status===409||r.status===422){
+      setSync('⚠️ conflict — reloading','var(--red)');
+      const got=await cloudGetJSON(BILLING_API);
+      if(!got.__missing){ billingSha=got.sha; STATE=mergeBilling(STATE,got.data); renderAll(); toast('Another device saved first — merged latest','error'); }
+      isSaving=false; saveBilling(); return;
+    } else { throw new Error('PUT '+r.status); }
+  }catch(e){
+    console.error(e); setSync('⚠️ offline — kept locally','var(--red)');
+    localStorage.setItem('emelco_billing_backup',JSON.stringify(STATE));
+  }finally{ isSaving=false; }
+}
+// simple union merge so two devices don't clobber each other
+function mergeBilling(local,remote){
+  const out=normalize(remote);
+  const byId={}; out.invoices.forEach(i=>byId[i.id]=i);
+  local.invoices.forEach(i=>{ byId[i.id]=i; }); // local wins on same id (last edit in this device)
+  out.invoices=Object.values(byId);
+  // ticks: union
+  Object.keys(local.ticks||{}).forEach(si=>{ out.ticks[si]={...(out.ticks[si]||{}),...local.ticks[si]}; });
+  // bus: prefer whichever has more entries
+  if((local.bus||[]).length>=out.bus.length) out.bus=local.bus;
+  return out;
+}
+function normalize(b){ return { meta:b.meta||{client:CLIENT,year:YEAR}, bus:b.bus||[], invoices:b.invoices||[], ticks:b.ticks||{} }; }
+function seedBUs(){ STATE.bus=[
+  {name:'CCAC', sbus:['Trad Trade','KAG','ESG','Service','Transfer','ACS']},
+  {name:'CMIP', sbus:['ALSTRA','CSG','MIDEA','ACS','KAG','ESG','Trad Trade','Service','Transfer']},
+  {name:'CDI',  sbus:[]},
+]; }
+
+async function boot(){
+  await checkVersion();
+  // billing store
+  try{
+    const got=await cloudGetJSON(BILLING_API);
+    if(got.__missing){ setSync('☁️ new file on first save','var(--accent)'); seedBUs(); }
+    else { billingSha=got.sha; STATE=normalize(got.data); setSync('☁️ synced','var(--green)'); }
+  }catch(e){
+    const bk=localStorage.getItem('emelco_billing_backup');
+    if(bk){ STATE=normalize(JSON.parse(bk)); }
+    setSync('⚠️ offline — local data','var(--red)');
+    toast('Couldn\'t reach billing file. Add "'+BILLING_FILE+'" to Worker ALLOWED_PATHS.','error');
+  }
+  if(!STATE.bus.length) seedBUs();
+  // trips (read-only, non-fatal)
+  try{
+    const got=await cloudGetJSON(TRIPS_API);
+    if(!got.__missing){ const c=got.data; TRIPS=(c.trips||[]).filter(t=>String(t.client||'').toUpperCase()===CLIENT); }
+  }catch(e){ console.warn('trips load failed',e.message); }
+  renderAll();
+}
+
+/* ============================================================
+   Billing math (verified against client file to the centavo)
+   ============================================================ */
+function lineCalc(l){ const net=(Number(l.net)||0)-(Number(l.penalty)||0); const vat=net*VAT_RATE; return {net,vat,gross:net+vat,wht:net*WHT_RATE,due:net+vat-net*WHT_RATE}; }
+function siTotals(inv){ const t={net:0,penalty:0,vat:0,gross:0,wht:0,due:0}; (inv.lines||[]).forEach(l=>{ const c=lineCalc(l); t.net+=c.net; t.penalty+=Number(l.penalty)||0; t.vat+=c.vat; t.gross+=c.gross; t.wht+=c.wht; t.due+=c.due; }); return t; }
+function siDueDate(inv){ return inv.submitted?addDays(inv.submitted,Number(inv.dueDays)||30):''; }
+function siStatusInfo(inv){
+  if(inv.status==='paid'){
+    if(inv.paidDate&&inv.submitted){ const d=daysBetween(siDueDate(inv),inv.paidDate); const note=d<0?`early ${Math.abs(d)}d`:d>0?`late ${d}d`:'on due date'; return {cls:'paid',text:'Paid',note}; }
+    return {cls:'paid',text:'Paid',note:''};
+  }
+  if(inv.status==='submitted') return {cls:'submitted',text:'Submitted',note:'processing'};
+  const dd=siDueDate(inv); if(!dd) return {cls:'pending',text:'Open',note:''};
+  const d=daysBetween(todayISO(),dd);
+  return d<0?{cls:'unpaid',text:'Overdue',note:`by ${Math.abs(d)}d`}:{cls:'pending',text:'Due',note:`in ${d}d`};
+}
+function badge(cls,text,note){ return `<span class="badge badge-${cls}">${text}</span>${note?` <span class="muted">${note}</span>`:''}`; }
+
+/* ============================================================
+   Render
+   ============================================================ */
+function renderAll(){ renderOverview(); renderInvoices(); renderSetup(); renderChecklistControls(); renderUnbilled(); }
+
+function switchTab(name){ $$('.tab').forEach(t=>t.classList.remove('active')); $$('.page').forEach(p=>p.classList.remove('active')); event&&event.currentTarget&&event.currentTarget.classList.add('active'); $('#page-'+name).classList.add('active'); if(!(event&&event.currentTarget)){ Array.from(document.querySelectorAll('.tab')).find(t=>t.getAttribute('onclick')?.includes(name))?.classList.add('active'); } }
+
+function renderOverview(){
+  let net=0,paid=0,proc=0,over=0;
+  STATE.invoices.forEach(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv); net+=t.due; if(s.cls==='paid')paid+=t.due; else if(s.cls==='submitted')proc+=t.due; else if(s.cls==='unpaid')over+=t.due; });
+  const pct=net?Math.round(paid/net*100):0;
+  $('#ov-stats').innerHTML=`
+    ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.invoices.length+' invoices')}
+    ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
+    ${stat('processing','In processing','₱'+peso(proc),'submitted to client')}
+    ${stat('overdue','Overdue','₱'+peso(over),'past due, uncollected')}`;
+  $('#ov-count').textContent=STATE.invoices.length?`${STATE.invoices.length} invoices`:'';
+  const tb=$('#ov-table tbody');
+  tb.innerHTML=STATE.invoices.length?STATE.invoices.map(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv);
+    return `<tr><td class="mono"><strong>${esc(inv.si||'—')}</strong></td><td>${esc(inv.period||'')}</td>
+      <td class="num-cell">₱${peso(t.net)}</td><td>${badge(s.cls,s.text,s.note)}</td>
+      <td class="muted mono">${siDueDate(inv)||'—'}</td><td class="num-cell fin-only">₱${peso(t.due)}</td></tr>`;
+  }).join(''):`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No invoices yet</div>Add one under Service Invoices.</div></td></tr>`;
+}
+function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div class="stat-label">${label}</div><div class="stat-value">${val}</div><div class="stat-sub">${sub}</div></div>`; }
+
+/* ---- Unbilled: completed CCAC trips not ticked on any SI ---- */
+function num(x){ return Number(x)||0; }
+function allTickedDRs(){
+  // set of DR keys that appear as a tick on ANY SI (rowKey is DR|PLATE, so take the DR part)
+  const set=new Set();
+  Object.values(STATE.ticks||{}).forEach(siTicks=>{ Object.keys(siTicks||{}).forEach(rowKey=>{ const dr=rowKey.split('|')[0]; if(dr)set.add(dr); }); });
+  return set;
+}
+function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
+function isBilled(t, tickedDRs){ return tripDRset(t).some(dr=>tickedDRs.has(dr)); }
+function renderUnbilled(){
+  const q=($('#ubSearch')?.value||'').toLowerCase();
+  const tickedDRs=allTickedDRs();
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  const unbilled=completed.filter(t=>!isBilled(t,tickedDRs));
+  // stats
+  let expTotal=0,billedCount=0;
+  completed.forEach(t=>{ if(isBilled(t,tickedDRs))billedCount++; });
+  unbilled.forEach(t=>expTotal+=tripExpected(t));
+  const el=$('#ub-stats'); if(el) el.innerHTML=`
+    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, not on any SI')}
+    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t,tickedDRs)?tripExpected(t):0),0)),billedCount+' completed trips on an SI')}
+    ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
+  const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} CCAC trips are marked completed`;
+  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+  const tb=$('#ub-table tbody'); if(!tb)return;
+  tb.innerHTML=rows.length?rows.map(t=>`<tr>
+    <td class="muted mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="code-cell">${esc(t.code||t.id||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
+    <td class="muted">${esc(t.area||t.destination||'')}</td>
+    <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
+    <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
+    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips are on an SI — or none are marked completed yet.</div></td></tr>`;
+}
+
+function renderInvoices(){
+  const q=($('#siSearch').value||'').toLowerCase();
+  const rows=STATE.invoices.filter(i=>!q||((i.si+' '+i.period).toLowerCase().includes(q)));
+  $('#si-table tbody').innerHTML=rows.length?rows.map(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv);
+    return `<tr><td class="mono"><strong>${esc(inv.si||'—')}</strong></td><td>${esc(inv.period||'')}</td>
+      <td class="muted mono">${inv.submitted||'—'}</td><td class="muted mono">${siDueDate(inv)||'—'}</td>
+      <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
+      <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openSI('${inv.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteSI('${inv.id}')">Delete</button></td></tr>`;
+  }).join(''):`<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No invoices</div>Click “New Service Invoice”.</div></td></tr>`;
+}
+
+function renderSetup(){
+  $('#buList').innerHTML=STATE.bus.map((bu,i)=>`
+    <div class="table-wrapper" style="margin-bottom:12px;max-height:none"><table>
+      <thead><tr><th>${esc(bu.name)} — sub-units</th>
+        <th class="num-cell" style="width:300px">
+          <input class="search-box" id="sbuIn${i}" placeholder="add SBU…" style="min-width:130px;display:inline-block">
+          <button class="btn btn-primary btn-sm" onclick="addSBU(${i})">Add</button>
+          <button class="btn btn-danger btn-sm" onclick="delBU(${i})">Del BU</button></th></tr></thead>
+      <tbody>${bu.sbus.length?bu.sbus.map((s,j)=>`<tr><td>${esc(s)}</td><td class="num-cell"><button class="btn btn-ghost btn-sm" onclick="delSBU(${i},${j})">remove</button></td></tr>`).join(''):`<tr><td colspan="2" class="muted">No SBUs yet — add some above.</td></tr>`}</tbody>
+    </table></div>`).join('')||`<p class="muted">No BUs yet.</p>`;
+}
+function addBU(){ const v=$('#newBu').value.trim(); if(!v)return; if(STATE.bus.some(b=>b.name.toLowerCase()===v.toLowerCase())){toast('That BU already exists','error');return;} STATE.bus.push({name:v,sbus:[]}); $('#newBu').value=''; renderSetup(); saveBilling(); }
+function addSBU(i){ const inp=$('#sbuIn'+i),v=inp.value.trim(); if(!v)return; if(STATE.bus[i].sbus.some(s=>s.toLowerCase()===v.toLowerCase())){toast('That SBU already exists in this BU','error');return;} STATE.bus[i].sbus.push(v); renderSetup(); saveBilling(); }
+function delSBU(i,j){ STATE.bus[i].sbus.splice(j,1); renderSetup(); saveBilling(); }
+function delBU(i){ if(confirm('Remove BU “'+STATE.bus[i].name+'”?')){ STATE.bus.splice(i,1); renderSetup(); saveBilling(); } }
+
+/* ---- SI editor ---- */
+let editingId=null, DRAFT_LINES=[];
+function newLine(){ return {bu:'',sbu:'',type:'Recon',net:0,penalty:0}; }
+function openSI(id){
+  const inv=id?STATE.invoices.find(x=>x.id===id):null;
+  editingId=inv?inv.id:null;
+  $('#siModalTitle').textContent=inv?('Edit '+(inv.si||'invoice')):'New Service Invoice';
+  $('#mSi').value=inv?.si||''; $('#mPeriod').value=inv?.period||'';
+  $('#mSubmitted').value=inv?.submitted||todayISO(); $('#mDueDays').value=inv?.dueDays??30;
+  $('#mStatus').value=inv?.status||'submitted'; $('#mPaidDate').value=inv?.paidDate||'';
+  onStatusChange();
+  DRAFT_LINES=inv?JSON.parse(JSON.stringify(inv.lines||[])):[newLine()];
+  if(!DRAFT_LINES.length)DRAFT_LINES=[newLine()];
+  renderLines(); $('#siModal').classList.add('open');
+}
+function closeSI(){ $('#siModal').classList.remove('open'); }
+function onStatusChange(){ $('#mPaidWrap').style.display=($('#mStatus').value==='paid')?'flex':'none'; }
+function buOpts(sel){ return `<option value="">—</option>`+STATE.bus.map(b=>`<option ${b.name===sel?'selected':''}>${esc(b.name)}</option>`).join(''); }
+function sbuOpts(bu,sel){ const b=STATE.bus.find(x=>x.name===bu); const list=b?b.sbus:[]; return `<option value="">—</option>`+list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
+function addDraftLine(){ DRAFT_LINES.push(newLine()); renderLines(); }
+function setLine(i,k,v){ DRAFT_LINES[i][k]=(k==='net'||k==='penalty')?(parseFloat(v)||0):v; renderLines(); }
+function delLine(i){ DRAFT_LINES.splice(i,1); if(!DRAFT_LINES.length)DRAFT_LINES=[newLine()]; renderLines(); }
+function renderLines(){
+  $('#lines-table tbody').innerHTML=DRAFT_LINES.map((l,i)=>{ const c=lineCalc(l);
+    return `<tr>
+      <td><select class="form-select" onchange="setLine(${i},'bu',this.value)">${buOpts(l.bu)}</select></td>
+      <td><select class="form-select" onchange="setLine(${i},'sbu',this.value)">${sbuOpts(l.bu,l.sbu)}</select></td>
+      <td><select class="form-select" onchange="setLine(${i},'type',this.value)">${TYPES.map(t=>`<option ${t===l.type?'selected':''}>${t}</option>`).join('')}</select></td>
+      <td><input class="form-input" style="text-align:right" type="number" step="0.01" value="${l.net||0}" onchange="setLine(${i},'net',this.value)"></td>
+      <td><input class="form-input" style="text-align:right" type="number" step="0.01" value="${l.penalty||0}" onchange="setLine(${i},'penalty',this.value)"></td>
+      <td class="num-cell muted">${peso(c.vat)}</td><td class="num-cell muted">${peso(c.gross)}</td>
+      <td class="num-cell muted">${peso(c.wht)}</td><td class="num-cell"><strong>${peso(c.due)}</strong></td>
+      <td><button class="btn btn-danger btn-sm" onclick="delLine(${i})">×</button></td></tr>`;
+  }).join('');
+  const t=DRAFT_LINES.reduce((a,l)=>{const c=lineCalc(l);a.net+=c.net;a.pen+=Number(l.penalty)||0;a.vat+=c.vat;a.gross+=c.gross;a.wht+=c.wht;a.due+=c.due;return a;},{net:0,pen:0,vat:0,gross:0,wht:0,due:0});
+  $('#tNet').textContent=peso(t.net);$('#tPen').textContent=peso(t.pen);$('#tVat').textContent=peso(t.vat);$('#tGross').textContent=peso(t.gross);$('#tWht').textContent=peso(t.wht);$('#tDue').textContent=peso(t.due);
+}
+function nextSI(){ const nums=STATE.invoices.map(i=>parseInt(String(i.si).replace(/\D/g,''))).filter(n=>!isNaN(n)); return 'SI-'+String((nums.length?Math.max(...nums):0)+1).padStart(4,'0'); }
+function deleteSI(id){
+  const inv=STATE.invoices.find(x=>x.id===id); if(!inv)return;
+  const tickCount=Object.keys(STATE.ticks[id]||{}).length;
+  let msg='Delete invoice '+(inv.si||'')+(inv.period?' ('+inv.period+')':'')+'?';
+  if(tickCount) msg+='\n\nThis also removes '+tickCount+' confirmed trip tick'+(tickCount>1?'s':'')+' on this SI. Those trips will show as unbilled again.';
+  msg+='\n\nThis cannot be undone.';
+  if(!confirm(msg)) return;
+  STATE.invoices=STATE.invoices.filter(x=>x.id!==id);
+  delete STATE.ticks[id];
+  renderAll(); saveBilling(); toast('Deleted '+(inv.si||'invoice'));
+}
+function saveSI(){
+  const inv={ id:editingId||uid(), si:($('#mSi').value.trim()||nextSI()),
+    period:$('#mPeriod').value.trim(), submitted:$('#mSubmitted').value,
+    dueDays:parseInt($('#mDueDays').value)||30, status:$('#mStatus').value,
+    paidDate:$('#mStatus').value==='paid'?$('#mPaidDate').value:'',
+    lines:DRAFT_LINES.filter(l=>l.bu||l.sbu||Number(l.net)) };
+  if(editingId){ const ix=STATE.invoices.findIndex(x=>x.id===editingId); STATE.invoices[ix]=inv; }
+  else STATE.invoices.unshift(inv);
+  closeSI(); renderAll(); saveBilling(); toast('Invoice '+inv.si+' saved');
+}
+
+/* ============================================================
+   Trip checklist + auto-match
+   ============================================================ */
+function normDR(x){ return String(x||'').replace(/[^0-9A-Za-z]/g,'').toUpperCase(); }
+function normPlate(x){ return String(x||'').replace(/[^0-9A-Za-z]/g,'').toUpperCase(); }
+function tripDRset(t){ return String(t.dr||'').split(/[\/,;]+/).map(normDR).filter(Boolean); }
+function tripDate(t){ return t.tripStartDate||t.dispatchedDate||''; }
+
+// bounded Levenshtein: returns edit distance, but bails out once it exceeds `max`
+function editDist(a,b,max){
+  if(a===b) return 0;
+  const la=a.length, lb=b.length;
+  if(Math.abs(la-lb)>max) return max+1;
+  let prev=Array.from({length:lb+1},(_,i)=>i);
+  for(let i=1;i<=la;i++){
+    const cur=[i]; let best=i;
+    for(let j=1;j<=lb;j++){
+      const cost=a[i-1]===b[j-1]?0:1;
+      cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost);
+      if(cur[j]<best)best=cur[j];
+    }
+    if(best>max) return max+1;   // whole row already over budget
+    prev=cur;
+  }
+  return prev[lb];
+}
+
+function buildTripIndex(){
+  const byDR=new Map(), byPD=new Map();
+  TRIPS.forEach(t=>{
+    tripDRset(t).forEach(dr=> byDR.set(dr,t));
+    byPD.set(normPlate(t.plate)+'|'+tripDate(t), t);
+  });
+  return {byDR, byPD};
+}
+
+/* Classify one client row against the app trips.
+   Returns { level, trip, note } where level ∈ high | typo | none */
+function matchClientRow(r, idx){
+  const drk=normDR(r.dr), pd=normPlate(r.plate)+'|'+(r.date||'');
+  // 1) exact DR hit
+  let trip=idx.byDR.get(drk);
+  if(trip){
+    const plateOK = normPlate(trip.plate)===normPlate(r.plate);
+    return { level:'high', trip, note: drNote(trip,drk), warn: plateOK?'':'plate differs' };
+  }
+  // 2) plate+date hit but DR wasn't in that trip -> likely DR typo
+  trip=idx.byPD.get(pd);
+  if(trip){
+    return { level:'typo', trip, note:'plate+date match', appDR: nearestDR(trip,drk) };
+  }
+  // 3) fuzzy DR: an app trip DR exactly 1 char off — but only trust it if plate OR date
+  //    also lines up, otherwise sequential DR numbers coincidentally 1 apart create false flags
+  let bestTrip=null,bestDR='';
+  for(const t of TRIPS){
+    for(const adr of tripDRset(t)){
+      if(editDist(drk,adr,1)===1){
+        const plateOK = normPlate(t.plate)===normPlate(r.plate);
+        const dateOK  = tripDate(t) && r.date && tripDate(t)===r.date;
+        if(plateOK||dateOK){ bestTrip=t; bestDR=adr; break; }
+      }
+    }
+    if(bestTrip)break;
+  }
+  if(bestTrip){
+    return { level:'typo', trip:bestTrip, note:'DR 1 char off', appDR:bestDR };
+  }
+  return { level:'none' };
+}
+function drNote(trip,drk){ const set=tripDRset(trip); const i=set.indexOf(drk); return set.length>1?`DR ${i+1} of ${set.length}`:''; }
+function nearestDR(trip,drk){ let b='',bd=99; tripDRset(trip).forEach(d=>{const e=editDist(drk,d,5); if(e<bd){bd=e;b=d;}}); return b; }
+
+function toISO(v){
+  if(v==null||v==='')return'';
+  if(v instanceof Date && !isNaN(v))return v.toISOString().slice(0,10);
+  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?'':d.toISOString().slice(0,10); }
+  const s=String(v).trim();
+  let m=s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3})[-\/ ](\d{2,4})$/);
+  if(m){ const mon={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}[m[2].toLowerCase()]; if(mon){ let y=+m[3]; if(y<100)y+=2000; return `${y}-${String(mon).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`; } }
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return m[0];
+  m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/); if(m)return `${m[3]}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
+  const d=new Date(s); return isNaN(d)?'':d.toISOString().slice(0,10);
+}
+function parseClientFile(file,cb){
+  if(typeof XLSX==='undefined'){
+    cb(null,'The spreadsheet reader hasn\'t loaded yet (check your internet — it comes from a CDN). Wait a moment and try again, or reload the page.');
+    return;
+  }
+  const rd=new FileReader();
+  rd.onerror=()=>cb(null,'Couldn\'t read that file from disk. Try again.');
+  rd.onload=e=>{
+    let wb; try{ wb=XLSX.read(e.target.result,{type:'array',cellDates:true}); }catch(err){ cb(null,'Couldn\'t read that file — is it a valid Excel workbook?'); return; }
+    let best=null,map=null,hdrRow=0;
+    wb.SheetNames.forEach(name=>{
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
+      for(let hr=0;hr<Math.min(rows.length,6);hr++){
+        const H=rows[hr].map(x=>String(x).toLowerCase().replace(/\s+/g,' ').trim());
+        const drC=H.findIndex(h=>h==='dr'), dateC=H.findIndex(h=>h.includes('shipment document')),
+              plateC=H.findIndex(h=>h.includes('actual plate')), drvC=H.findIndex(h=>h.includes('actual driver')),
+              sbuC=H.findIndex(h=>h==='sbu'), entC=H.findIndex(h=>h.includes('entity'));
+        if(drC>-1&&(plateC>-1||dateC>-1)){ best=rows;hdrRow=hr;map={drC,dateC,plateC,drvC,sbuC,entC}; return; }
+      }
+    });
+    if(!best){ cb(null,'Couldn\'t find a detail sheet with a DR column plus plate or date. Is this the right client file (the tab with per-delivery rows)?'); return; }
+    const out=[],seen=new Set(),m=map;
+    for(let i=hdrRow+1;i<best.length;i++){ const row=best[i],dr=row[m.drC]; if(!dr)continue;
+      const plate=m.plateC>-1?row[m.plateC]:''; const key=normDR(dr)+'|'+normPlate(plate); if(seen.has(key))continue; seen.add(key);
+      out.push({ dr:String(dr), date:toISO(m.dateC>-1?row[m.dateC]:''), plate:String(plate),
+        driver:m.drvC>-1?String(row[m.drvC]):'', sbu:m.sbuC>-1?String(row[m.sbuC]):'', bu:m.entC>-1?String(row[m.entC]):'' }); }
+    cb(out,null);
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function renderChecklistControls(){
+  $('#clSi').innerHTML=STATE.invoices.map(i=>`<option value="${i.id}">${esc(i.si)} — ${esc(i.period||'')}</option>`).join('')||`<option value="">(no invoices yet)</option>`;
+  renderChecklist();
+}
+function renderChecklist(){
+  const siId=$('#clSi').value, idx=buildTripIndex(), ticks=STATE.ticks[siId]||{}, tb=$('#cl-table tbody');
+  if(!CLIENT_ROWS.length){ tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No client trips loaded</div>Load the client file for this SI to list its trips.</div></td></tr>`; $('#clStats').textContent=''; return; }
+  const drCount={}; CLIENT_ROWS.forEach(r=>{drCount[normDR(r.dr)]=(drCount[normDR(r.dr)]||0)+1;});
+  let matched=0,verify=0,none=0,confirmed=0;
+  tb.innerHTML=CLIENT_ROWS.map((r,ri)=>{
+    const drk=normDR(r.dr), rowKey=drk+'|'+normPlate(r.plate);
+    const M=matchClientRow(r,idx);
+    if(M.level==='high')matched++; else if(M.level==='typo')verify++; else none++;
+    const tk=ticks[rowKey]; if(tk)confirmed++;
+    const convoy=drCount[drk]>1?`<span class="chip" title="This delivery used more than one truck">convoy</span>`:'';
+    let rowCls, appCell, expandable=!!M.trip;
+    if(M.level==='high'){
+      rowCls='matched';
+      appCell=`<span class="chip">${esc(M.trip.code||M.trip.tripticket||M.trip.id)}</span>`
+             +(M.note?` <span class="muted">${M.note}</span>`:'')
+             +(M.warn?` <span class="badge badge-unpaid" title="Matched on DR but ${M.warn}">${M.warn}</span>`:'')
+             +(expandable?` <span class="muted" style="font-size:9px">▸ details</span>`:'');
+    } else if(M.level==='typo'){
+      rowCls='verify';
+      appCell=`<span class="badge badge-verify">verify</span> `
+             +`<span class="chip">${esc(M.trip.code||M.trip.tripticket||M.trip.id)}</span>`
+             +`<div class="muted" style="font-size:9px;margin-top:2px">${esc(M.note)}`
+             +(M.appDR?` · app DR <span class="mono">${esc(M.appDR)}</span> vs client <span class="mono">${esc(drk)}</span>`:'')
+             +` — fix in main app if mistyped · <span style="font-size:9px">▸ details</span></div>`;
+    } else {
+      rowCls='unmatched';
+      appCell=`<span class="badge badge-pending">no app trip</span>`;
+    }
+    const main=`<tr class="match-row ${rowCls}" ${expandable?`onclick="toggleDetail(${ri})" style="cursor:pointer"`:''}>
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="tick" ${tk?'checked':''} onchange="toggleTick('${siId}','${rowKey}',this.checked)"></td>
+      <td class="muted mono">${esc(r.date||'')}</td><td class="mono">${esc(r.dr||'')} ${convoy}</td>
+      <td class="mono">${esc(r.plate||'')}</td><td>${esc(r.driver||'')}</td><td>${esc(r.sbu||'')}</td>
+      <td>${appCell}</td>
+      <td class="muted">${tk?esc(tk.by)+' · '+tk.at:''}</td></tr>`;
+    let detail='';
+    if(expandable){
+      const t=M.trip, allDR=tripDRset(t).map(d=>{ const hit=d===drk; return `<span class="mono chip" style="${hit?'background:rgba(26,140,82,.15);border-color:var(--green)':''}">${esc(d)}</span>`; }).join(' ');
+      detail=`<tr id="det${ri}" class="detail-row" style="display:none"><td></td><td colspan="7" style="background:var(--bg3)">
+        <div style="font-size:11px;padding:4px 0;line-height:1.6">
+          <div><strong>App trip:</strong> <span class="mono">${esc(t.code||t.id)}</span>
+            ${t.tripticket?` &nbsp;·&nbsp; <strong>Ticket:</strong> <span class="mono">${esc(t.tripticket)}</span>`:''}</div>
+          <div style="margin-top:3px"><strong>Logged DR(s):</strong> ${allDR} <span class="muted">(green = the one this client row matched)</span></div>
+          <div style="margin-top:3px">
+            <strong>Plate:</strong> <span class="mono">${esc(t.plate||'—')}</span> &nbsp;·&nbsp;
+            <strong>Driver:</strong> ${esc(t.driver||'—')} &nbsp;·&nbsp;
+            <strong>Trip date:</strong> <span class="mono">${esc(t.tripStartDate||t.dispatchedDate||'—')}</span>
+            ${t.destination?` &nbsp;·&nbsp; <strong>Dest:</strong> ${esc(t.destination)}`:''}
+          </div>
+          ${(M.warn||M.level==='typo')?`<div style="margin-top:4px;color:var(--accent)"><strong>⚠ Check:</strong> client says DR <span class="mono">${esc(drk)}</span> on plate <span class="mono">${esc(r.plate||'—')}</span> — compare to the logged values above.</div>`:''}
+        </div></td></tr>`;
+    }
+    return main+detail;
+  }).join('');
+  $('#clStats').innerHTML=`${CLIENT_ROWS.length} trips · <span style="color:var(--green)">${matched} matched</span> · <span style="color:var(--accent)">${verify} to verify</span> · <span style="color:var(--red)">${none} unmatched</span> · ${confirmed} confirmed`;
+}
+function toggleDetail(ri){ const d=document.getElementById('det'+ri); if(d) d.style.display = d.style.display==='none'?'table-row':'none'; }
+function toggleTick(siId,rowKey,on){ if(!siId)return; STATE.ticks[siId]=STATE.ticks[siId]||{}; if(on)STATE.ticks[siId][rowKey]={by:currentRole||'?',at:todayISO()}; else delete STATE.ticks[siId][rowKey]; renderChecklist(); saveBilling(); }
+
+/* ---- paste-rows fallback (immune to sheet-name AND column-layout drift) ---- */
+function openPaste(){ $('#pasteBox').value=''; $('#pastePreview').textContent=''; $('#pasteModal').classList.add('open'); setTimeout(()=>$('#pasteBox').focus(),50); }
+function closePaste(){ $('#pasteModal').classList.remove('open'); }
+function parsePasted(text){
+  const lines=text.split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim()!=='');
+  if(!lines.length) return {rows:[],err:'Nothing pasted.'};
+  const split=l=> l.includes('\t') ? l.split('\t') : l.split(/ {2,}|,/); // tab (Excel), else 2+ spaces or comma
+  const cells=lines.map(split).map(a=>a.map(c=>c.trim()));
+  // detect a header row: does row 0 contain recognizable column names?
+  const h0=cells[0].map(c=>c.toLowerCase());
+  const find=preds=>{ for(const p of preds){ const i=h0.findIndex(x=>p(x)); if(i>-1)return i; } return -1; };
+  let drC=find([x=>x==='dr',x=>x.includes('dr no'),x=>x.includes('dr#')]);
+  let dateC=find([x=>x.includes('shipment')&&x.includes('date'),x=>x.includes('shipment document'),x=>x==='date',x=>x.includes('deliv')&&x.includes('date')]);
+  let plateC=find([x=>x.includes('actual plate'),x=>x.includes('plate')]);
+  let drvC=find([x=>x.includes('actual driver'),x=>x==='driver',x=>x.includes("driver")]);
+  let sbuC=find([x=>x==='sbu']);
+  let start=1, hasHeader=(drC>-1||plateC>-1||dateC>-1);
+  if(!hasHeader){ // no header — assume fixed order DR, date, plate, driver, SBU
+    drC=0; dateC=1; plateC=2; drvC=3; sbuC=4; start=0;
+  }
+  if(drC<0) return {rows:[],err:'Couldn\'t find a DR column. Include a header row with "DR" (and ideally date, plate, driver, SBU), or paste columns in the order DR, date, plate, driver, SBU.'};
+  const out=[],seen=new Set();
+  for(let i=start;i<cells.length;i++){
+    const row=cells[i]; const dr=row[drC]; if(!dr||!/\d/.test(dr))continue;
+    const plate=plateC>-1?(row[plateC]||''):'';
+    const key=normDR(dr)+'|'+normPlate(plate); if(seen.has(key))continue; seen.add(key);
+    out.push({ dr, date:toISO(dateC>-1?row[dateC]:''), plate,
+      driver:drvC>-1?(row[drvC]||''):'', sbu:sbuC>-1?(row[sbuC]||''):'', bu:'CCAC' });
+  }
+  return {rows:out, err: out.length?'':'No data rows found under the header.'};
+}
+$('#pasteBox') && $('#pasteBox').addEventListener('input',()=>{ const {rows,err}=parsePasted($('#pasteBox').value); $('#pastePreview').textContent = err? err : `Ready: ${rows.length} trip row${rows.length>1?'s':''} detected.`; });
+function applyPaste(){
+  const {rows,err}=parsePasted($('#pasteBox').value);
+  if(err && !rows.length){ toast(err,'error'); return; }
+  CLIENT_ROWS=rows; closePaste(); renderChecklist(); toast(rows.length+' client trips loaded from paste');
+}
+
+/* ---- file inputs ---- */
+$('#clFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error'); if(/detail sheet|reader/i.test(err)) openPaste(); return;} CLIENT_ROWS=rows; renderChecklist(); toast(rows.length+' client trips loaded'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); openPaste(); console.error(ex); } finally{ e.target.value=''; } });
+$('#soaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error');return;} CLIENT_ROWS=rows; switchTab('checklist'); Array.from(document.querySelectorAll('.tab')).forEach(t=>t.classList.remove('active')); Array.from(document.querySelectorAll('.tab')).find(t=>t.getAttribute('onclick')?.includes('checklist'))?.classList.add('active'); renderChecklist(); toast(rows.length+' client trips loaded — confirm on the checklist'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); console.error(ex); } finally{ e.target.value=''; } });
+
+/* ---- start ---- */
+if(initRoleGate()){ boot(); }  // already logged in -> boot; else wait for login
+</script>
+</body>
+</html>
