@@ -346,7 +346,7 @@ body.role-operations .fin-only{display:none!important}
 /* ============================================================
    EMELCO Billing — billing.html  (matches index.html app)
    ============================================================ */
-const APP_VERSION = '202607262100';
+const APP_VERSION = '202607272200';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -399,9 +399,12 @@ async function checkVersion(){
     if(!r.ok) return;
     const meta=await r.json();
     const txt=safeAtobUtf8(meta.content);
-    const deployed=(JSON.parse(txt).deployedVersion)||'';
+    const j=JSON.parse(txt);
+    // Use a billing-specific key so index.html's version never blocks this page.
+    // If no billingVersion is set, do not block at all (fail-safe).
+    const deployed=(j.billingVersion)||'';
     if(deployed && deployed!==APP_VERSION){
-      $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed is <strong>${deployed}</strong>.`;
+      $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed billing version is <strong>${deployed}</strong>.`;
       $('#version-block').classList.add('show');
     }
   }catch(e){ /* non-fatal */ }
@@ -517,7 +520,13 @@ function badge(cls,text,note){ return `<span class="badge badge-${cls}">${text}<
    ============================================================ */
 function renderAll(){ renderOverview(); renderInvoices(); renderSetup(); renderChecklistControls(); renderUnbilled(); }
 
-function switchTab(name){ $$('.tab').forEach(t=>t.classList.remove('active')); $$('.page').forEach(p=>p.classList.remove('active')); event&&event.currentTarget&&event.currentTarget.classList.add('active'); $('#page-'+name).classList.add('active'); if(!(event&&event.currentTarget)){ Array.from(document.querySelectorAll('.tab')).find(t=>t.getAttribute('onclick')?.includes(name))?.classList.add('active'); } }
+function switchTab(name){
+  Array.from(document.querySelectorAll('.tab')).forEach(t=>t.classList.remove('active'));
+  Array.from(document.querySelectorAll('.page')).forEach(p=>p.classList.remove('active'));
+  const page=document.getElementById('page-'+name); if(page)page.classList.add('active');
+  const tab=Array.from(document.querySelectorAll('.tab')).find(t=>t.getAttribute('onclick')?.includes("'"+name+"'"));
+  if(tab)tab.classList.add('active');
+}
 
 function renderOverview(){
   let net=0,paid=0,proc=0,over=0;
@@ -880,7 +889,7 @@ function applyPaste(){
 
 /* ---- file inputs ---- */
 $('#clFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error'); if(/detail sheet|reader/i.test(err)) openPaste(); return;} CLIENT_ROWS=rows; renderChecklist(); toast(rows.length+' client trips loaded'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); openPaste(); console.error(ex); } finally{ e.target.value=''; } });
-$('#soaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error');return;} CLIENT_ROWS=rows; switchTab('checklist'); Array.from(document.querySelectorAll('.tab')).forEach(t=>t.classList.remove('active')); Array.from(document.querySelectorAll('.tab')).find(t=>t.getAttribute('onclick')?.includes('checklist'))?.classList.add('active'); renderChecklist(); toast(rows.length+' client trips loaded — confirm on the checklist'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); console.error(ex); } finally{ e.target.value=''; } });
+$('#soaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error'); if(/detail sheet|reader/i.test(err)) openPaste(); return;} CLIENT_ROWS=rows; switchTab('checklist'); renderChecklist(); toast(rows.length+' client trips loaded — pick or create an SI, then tick them'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); openPaste(); console.error(ex); } finally{ e.target.value=''; } });
 
 /* ---- start ---- */
 if(initRoleGate()){ boot(); }  // already logged in -> boot; else wait for login
