@@ -732,6 +732,13 @@ body.role-operations .fin-only{display:none!important}
           <label class="form-label">📍 Drop Destinations <span class="tag tag-formula">MULTI-DROP</span></label>
           <div id="drops-container" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
           <button type="button" onclick="addDropRow()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">+ Add Drop</button>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:0">
+              <input type="checkbox" id="f-milkrun-flag" style="width:16px;height:16px">
+              <span>MilkRun</span>
+            </label>
+            <span class="form-hint" style="margin:0">Multi-region, ~2 days (billed furthest drop × 2)</span>
+          </div>
           <input type="hidden" id="f-destination">
         </div>
       </div>
@@ -748,6 +755,13 @@ body.role-operations .fin-only{display:none!important}
         <div class="form-group"><label class="form-label">Helper 1</label><select class="form-select" id="f-h1" onchange="checkRoleDuplicates()"><option value="">— None —</option></select></div>
         <div class="form-group"><label class="form-label">Helper 2</label><select class="form-select" id="f-h2" onchange="checkRoleDuplicates()"><option value="">— None —</option></select></div>
         <div class="form-group"><label class="form-label">Plate <span class="required">*</span></label><select class="form-select" id="f-plate" onchange="generateCode();lookupTruckType()"><option value="">— Select —</option></select></div>
+        <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+          <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:0">
+            <input type="checkbox" id="f-fwd-flag" style="width:16px;height:16px">
+            <span>FWD</span>
+          </label>
+          <span class="form-hint" style="margin:0">Forward-type assignment (higher rate)</span>
+        </div>
       </div>
       <div class="form-grid form-grid-4" style="margin-top:10px">
         <div class="form-group" style="grid-column:span 4">
@@ -1089,7 +1103,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607242030'; // removed redundant status/billing fields + Remarks column; stripped stale seed data; Staff badge = Active count; version gate now deployed-based with local-testing guard.
+const APP_VERSION = '202607282015'; // added FWD and MilkRun trip markers: FWD checkbox near plate (higher rate indicator), MilkRun checkbox near destinations (multi-region ~2-day trips, informational furthest-drop×2 context); both surface on assignment.html chips as small badges + border styling; trip rate remains fully manual entry.
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -1879,6 +1893,8 @@ function readForm(){
     h2:document.getElementById('f-h2').value,
     plate:document.getElementById('f-plate').value,
     truckType:document.getElementById('f-truck-type').value,
+    isFWD:document.getElementById('f-fwd-flag').checked,
+    isMilkRun:document.getElementById('f-milkrun-flag').checked,
     rate:n(document.getElementById('f-rate').value),
     surcharge:n(document.getElementById('f-surcharge').value),
     manoDrv:n(document.getElementById('f-mano-drv').value),
@@ -1926,11 +1942,15 @@ function fillForm(t){
   document.getElementById('f-no-driver-flag').checked=!!t.noDriverFlag;
   document.getElementById('f-no-driver-reason').value=t.noDriverReason||'';
   document.getElementById('f-no-driver-reason-wrap').style.display=t.noDriverFlag?'':'none';
+  document.getElementById('f-fwd-flag').checked=!!t.isFWD;
+  document.getElementById('f-milkrun-flag').checked=!!t.isMilkRun;
   computeFormulas(); computeWeek();
 }
 function clearForm(){
   document.querySelectorAll('#trip-modal .form-input:not(.readonly):not(.calc), #trip-modal .form-select, #trip-modal .form-textarea').forEach(el=>{el.value='';});
   document.getElementById('f-no-driver-flag').checked=false;
+  document.getElementById('f-fwd-flag').checked=false;
+  document.getElementById('f-milkrun-flag').checked=false;
   document.getElementById('f-no-driver-reason-wrap').style.display='none';
   computeFormulas();
 }
