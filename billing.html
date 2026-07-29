@@ -680,14 +680,14 @@ function switchTab(name){
 function renderOverview(){
   let net=0,paid=0,proc=0,over=0,overSubmitted=0,overNotSubmitted=0;
   STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due;
-    if(s.cls==='paid')paid+=t.due;
-    else if(s.cls==='submitted')proc+=t.due;
-    else if(s.cls==='unpaid'){ over+=t.due; if(e.status==='submitted')overSubmitted+=t.due; else overNotSubmitted+=t.due; } });
+    if(s.cls==='paid'){ paid+=t.due; return; }
+    if(e.status==='submitted'){ proc+=t.due; if(s.cls==='unpaid'){ over+=t.due; overSubmitted+=t.due; } return; }
+    if(s.cls==='unpaid'){ over+=t.due; overNotSubmitted+=t.due; } });
   const pct=net?Math.round(paid/net*100):0;
   $('#ov-stats').innerHTML=`
     ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
-    ${stat('processing','In processing','₱'+peso(proc),'submitted to client, not yet due')}
+    ${stat('processing','In processing','₱'+peso(proc),'submitted to client (incl. overdue)')}
     ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}`;
   $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
   // group by period
