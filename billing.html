@@ -185,6 +185,22 @@ body.role-operations .fin-only{display:none!important}
         </tr></thead><tbody></tbody>
       </table>
     </div>
+
+    <div class="section-title">Monthly — by Trip Date <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(work billed, grouped by the month the trip period falls in)</span></div>
+    <div class="table-wrapper" style="max-height:340px">
+      <table id="mo-trip-table">
+        <thead><tr><th>Month</th><th class="num-cell">Net billed</th><th class="num-cell">Entries</th></tr></thead>
+        <tbody></tbody><tfoot></tfoot>
+      </table>
+    </div>
+
+    <div class="section-title fin-only">Monthly — by Paid Date <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(cash actually collected, grouped by the month it was paid)</span></div>
+    <div class="table-wrapper fin-only" style="max-height:340px">
+      <table id="mo-paid-table">
+        <thead><tr><th>Month</th><th class="num-cell">Net collected</th><th class="num-cell">Entries paid</th></tr></thead>
+        <tbody></tbody><tfoot></tfoot>
+      </table>
+    </div>
   </div>
 
   <!-- SUMMARY -->
@@ -555,7 +571,48 @@ function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div cla
 /* ============================================================
    Render
    ============================================================ */
-function renderAll(){ renderOverview(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); }
+
+const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
+
+/* Monthly — by Trip Date: every entry, grouped by the calendar month its
+   Trip Start falls in (work billed for that month, regardless of status). */
+function renderMonthlyByTrip(){
+  const byMonth={};
+  STATE.entries.forEach(e=>{
+    if(!e.tripStart) return;
+    const ym=e.tripStart.slice(0,7);
+    const g=byMonth[ym]=byMonth[ym]||{net:0,count:0};
+    g.net+=entryCalc(e).net; g.count++;
+  });
+  const keys=Object.keys(byMonth).sort();
+  const tb=$('#mo-trip-table tbody');
+  if(!keys.length){ tb.innerHTML=`<tr><td colspan="3"><div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">No entries yet</div></div></td></tr>`; $('#mo-trip-table tfoot').innerHTML=''; return; }
+  tb.innerHTML=keys.map(k=>`<tr><td>${monthLabel(k)}</td><td class="num-cell">₱${peso(byMonth[k].net)}</td><td class="num-cell">${byMonth[k].count}</td></tr>`).join('');
+  const t=keys.reduce((a,k)=>{a.net+=byMonth[k].net;a.count+=byMonth[k].count;return a;},{net:0,count:0});
+  $('#mo-trip-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td class="num-cell">₱${peso(t.net)}</td><td class="num-cell">${t.count}</td></tr>`;
+}
+
+/* Monthly — by Paid Date: only entries with status='paid' and a Paid date,
+   grouped by the calendar month payment was actually received. Uses Net Due
+   (after 2% WHT) since that's the cash figure that actually lands. */
+function renderMonthlyByPaid(){
+  const byMonth={};
+  STATE.entries.forEach(e=>{
+    if(e.status!=='paid'||!e.paidDate) return;
+    const ym=e.paidDate.slice(0,7);
+    const g=byMonth[ym]=byMonth[ym]||{due:0,count:0};
+    g.due+=entryCalc(e).due; g.count++;
+  });
+  const keys=Object.keys(byMonth).sort();
+  const tb=$('#mo-paid-table tbody');
+  if(!keys.length){ tb.innerHTML=`<tr><td colspan="3"><div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">Nothing marked paid with a paid date yet</div></div></td></tr>`; $('#mo-paid-table tfoot').innerHTML=''; return; }
+  tb.innerHTML=keys.map(k=>`<tr><td>${monthLabel(k)}</td><td class="num-cell">₱${peso(byMonth[k].due)}</td><td class="num-cell">${byMonth[k].count}</td></tr>`).join('');
+  const t=keys.reduce((a,k)=>{a.due+=byMonth[k].due;a.count+=byMonth[k].count;return a;},{due:0,count:0});
+  $('#mo-paid-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td class="num-cell">₱${peso(t.due)}</td><td class="num-cell">${t.count}</td></tr>`;
+}
+function renderMonthly(){ renderMonthlyByTrip(); renderMonthlyByPaid(); }
 
 /* ============================================================
    Summary tab — "2026 Billing Compilation by Trip Start/End"
