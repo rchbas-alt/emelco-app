@@ -7,13 +7,10 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-/* Fallback if the primary CDN is blocked/slow — load an alternate host synchronously-ish.
-   We check on DOMContentLoaded and again before any import. */
 (function(){
   if(typeof XLSX==='undefined'){
     var s=document.createElement('script');
     s.src='https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
-    s.onload=function(){ if(window.__xlsxReady)window.__xlsxReady(); };
     document.head.appendChild(s);
   }
 })();
@@ -42,7 +39,6 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:60px;z-index:99}
 .tab{padding:13px 18px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-.tab-badge{background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
 .main{padding:20px;max-width:1500px}
 .page{display:none}.page.active{display:block}
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
@@ -66,7 +62,6 @@ tr:hover td{background:rgba(0,0,0,.015)}
 tr:last-child td{border-bottom:none}
 .mono{font-family:'DM Mono',monospace}
 .num-cell{text-align:right;font-family:'DM Mono',monospace;white-space:nowrap}
-.code-cell{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2)}
 .muted{color:var(--text3)}
 .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .badge-paid{background:rgba(46,204,113,.15);color:var(--green)}
@@ -74,6 +69,7 @@ tr:last-child td{border-bottom:none}
 .badge-unpaid{background:rgba(231,76,60,.15);color:var(--red)}
 .badge-submitted{background:rgba(58,134,255,.15);color:var(--blue)}
 .badge-default{background:var(--bg3);color:var(--text2)}
+.grand td{font-weight:700;background:var(--bg3)}
 .chip{display:inline-block;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;margin:1px 2px}
 .empty-state{text-align:center;padding:50px 20px;color:var(--text3)}
 .empty-icon{font-size:40px;margin-bottom:12px}.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
@@ -81,34 +77,28 @@ tr:last-child td{border-bottom:none}
 .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:22px 0 12px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
 body.role-operations .fin-only{display:none!important}
 
+/* import preview row states */
+.row-matched{background:rgba(26,140,82,.08)!important}
+.row-matched td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+.row-new{background:rgba(37,99,235,.07)!important}
+.row-new td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
+
 /* modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto}
 .modal-overlay.open{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:1000px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:760px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.modal.wide{max-width:1100px}
 .modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .modal-title{font-size:16px;font-weight:700}.modal-subtitle{font-size:11px;color:var(--text2);margin-top:2px}
 .modal-close{width:30px;height:30px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}.modal-close:hover{background:var(--border2)}
 .modal-body{padding:20px}
 .modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
-.form-grid{display:grid;gap:10px}.form-grid-4{grid-template-columns:repeat(4,1fr)}.form-grid-3{grid-template-columns:repeat(3,1fr)}
+.form-grid{display:grid;gap:10px}.form-grid-4{grid-template-columns:repeat(4,1fr)}.form-grid-3{grid-template-columns:repeat(3,1fr)}.form-grid-2{grid-template-columns:repeat(2,1fr)}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
 .form-input,.form-select{background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;padding:8px 11px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;width:100%}
 .form-input:focus,.form-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(212,130,10,.1)}
 .form-input.calc{background:rgba(124,58,237,.06);color:var(--purple);border-color:rgba(124,58,237,.2);font-family:'DM Mono',monospace;text-align:right}
-
-/* lines editor */
-.lines-tbl input.form-input,.lines-tbl select.form-select{padding:5px 7px;font-size:11px}
-.lines-tbl td{padding:4px 5px}
-.grand td{font-weight:700;background:var(--bg3)}
-
-/* checklist */
-.tick{width:17px;height:17px;cursor:pointer;accent-color:var(--green)}
-.match-row.matched td:first-child{box-shadow:inset 3px 0 0 var(--green)}
-.match-row.verify td:first-child{box-shadow:inset 3px 0 0 #e0a500}
-.match-row.verify td{background:rgba(224,165,0,.05)}
-.match-row.unmatched td:first-child{box-shadow:inset 3px 0 0 var(--red)}
-.badge-verify{background:rgba(224,165,0,.18);color:#946a00}
 
 /* login */
 .login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -175,8 +165,9 @@ body.role-operations .fin-only{display:none!important}
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('overview')">📊 Overview</div>
-  <div class="tab" onclick="switchTab('invoices')">🧾 Service Invoices</div>
-  <div class="tab" onclick="switchTab('checklist')">✅ Trip Checklist</div>
+  <div class="tab" onclick="switchTab('summary')">📈 Summary</div>
+  <div class="tab" onclick="switchTab('entries')">🧾 Billing Entries</div>
+  <div class="tab" onclick="switchTab('import')">📥 Import Recon File</div>
   <div class="tab fin-only" onclick="switchTab('unbilled')">💰 Unbilled</div>
   <div class="tab fin-only" onclick="switchTab('setup')">⚙️ BU / SBU Setup</div>
 </div>
@@ -185,66 +176,103 @@ body.role-operations .fin-only{display:none!important}
   <!-- OVERVIEW -->
   <div class="page active" id="page-overview">
     <div class="stats-row" id="ov-stats"></div>
-    <div class="section-title">Collection status <span id="ov-count"></span></div>
+    <div class="section-title">By billing period <span id="ov-count"></span></div>
     <div class="table-wrapper">
       <table id="ov-table">
         <thead><tr>
-          <th>SI #</th><th>Period</th><th class="num-cell">Net billing</th>
-          <th>Status</th><th>Due</th><th class="num-cell fin-only">Net due</th>
+          <th>Period (Trip Start – End)</th><th class="num-cell">Entries</th>
+          <th class="num-cell">Net</th><th class="num-cell fin-only">Due</th><th>Status</th>
         </tr></thead><tbody></tbody>
       </table>
     </div>
   </div>
 
-  <!-- INVOICES -->
-  <div class="page" id="page-invoices">
+  <!-- SUMMARY -->
+  <div class="page" id="page-summary">
+    <p class="hint">Same shape as the "2026 Billing Compilation by Trip Start / End Date" sheet — computed live from your billing entries instead of formulas, so it never drifts.</p>
     <div class="toolbar">
-      <button class="btn btn-primary" onclick="openSI(null)">+ New Service Invoice</button>
-      <button class="btn btn-ghost" onclick="document.getElementById('soaFile').click()">📄 Import client file…</button>
-      <input type="file" id="soaFile" accept=".xlsx,.xls" style="display:none">
-      <div class="spacer"></div>
-      <input type="search" class="search-box" id="siSearch" placeholder="Search SI, period…" oninput="renderInvoices()">
+      <span class="muted" id="sumCount"></span>
     </div>
     <div class="table-wrapper">
-      <table id="si-table">
+      <table id="sum-table">
         <thead><tr>
-          <th>SI #</th><th>Period</th><th>Submitted</th><th>Due date</th>
-          <th class="num-cell">Sales (net)</th><th class="num-cell fin-only">VAT</th>
-          <th class="num-cell">Net due</th><th>Status</th><th></th>
+          <th>Trip Start</th><th>Trip End</th>
+          <th class="num-cell">Total Billed</th>
+          <th class="num-cell">Recon+Surcharge</th>
+          <th class="num-cell">Recon</th>
+          <th class="num-cell">Surcharge</th>
+          <th class="num-cell">Incrementals</th>
+          <th class="num-cell fin-only">CCAC Billed</th>
+          <th class="num-cell fin-only">CMIP Billed</th>
+          <th class="num-cell">Settled / Collected</th>
+          <th class="num-cell">In Client Processing</th>
+          <th class="num-cell">Past Due &amp; Uncollected</th>
+          <th class="num-cell">Entries</th>
+        </tr></thead><tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ENTRIES -->
+  <div class="page" id="page-entries">
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="openEntry(null)">+ New entry</button>
+      <div class="spacer"></div>
+      <select class="filter-select" id="enStatusFilter" onchange="renderEntries()">
+        <option value="">All statuses</option>
+        <option value="not_submitted">Not yet submitted</option>
+        <option value="submitted">Submitted</option>
+        <option value="paid">Paid</option>
+      </select>
+      <select class="filter-select" id="enBuFilter" onchange="renderEntries()"><option value="">All BU</option></select>
+      <input type="search" class="search-box" id="enSearch" placeholder="Search SI#, SBU, period…" oninput="renderEntries()">
+    </div>
+    <p class="hint">One row per BU + SBU + TYPE + billing period — the same shape as the CCAC tracker. SI # is optional; add it once CCAC issues it. This is the unit the office confirms as submitted/paid, matching how it worked in Excel. <span class="fin-only" style="color:var(--text3);text-decoration:underline;cursor:pointer" onclick="openHistImport()">Import 2026 history…</span></p>
+    <div class="table-wrapper">
+      <table id="en-table">
+        <thead><tr>
+          <th>Period</th><th>BU</th><th>SBU</th><th>Type</th><th>SI #</th>
+          <th class="num-cell">Net</th><th class="num-cell fin-only">VAT</th>
+          <th class="num-cell">Due</th><th>Status</th><th>Source</th><th></th>
         </tr></thead><tbody></tbody>
       </table>
     </div>
   </div>
 
-  <!-- CHECKLIST -->
-  <div class="page" id="page-checklist">
+  <!-- IMPORT RECON FILE -->
+  <div class="page" id="page-import">
+    <p class="hint">Upload the recon/SOA file CCAC sends (the workbook with a <span class="mono">for invoicing</span>-style sheet). It auto-extracts the RECON / SURCHARGE / INCREMENTALS amounts per SBU and matches them against existing entries for the same period. Matches turn <strong style="color:var(--green)">green</strong> and update that entry's amounts (the recon file is the authoritative figure); anything with no matching entry turns <strong style="color:var(--blue)">blue</strong> and will be created as a new entry — add its SI # and status once CCAC issues it.</p>
     <div class="toolbar">
-      <span class="form-label">SI</span>
-      <select class="filter-select" id="clSi" onchange="renderChecklist()"></select>
-      <button class="btn btn-ghost" onclick="document.getElementById('clFile').click()">📄 Load client trips…</button>
-      <input type="file" id="clFile" accept=".xlsx,.xls" style="display:none">
-      <button class="btn btn-ghost" onclick="openPaste()">📋 Paste rows…</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('reconFile').click()">📄 Choose recon file…</button>
+      <input type="file" id="reconFile" accept=".xlsx,.xls" style="display:none">
+      <span class="form-label">Cutoff Start</span><input type="date" class="form-input" id="reconStart" style="max-width:150px">
+      <span class="form-label">Cutoff End</span><input type="date" class="form-input" id="reconEnd" style="max-width:150px">
+      <button class="btn btn-primary" onclick="parseReconFile()">Parse</button>
       <div class="spacer"></div>
-      <span class="muted" id="clStats"></span>
+      <span class="muted" id="reconFileName"></span>
     </div>
-    <p class="hint">Tick a trip once you've confirmed it was billed under this SI. Rows matched to a logged app trip show a green edge; unmatched client rows show an amber edge — check whether we logged that trip. A DR that used two trucks shows a “convoy” tag and each truck ticks on its own.</p>
-    <div id="clNoSiBanner" style="display:none;background:var(--warn-bg,#fff6e5);border:1px solid var(--warn,#e0a500);color:#946a00;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
-      ⚠ <strong>Pick an SI above before ticking.</strong> Choose the invoice these trips belong to (or create one on the Service Invoices tab). Ticks are saved <em>onto</em> an SI — without one selected, confirmations can't be recorded.
-    </div>
-    <div class="table-wrapper">
-      <table id="cl-table">
-        <thead><tr>
-          <th style="width:34px"></th><th>Date</th><th>DR</th><th>Plate</th>
-          <th>Driver</th><th>SBU</th><th>App trip</th><th>Confirmed by</th>
-        </tr></thead><tbody></tbody>
-      </table>
+    <p class="hint" style="margin-top:-4px">These two dates are the <strong>billing cutoff period</strong> (e.g. "13-Jul-26 to 19-Jul-26") — not the individual trip dates inside it. The file's own detail rows are usually a few days narrower than the cutoff, so a quick auto-guess is filled in but always double-check it against the recon file's stated period before parsing.</p>
+    <div id="reconPreviewWrap" style="display:none">
+      <div class="table-wrapper">
+        <table id="recon-table">
+          <thead><tr><th>SBU</th><th>Type</th><th class="num-cell">Net</th><th class="num-cell">VAT</th><th class="num-cell">Gross</th><th>Result</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="toolbar" style="margin-top:12px">
+        <button class="btn btn-primary" onclick="commitRecon()">Commit import</button>
+        <button class="btn btn-ghost" onclick="cancelReconPreview()">Cancel</button>
+        <div class="spacer"></div>
+        <span class="muted" id="reconStats"></span>
+      </div>
     </div>
   </div>
 
   <!-- UNBILLED -->
   <div class="page fin-only" id="page-unbilled">
     <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
-    <p class="hint">Completed CCAC trips that are <strong>not yet on any invoice</strong>. Expected amount = trip Rate + Surcharge (what your team logged). This is a forecast of revenue still to be billed — the client's final figure may differ. A trip drops off this list once it's ticked onto any SI in the Trip Checklist.</p>
+    <p class="hint">Completed CCAC trips whose date doesn't fall inside <strong>any</strong> billing entry's period yet. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
     <div class="toolbar">
       <span class="muted" id="ub-coverage"></span>
       <div class="spacer"></div>
@@ -262,7 +290,7 @@ body.role-operations .fin-only{display:none!important}
 
   <!-- SETUP -->
   <div class="page fin-only" id="page-setup">
-    <p class="hint">Add business units and their sub-units once here, then pick them from dropdowns when building an SI. Keeping this list clean is what makes totals reconcile — avoid re-typing variants of the same name.</p>
+    <p class="hint">Add business units and their sub-units once here, then pick them from dropdowns when creating an entry. Keeping this list clean is what makes totals reconcile — avoid re-typing variants of the same name.</p>
     <div class="toolbar">
       <input class="search-box" id="newBu" placeholder="New BU (e.g. CMIP)" style="flex:0 0 200px">
       <button class="btn btn-primary btn-sm" onclick="addBU()">Add BU</button>
@@ -271,74 +299,73 @@ body.role-operations .fin-only{display:none!important}
   </div>
 </div>
 
-<!-- SI EDITOR -->
-<div class="modal-overlay" id="siModal">
+<!-- ENTRY EDITOR -->
+<div class="modal-overlay" id="entryModal">
   <div class="modal">
     <div class="modal-header">
-      <div><div class="modal-title" id="siModalTitle">New Service Invoice</div>
-      <div class="modal-subtitle">Enter net-of-VAT amounts per BU / SBU / type — VAT, gross and withholding compute automatically</div></div>
-      <div class="modal-close" onclick="closeSI()">✕</div>
+      <div><div class="modal-title" id="entryModalTitle">New billing entry</div>
+      <div class="modal-subtitle">One BU + SBU + TYPE line for one billing period — VAT, gross and withholding compute automatically</div></div>
+      <div class="modal-close" onclick="closeEntry()">✕</div>
     </div>
     <div class="modal-body">
-      <div class="form-grid form-grid-4">
-        <div class="form-group"><label class="form-label">SI #</label><input class="form-input" id="mSi" placeholder="auto if blank"></div>
-        <div class="form-group"><label class="form-label">Period label</label><input class="form-input" id="mPeriod" placeholder="CCAC June 21-30"></div>
-        <div class="form-group"><label class="form-label">Date submitted</label><input type="date" class="form-input" id="mSubmitted"></div>
-        <div class="form-group"><label class="form-label">Due days</label><input type="number" class="form-input" id="mDueDays" value="30"></div>
+      <div class="form-grid form-grid-3">
+        <div class="form-group"><label class="form-label">BU</label><select class="form-select" id="eBu" onchange="onEntryBuChange()"></select></div>
+        <div class="form-group"><label class="form-label">SBU</label><select class="form-select" id="eSbu"></select></div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-select" id="eType"><option>RECON</option><option>SURCHARGE</option><option>INCREMENTALS</option></select></div>
       </div>
       <div class="form-grid form-grid-3" style="margin-top:10px">
-        <div class="form-group"><label class="form-label">Payment status</label>
-          <select class="form-select" id="mStatus" onchange="onStatusChange()">
-            <option value="submitted">Submitted (processing)</option>
-            <option value="open">Open (not yet paid)</option>
+        <div class="form-group"><label class="form-label">Trip Start</label><input type="date" class="form-input" id="eStart"></div>
+        <div class="form-group"><label class="form-label">Trip End</label><input type="date" class="form-input" id="eEnd"></div>
+        <div class="form-group"><label class="form-label">SI # <span class="muted">(optional)</span></label><input class="form-input" id="eSi" placeholder="add once issued"></div>
+      </div>
+      <div class="form-grid form-grid-3" style="margin-top:10px">
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-select" id="eStatus" onchange="onEntryStatusChange()">
+            <option value="not_submitted">Not yet submitted</option>
+            <option value="submitted">Submitted</option>
             <option value="paid">Paid</option>
           </select></div>
-        <div class="form-group" id="mPaidWrap" style="display:none"><label class="form-label">Paid date</label><input type="date" class="form-input" id="mPaidDate"></div>
+        <div class="form-group"><label class="form-label">Date submitted</label><input type="date" class="form-input" id="eSubmitted"></div>
+        <div class="form-group"><label class="form-label">Due days</label><input type="number" class="form-input" id="eDueDays" value="30"></div>
       </div>
-
-      <div class="section-title" style="margin-top:20px">Billing lines
-        <button class="btn btn-ghost btn-sm" onclick="addDraftLine()">+ line</button></div>
-      <div class="table-wrapper" style="max-height:none">
-        <table class="lines-tbl" id="lines-table">
-          <thead><tr>
-            <th style="width:120px">BU</th><th style="width:140px">SBU</th><th style="width:120px">Type</th>
-            <th class="num-cell">Net of VAT</th><th class="num-cell">DR penalty</th>
-            <th class="num-cell">VAT 12%</th><th class="num-cell">Gross</th>
-            <th class="num-cell">WHT 2%</th><th class="num-cell">Net due</th><th style="width:28px"></th>
-          </tr></thead>
-          <tbody></tbody>
-          <tfoot><tr class="grand">
-            <td colspan="3">Grand total</td>
-            <td class="num-cell" id="tNet">0.00</td><td class="num-cell" id="tPen">0.00</td>
-            <td class="num-cell" id="tVat">0.00</td><td class="num-cell" id="tGross">0.00</td>
-            <td class="num-cell" id="tWht">0.00</td><td class="num-cell" id="tDue">0.00</td><td></td>
-          </tr></tfoot>
-        </table>
+      <div class="form-grid form-grid-3" style="margin-top:10px" id="ePaidWrap">
+        <div class="form-group"><label class="form-label">Paid date</label><input type="date" class="form-input" id="ePaidDate"></div>
+      </div>
+      <div class="section-title">Amount</div>
+      <div class="form-grid form-grid-4">
+        <div class="form-group"><label class="form-label">Net of VAT</label><input class="form-input" type="number" step="0.01" id="eNet" oninput="renderEntryCalc()"></div>
+        <div class="form-group"><label class="form-label">DR penalty</label><input class="form-input" type="number" step="0.01" id="ePenalty" value="0" oninput="renderEntryCalc()"></div>
+        <div class="form-group"><label class="form-label">VAT 12%</label><input class="form-input calc" id="eVat" readonly></div>
+        <div class="form-group"><label class="form-label">Net due</label><input class="form-input calc" id="eDue" readonly></div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeSI()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSI()">Save invoice</button>
+      <button class="btn btn-ghost" onclick="closeEntry()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEntry()">Save entry</button>
     </div>
   </div>
 </div>
 
-<!-- PASTE ROWS MODAL -->
-<div class="modal-overlay" id="pasteModal">
-  <div class="modal" style="max-width:760px">
+<!-- HISTORICAL IMPORT MODAL -->
+<div class="modal-overlay" id="histModal">
+  <div class="modal wide">
     <div class="modal-header">
-      <div><div class="modal-title">Paste client trip rows</div>
-      <div class="modal-subtitle">Fallback for when the file won't upload — copy the columns from Excel and paste below</div></div>
-      <div class="modal-close" onclick="closePaste()">✕</div>
+      <div><div class="modal-title">Import 2026 history</div>
+      <div class="modal-subtitle">Reads the CCAC tracker workbook — one entry per row, Trip Start year = 2026 only, existing SI#+BU+SBU+Type+period rows are skipped (no duplicates)</div></div>
+      <div class="modal-close" onclick="closeHistImport()">✕</div>
     </div>
     <div class="modal-body">
-      <p class="hint" style="margin-top:0">In the client's detail sheet, select the rows including the header row — make sure the columns <strong>DR</strong>, the date column, <strong>Actual Plate Number</strong>, <strong>Actual Driver's Name</strong>, and <strong>SBU</strong> are among them — copy (Ctrl+C), and paste here. Column order doesn't matter; it reads the header. If there's no header, use exactly: <span class="mono">DR • date • plate • driver • SBU</span>.</p>
-      <textarea id="pasteBox" class="form-input" style="width:100%;height:200px;font-family:'DM Mono',monospace;font-size:11px;white-space:pre" placeholder="DR&#9;Shipment Document Date&#9;Actual Plate Number&#9;Actual Driver's Name&#9;SBU&#10;5020386770&#9;15-Jul-26&#9;MAZ6896&#9;AREIL BUALOY&#9;ACS"></textarea>
-      <div id="pastePreview" class="muted" style="font-size:11px;margin-top:8px"></div>
+      <div class="toolbar">
+        <button class="btn btn-ghost" onclick="document.getElementById('histFile').click()">📄 Choose CCAC tracker file…</button>
+        <input type="file" id="histFile" accept=".xlsx,.xls" style="display:none">
+        <span class="muted" id="histFileName"></span>
+      </div>
+      <div id="histPreview" class="hint"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closePaste()">Cancel</button>
-      <button class="btn btn-primary" onclick="applyPaste()">Load these rows</button>
+      <button class="btn btn-ghost" onclick="closeHistImport()">Cancel</button>
+      <button class="btn btn-primary" id="histCommitBtn" style="display:none" onclick="commitHistImport()">Commit import</button>
     </div>
   </div>
 </div>
@@ -347,18 +374,21 @@ body.role-operations .fin-only{display:none!important}
 
 <script>
 /* ============================================================
-   EMELCO Billing — billing.html  (matches index.html app)
+   EMELCO Billing — billing.html
+   Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
+   SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202607272330';
+const APP_VERSION = '202607291400';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
+const TYPES = ['RECON','SURCHARGE','INCREMENTALS'];
 
 // ---- proxy wiring: identical mechanism to index.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET = 'emelco1254rch';
-const TRIPS_FILE   = 'emelco_data.json';                 // read-only source of trips
-const BILLING_FILE = 'emelco_billing_2026.json';         // read-write billing store (ADD to Worker ALLOWED_PATHS)
+const TRIPS_FILE   = 'emelco_data.json';
+const BILLING_FILE = 'emelco_billing_2026.json';
 const VERSION_FILE = 'app_version.json';
 const TRIPS_API    = `${PROXY_URL}/contents/${TRIPS_FILE}`;
 const BILLING_API  = `${PROXY_URL}/contents/${BILLING_FILE}`;
@@ -371,7 +401,7 @@ const ACCESS_CODES = { owner:'emelco2026', operations:'ops2026' };
 /* ---- helpers ---- */
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const peso=n=>(Number(n)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
-const uid=()=>'si'+Math.random().toString(36).slice(2,8);
+const uid=()=>'en'+Math.random().toString(36).slice(2,9);
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
@@ -386,13 +416,13 @@ function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
    ============================================================ */
 let currentRole=null, pickedRole='owner', currentName='';
 function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
-function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ let saved=localStorage.getItem('emelco_user_name')||''; let nm=(prompt('Your name (for the confirmed-by record):', saved)||saved||'').trim(); if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); } setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
+function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ let saved=localStorage.getItem('emelco_user_name')||''; let nm=(prompt('Your name (for the record):', saved)||saved||'').trim(); if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); } setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
 function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; }
 function doLogout(){ if(!confirm('Switch user / lock billing?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations'); $('#role-badge').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
 function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
 
 /* ============================================================
-   Version gate (deployed-based, with local-testing guard)
+   Version gate
    ============================================================ */
 async function checkVersion(){
   const isLocal = location.protocol==='file:'||/localhost|127\.0\.0\.1/.test(location.host);
@@ -403,8 +433,6 @@ async function checkVersion(){
     const meta=await r.json();
     const txt=safeAtobUtf8(meta.content);
     const j=JSON.parse(txt);
-    // Use a billing-specific key so index.html's version never blocks this page.
-    // If no billingVersion is set, do not block at all (fail-safe).
     const deployed=(j.billingVersion)||'';
     if(deployed && deployed!==APP_VERSION){
       $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed billing version is <strong>${deployed}</strong>.`;
@@ -416,9 +444,8 @@ async function checkVersion(){
 /* ============================================================
    State + cloud I/O
    ============================================================ */
-let STATE={ meta:{client:CLIENT,year:YEAR}, bus:[], invoices:[], ticks:{} };
-let TRIPS=[], CLIENT_ROWS=[];
-const TYPES=['Recon','Surcharge','Incremental'];
+let STATE={ meta:{client:CLIENT,year:YEAR}, bus:[], entries:[] };
+let TRIPS=[];
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
 
@@ -434,11 +461,7 @@ async function cloudGetJSON(api){
 }
 
 let saveTimer=null, isSaving=false;
-function saveBilling(){
-  clearTimeout(saveTimer);
-  setSync('⏳ saving…','var(--accent)');
-  saveTimer=setTimeout(doSaveBilling,800);
-}
+function saveBilling(){ clearTimeout(saveTimer); setSync('⏳ saving…','var(--accent)'); saveTimer=setTimeout(doSaveBilling,800); }
 async function doSaveBilling(){
   if(isSaving) return; isSaving=true;
   try{
@@ -459,28 +482,40 @@ async function doSaveBilling(){
     localStorage.setItem('emelco_billing_backup',JSON.stringify(STATE));
   }finally{ isSaving=false; }
 }
-// simple union merge so two devices don't clobber each other
 function mergeBilling(local,remote){
   const out=normalize(remote);
-  const byId={}; out.invoices.forEach(i=>byId[i.id]=i);
-  local.invoices.forEach(i=>{ byId[i.id]=i; }); // local wins on same id (last edit in this device)
-  out.invoices=Object.values(byId);
-  // ticks: union
-  Object.keys(local.ticks||{}).forEach(si=>{ out.ticks[si]={...(out.ticks[si]||{}),...local.ticks[si]}; });
-  // bus: prefer whichever has more entries
+  const byId={}; out.entries.forEach(i=>byId[i.id]=i);
+  local.entries.forEach(i=>{ byId[i.id]=i; }); // local wins on same id (last edit in this device)
+  out.entries=Object.values(byId);
   if((local.bus||[]).length>=out.bus.length) out.bus=local.bus;
   return out;
 }
-function normalize(b){ return { meta:b.meta||{client:CLIENT,year:YEAR}, bus:b.bus||[], invoices:b.invoices||[], ticks:b.ticks||{} }; }
+// Migrates the OLD invoice+lines+ticks shape (if a device still has it cached) into flat entries.
+function migrateOldInvoices(b){
+  const entries=[];
+  (b.invoices||[]).forEach(inv=>{
+    (inv.lines||[]).forEach(l=>{
+      if(!l.bu && !l.sbu && !Number(l.net)) return;
+      entries.push({ id:uid(), bu:l.bu||'', sbu:l.sbu||'', type:String(l.type||'RECON').toUpperCase(),
+        tripStart:inv.tripStart||'', tripEnd:inv.tripEnd||'', si:inv.si||'', status:inv.status==='open'?'not_submitted':(inv.status||'not_submitted'),
+        submitted:inv.submitted||'', dueDays:inv.dueDays||30, paidDate:inv.paidDate||'',
+        net:Number(l.net)||0, penalty:Number(l.penalty)||0, source:'migrated' });
+    });
+  });
+  return entries;
+}
+function normalize(b){
+  const hasOld = Array.isArray(b.invoices) && !Array.isArray(b.entries);
+  return { meta:b.meta||{client:CLIENT,year:YEAR}, bus:b.bus||[], entries: b.entries || (hasOld?migrateOldInvoices(b):[]) };
+}
 function seedBUs(){ STATE.bus=[
-  {name:'CCAC', sbus:['Trad Trade','KAG','ESG','Service','Transfer','ACS']},
+  {name:'CCAC', sbus:['Trad Trade','KAG','ESG','Service','Transfer','ACS','CAAC']},
   {name:'CMIP', sbus:['ALSTRA','CSG','MIDEA','ACS','KAG','ESG','Trad Trade','Service','Transfer']},
   {name:'CDI',  sbus:[]},
 ]; }
 
 async function boot(){
   await checkVersion();
-  // billing store
   try{
     const got=await cloudGetJSON(BILLING_API);
     if(got.__missing){ setSync('☁️ new file on first save','var(--accent)'); seedBUs(); }
@@ -492,7 +527,6 @@ async function boot(){
     toast('Couldn\'t reach billing file. Add "'+BILLING_FILE+'" to Worker ALLOWED_PATHS.','error');
   }
   if(!STATE.bus.length) seedBUs();
-  // trips (read-only, non-fatal)
   try{
     const got=await cloudGetJSON(TRIPS_API);
     if(!got.__missing){ const c=got.data; TRIPS=(c.trips||[]).filter(t=>String(t.client||'').toUpperCase()===CLIENT); }
@@ -501,27 +535,78 @@ async function boot(){
 }
 
 /* ============================================================
-   Billing math (verified against client file to the centavo)
+   Billing math
    ============================================================ */
-function lineCalc(l){ const net=(Number(l.net)||0)-(Number(l.penalty)||0); const vat=net*VAT_RATE; return {net,vat,gross:net+vat,wht:net*WHT_RATE,due:net+vat-net*WHT_RATE}; }
-function siTotals(inv){ const t={net:0,penalty:0,vat:0,gross:0,wht:0,due:0}; (inv.lines||[]).forEach(l=>{ const c=lineCalc(l); t.net+=c.net; t.penalty+=Number(l.penalty)||0; t.vat+=c.vat; t.gross+=c.gross; t.wht+=c.wht; t.due+=c.due; }); return t; }
-function siDueDate(inv){ return inv.submitted?addDays(inv.submitted,Number(inv.dueDays)||30):''; }
-function siStatusInfo(inv){
-  if(inv.status==='paid'){
-    if(inv.paidDate&&inv.submitted){ const d=daysBetween(siDueDate(inv),inv.paidDate); const note=d<0?`early ${Math.abs(d)}d`:d>0?`late ${d}d`:'on due date'; return {cls:'paid',text:'Paid',note}; }
+function entryCalc(e){ const net=(Number(e.net)||0)-(Number(e.penalty)||0); const vat=net*VAT_RATE; return {net,vat,gross:net+vat,wht:net*WHT_RATE,due:net+vat-net*WHT_RATE}; }
+function entryDueDate(e){ return e.submitted?addDays(e.submitted,Number(e.dueDays)||30):''; }
+function entryStatusInfo(e){
+  if(e.status==='paid'){
+    if(e.paidDate&&e.submitted){ const d=daysBetween(entryDueDate(e),e.paidDate); const note=d<0?`early ${Math.abs(d)}d`:d>0?`late ${d}d`:'on due date'; return {cls:'paid',text:'Paid',note}; }
     return {cls:'paid',text:'Paid',note:''};
   }
-  if(inv.status==='submitted') return {cls:'submitted',text:'Submitted',note:'processing'};
-  const dd=siDueDate(inv); if(!dd) return {cls:'pending',text:'Open',note:''};
+  if(e.status==='submitted') return {cls:'submitted',text:'Submitted',note:'processing'};
+  const dd=entryDueDate(e); if(!dd) return {cls:'pending',text:'Not submitted',note:''};
   const d=daysBetween(todayISO(),dd);
   return d<0?{cls:'unpaid',text:'Overdue',note:`by ${Math.abs(d)}d`}:{cls:'pending',text:'Due',note:`in ${d}d`};
 }
 function badge(cls,text,note){ return `<span class="badge badge-${cls}">${text}</span>${note?` <span class="muted">${note}</span>`:''}`; }
+function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div class="stat-label">${label}</div><div class="stat-value">${val}</div><div class="stat-sub">${sub}</div></div>`; }
 
 /* ============================================================
    Render
    ============================================================ */
-function renderAll(){ renderOverview(); renderInvoices(); renderSetup(); renderChecklistControls(); renderUnbilled(); }
+function renderAll(){ renderOverview(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); }
+
+/* ============================================================
+   Summary tab — "2026 Billing Compilation by Trip Start/End"
+   replica, computed live from entries (all figures NET of VAT,
+   matching how the original workbook's Total Billed Amount ties
+   to RECON+SURCHARGE+INCREMENTALS).
+   ============================================================ */
+function renderSummary(){
+  const byPeriod={};
+  STATE.entries.forEach(e=>{
+    if(!e.tripStart) return; // period rows need a start date to group on
+    const key=e.tripStart+'|'+(e.tripEnd||'');
+    const g=byPeriod[key]=byPeriod[key]||{tripStart:e.tripStart,tripEnd:e.tripEnd,total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,settled:0,processing:0,pastDue:0,count:0,sis:new Set()};
+    const net=entryCalc(e).net, s=entryStatusInfo(e).cls;
+    g.total+=net; g.count++;
+    if(e.si) g.sis.add(e.si);
+    if(e.type==='RECON'){ g.recon+=net; g.reconSurcharge+=net; }
+    else if(e.type==='SURCHARGE'){ g.surcharge+=net; g.reconSurcharge+=net; }
+    else if(e.type==='INCREMENTALS'){ g.incrementals+=net; }
+    if(e.bu==='CCAC') g.ccac+=net; else if(e.bu==='CMIP') g.cmip+=net;
+    if(s==='paid') g.settled+=net;
+    else if(s==='submitted') g.processing+=net;
+    else g.pastDue+=net; // not yet submitted, whether due or overdue — "not settled" bucket
+  });
+  const rows=Object.values(byPeriod).sort((a,b)=>a.tripStart.localeCompare(b.tripStart));
+  $('#sumCount').textContent=rows.length?`${rows.length} billing periods`:'';
+  const tb=$('#sum-table tbody');
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No entries yet</div>Add entries, or import a recon file / 2026 history, to populate this compilation.</div></td></tr>`; $('#sum-table tfoot').innerHTML=''; return; }
+  tb.innerHTML=rows.map(g=>`<tr>
+    <td class="mono">${esc(g.tripStart)}</td><td class="mono">${esc(g.tripEnd||'—')}</td>
+    <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
+    <td class="num-cell">₱${peso(g.reconSurcharge)}</td>
+    <td class="num-cell">₱${peso(g.recon)}</td>
+    <td class="num-cell">₱${peso(g.surcharge)}</td>
+    <td class="num-cell">₱${peso(g.incrementals)}</td>
+    <td class="num-cell fin-only">₱${peso(g.ccac)}</td>
+    <td class="num-cell fin-only">₱${peso(g.cmip)}</td>
+    <td class="num-cell">₱${peso(g.settled)}</td>
+    <td class="num-cell">₱${peso(g.processing)}</td>
+    <td class="num-cell">₱${peso(g.pastDue)}</td>
+    <td class="num-cell">${g.sis.size||g.count}</td></tr>`).join('');
+  const t=rows.reduce((a,g)=>{ for(const k of ['total','reconSurcharge','recon','surcharge','incrementals','ccac','cmip','settled','processing','pastDue']) a[k]+=g[k]; a.count+=g.count; return a; },
+    {total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,settled:0,processing:0,pastDue:0,count:0});
+  $('#sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td>
+    <td class="num-cell">₱${peso(t.total)}</td><td class="num-cell">₱${peso(t.reconSurcharge)}</td>
+    <td class="num-cell">₱${peso(t.recon)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
+    <td class="num-cell">₱${peso(t.incrementals)}</td>
+    <td class="num-cell fin-only">₱${peso(t.ccac)}</td><td class="num-cell fin-only">₱${peso(t.cmip)}</td>
+    <td class="num-cell">₱${peso(t.settled)}</td><td class="num-cell">₱${peso(t.processing)}</td>
+    <td class="num-cell">₱${peso(t.pastDue)}</td><td class="num-cell">${t.count}</td></tr>`;
+}
 
 function switchTab(name){
   Array.from(document.querySelectorAll('.tab')).forEach(t=>t.classList.remove('active'));
@@ -533,70 +618,49 @@ function switchTab(name){
 
 function renderOverview(){
   let net=0,paid=0,proc=0,over=0;
-  STATE.invoices.forEach(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv); net+=t.due; if(s.cls==='paid')paid+=t.due; else if(s.cls==='submitted')proc+=t.due; else if(s.cls==='unpaid')over+=t.due; });
+  STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due; if(s.cls==='paid')paid+=t.due; else if(s.cls==='submitted')proc+=t.due; else if(s.cls==='unpaid')over+=t.due; });
   const pct=net?Math.round(paid/net*100):0;
   $('#ov-stats').innerHTML=`
-    ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.invoices.length+' invoices')}
+    ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
     ${stat('processing','In processing','₱'+peso(proc),'submitted to client')}
     ${stat('overdue','Overdue','₱'+peso(over),'past due, uncollected')}`;
-  $('#ov-count').textContent=STATE.invoices.length?`${STATE.invoices.length} invoices`:'';
+  $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
+  // group by period
+  const byPeriod={};
+  STATE.entries.forEach(e=>{ const key=(e.tripStart||'?')+' — '+(e.tripEnd||'?'); byPeriod[key]=byPeriod[key]||{entries:[],net:0,due:0,statuses:new Set()};
+    const t=entryCalc(e); byPeriod[key].entries.push(e); byPeriod[key].net+=t.net; byPeriod[key].due+=t.due; byPeriod[key].statuses.add(e.status); });
+  const keys=Object.keys(byPeriod).sort().reverse();
   const tb=$('#ov-table tbody');
-  tb.innerHTML=STATE.invoices.length?STATE.invoices.map(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv);
-    return `<tr><td class="mono"><strong>${esc(inv.si||'—')}</strong></td><td>${esc(inv.period||'')}</td>
-      <td class="num-cell">₱${peso(t.net)}</td><td>${badge(s.cls,s.text,s.note)}</td>
-      <td class="muted mono">${siDueDate(inv)||'—'}</td><td class="num-cell fin-only">₱${peso(t.due)}</td></tr>`;
-  }).join(''):`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No invoices yet</div>Add one under Service Invoices.</div></td></tr>`;
-}
-function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div class="stat-label">${label}</div><div class="stat-value">${val}</div><div class="stat-sub">${sub}</div></div>`; }
-
-/* ---- Unbilled: completed CCAC trips not ticked on any SI ---- */
-function num(x){ return Number(x)||0; }
-function allTickedDRs(){
-  // set of DR keys that appear as a tick on ANY SI (rowKey is DR|PLATE, so take the DR part)
-  const set=new Set();
-  Object.values(STATE.ticks||{}).forEach(siTicks=>{ Object.keys(siTicks||{}).forEach(rowKey=>{ const dr=rowKey.split('|')[0]; if(dr)set.add(dr); }); });
-  return set;
-}
-function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
-function isBilled(t, tickedDRs){ return tripDRset(t).some(dr=>tickedDRs.has(dr)); }
-function renderUnbilled(){
-  const q=($('#ubSearch')?.value||'').toLowerCase();
-  const tickedDRs=allTickedDRs();
-  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
-  const unbilled=completed.filter(t=>!isBilled(t,tickedDRs));
-  // stats
-  let expTotal=0,billedCount=0;
-  completed.forEach(t=>{ if(isBilled(t,tickedDRs))billedCount++; });
-  unbilled.forEach(t=>expTotal+=tripExpected(t));
-  const el=$('#ub-stats'); if(el) el.innerHTML=`
-    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, not on any SI')}
-    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t,tickedDRs)?tripExpected(t):0),0)),billedCount+' completed trips on an SI')}
-    ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
-  const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} CCAC trips are marked completed`;
-  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
-    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
-  const tb=$('#ub-table tbody'); if(!tb)return;
-  tb.innerHTML=rows.length?rows.map(t=>`<tr>
-    <td class="muted mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
-    <td class="code-cell">${esc(t.code||t.id||'')}</td>
-    <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
-    <td class="muted">${esc(t.area||t.destination||'')}</td>
-    <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
-    <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
-    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips are on an SI — or none are marked completed yet.</div></td></tr>`;
+  tb.innerHTML=keys.length?keys.map(k=>{ const p=byPeriod[k];
+    const mixed=p.statuses.size>1;
+    const statusText=mixed?badge('default','Mixed',[...p.statuses].join('/')):badge(p.statuses.has('paid')?'paid':p.statuses.has('submitted')?'submitted':'pending', p.statuses.has('paid')?'Paid':p.statuses.has('submitted')?'Submitted':'Not submitted','');
+    return `<tr><td class="mono">${esc(k)}</td><td class="num-cell">${p.entries.length}</td>
+      <td class="num-cell">₱${peso(p.net)}</td><td class="num-cell fin-only">₱${peso(p.due)}</td><td>${statusText}</td></tr>`;
+  }).join(''):`<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries yet</div>Add one under Billing Entries, or import the recon file / 2026 history.</div></td></tr>`;
 }
 
-function renderInvoices(){
-  const q=($('#siSearch').value||'').toLowerCase();
-  const rows=STATE.invoices.filter(i=>!q||((i.si+' '+i.period).toLowerCase().includes(q)));
-  $('#si-table tbody').innerHTML=rows.length?rows.map(inv=>{ const t=siTotals(inv),s=siStatusInfo(inv);
-    return `<tr><td class="mono"><strong>${esc(inv.si||'—')}</strong></td><td>${esc(inv.period||'')}</td>
-      <td class="muted mono">${inv.submitted||'—'}</td><td class="muted mono">${siDueDate(inv)||'—'}</td>
+function populateBuFilter(){
+  const sel=$('#enBuFilter'); const cur=sel.value;
+  sel.innerHTML=`<option value="">All BU</option>`+STATE.bus.map(b=>`<option ${b.name===cur?'selected':''}>${esc(b.name)}</option>`).join('');
+}
+
+function renderEntries(){
+  const q=($('#enSearch').value||'').toLowerCase();
+  const statusF=$('#enStatusFilter').value, buF=$('#enBuFilter').value;
+  let rows=STATE.entries.slice();
+  if(statusF) rows=rows.filter(e=>e.status===statusF);
+  if(buF) rows=rows.filter(e=>e.bu===buF);
+  if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')).toLowerCase().includes(q));
+  rows.sort((a,b)=>String(b.tripStart||'').localeCompare(String(a.tripStart||'')));
+  $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
+    return `<tr><td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
+      <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
       <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}</td>
-      <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openSI('${inv.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteSI('${inv.id}')">Delete</button></td></tr>`;
-  }).join(''):`<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No invoices</div>Click “New Service Invoice”.</div></td></tr>`;
+      <td class="muted">${esc(e.source||'manual')}</td>
+      <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td></tr>`;
+  }).join(''):`<tr><td colspan="11"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
 }
 
 function renderSetup(){
@@ -610,143 +674,60 @@ function renderSetup(){
       <tbody>${bu.sbus.length?bu.sbus.map((s,j)=>`<tr><td>${esc(s)}</td><td class="num-cell"><button class="btn btn-ghost btn-sm" onclick="delSBU(${i},${j})">remove</button></td></tr>`).join(''):`<tr><td colspan="2" class="muted">No SBUs yet — add some above.</td></tr>`}</tbody>
     </table></div>`).join('')||`<p class="muted">No BUs yet.</p>`;
 }
-function addBU(){ const v=$('#newBu').value.trim(); if(!v)return; if(STATE.bus.some(b=>b.name.toLowerCase()===v.toLowerCase())){toast('That BU already exists','error');return;} STATE.bus.push({name:v,sbus:[]}); $('#newBu').value=''; renderSetup(); saveBilling(); }
+function addBU(){ const v=$('#newBu').value.trim(); if(!v)return; if(STATE.bus.some(b=>b.name.toLowerCase()===v.toLowerCase())){toast('That BU already exists','error');return;} STATE.bus.push({name:v,sbus:[]}); $('#newBu').value=''; renderSetup(); populateBuFilter(); saveBilling(); }
 function addSBU(i){ const inp=$('#sbuIn'+i),v=inp.value.trim(); if(!v)return; if(STATE.bus[i].sbus.some(s=>s.toLowerCase()===v.toLowerCase())){toast('That SBU already exists in this BU','error');return;} STATE.bus[i].sbus.push(v); renderSetup(); saveBilling(); }
 function delSBU(i,j){ STATE.bus[i].sbus.splice(j,1); renderSetup(); saveBilling(); }
-function delBU(i){ if(confirm('Remove BU “'+STATE.bus[i].name+'”?')){ STATE.bus.splice(i,1); renderSetup(); saveBilling(); } }
+function delBU(i){ if(confirm('Remove BU “'+STATE.bus[i].name+'”?')){ STATE.bus.splice(i,1); renderSetup(); populateBuFilter(); saveBilling(); } }
 
-/* ---- SI editor ---- */
-let editingId=null, DRAFT_LINES=[];
-function newLine(){ return {bu:'',sbu:'',type:'Recon',net:0,penalty:0}; }
-function openSI(id){
-  const inv=id?STATE.invoices.find(x=>x.id===id):null;
-  editingId=inv?inv.id:null;
-  $('#siModalTitle').textContent=inv?('Edit '+(inv.si||'invoice')):'New Service Invoice';
-  $('#mSi').value=inv?.si||''; $('#mPeriod').value=inv?.period||'';
-  $('#mSubmitted').value=inv?.submitted||todayISO(); $('#mDueDays').value=inv?.dueDays??30;
-  $('#mStatus').value=inv?.status||'submitted'; $('#mPaidDate').value=inv?.paidDate||'';
-  onStatusChange();
-  DRAFT_LINES=inv?JSON.parse(JSON.stringify(inv.lines||[])):[newLine()];
-  if(!DRAFT_LINES.length)DRAFT_LINES=[newLine()];
-  renderLines(); $('#siModal').classList.add('open');
-}
-function closeSI(){ $('#siModal').classList.remove('open'); }
-function onStatusChange(){ $('#mPaidWrap').style.display=($('#mStatus').value==='paid')?'flex':'none'; }
+/* ============================================================
+   Entry editor
+   ============================================================ */
+let editingId=null;
 function buOpts(sel){ return `<option value="">—</option>`+STATE.bus.map(b=>`<option ${b.name===sel?'selected':''}>${esc(b.name)}</option>`).join(''); }
 function sbuOpts(bu,sel){ const b=STATE.bus.find(x=>x.name===bu); const list=b?b.sbus:[]; return `<option value="">—</option>`+list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
-function addDraftLine(){ DRAFT_LINES.push(newLine()); renderLines(); }
-function setLine(i,k,v){ DRAFT_LINES[i][k]=(k==='net'||k==='penalty')?(parseFloat(v)||0):v; renderLines(); }
-function delLine(i){ DRAFT_LINES.splice(i,1); if(!DRAFT_LINES.length)DRAFT_LINES=[newLine()]; renderLines(); }
-function renderLines(){
-  $('#lines-table tbody').innerHTML=DRAFT_LINES.map((l,i)=>{ const c=lineCalc(l);
-    return `<tr>
-      <td><select class="form-select" onchange="setLine(${i},'bu',this.value)">${buOpts(l.bu)}</select></td>
-      <td><select class="form-select" onchange="setLine(${i},'sbu',this.value)">${sbuOpts(l.bu,l.sbu)}</select></td>
-      <td><select class="form-select" onchange="setLine(${i},'type',this.value)">${TYPES.map(t=>`<option ${t===l.type?'selected':''}>${t}</option>`).join('')}</select></td>
-      <td><input class="form-input" style="text-align:right" type="number" step="0.01" value="${l.net||0}" onchange="setLine(${i},'net',this.value)"></td>
-      <td><input class="form-input" style="text-align:right" type="number" step="0.01" value="${l.penalty||0}" onchange="setLine(${i},'penalty',this.value)"></td>
-      <td class="num-cell muted">${peso(c.vat)}</td><td class="num-cell muted">${peso(c.gross)}</td>
-      <td class="num-cell muted">${peso(c.wht)}</td><td class="num-cell"><strong>${peso(c.due)}</strong></td>
-      <td><button class="btn btn-danger btn-sm" onclick="delLine(${i})">×</button></td></tr>`;
-  }).join('');
-  const t=DRAFT_LINES.reduce((a,l)=>{const c=lineCalc(l);a.net+=c.net;a.pen+=Number(l.penalty)||0;a.vat+=c.vat;a.gross+=c.gross;a.wht+=c.wht;a.due+=c.due;return a;},{net:0,pen:0,vat:0,gross:0,wht:0,due:0});
-  $('#tNet').textContent=peso(t.net);$('#tPen').textContent=peso(t.pen);$('#tVat').textContent=peso(t.vat);$('#tGross').textContent=peso(t.gross);$('#tWht').textContent=peso(t.wht);$('#tDue').textContent=peso(t.due);
+function onEntryBuChange(){ $('#eSbu').innerHTML=sbuOpts($('#eBu').value,''); }
+function openEntry(id){
+  const e=id?STATE.entries.find(x=>x.id===id):null;
+  editingId=e?e.id:null;
+  $('#entryModalTitle').textContent=e?'Edit entry':'New billing entry';
+  $('#eBu').innerHTML=buOpts(e?.bu||'');
+  $('#eSbu').innerHTML=sbuOpts(e?.bu||'', e?.sbu||'');
+  $('#eType').value=e?.type||'RECON';
+  $('#eStart').value=e?.tripStart||''; $('#eEnd').value=e?.tripEnd||'';
+  $('#eSi').value=e?.si||'';
+  $('#eStatus').value=e?.status||'not_submitted';
+  $('#eSubmitted').value=e?.submitted||''; $('#eDueDays').value=e?.dueDays??30;
+  $('#ePaidDate').value=e?.paidDate||'';
+  $('#eNet').value=e?.net??0; $('#ePenalty').value=e?.penalty??0;
+  onEntryStatusChange(); renderEntryCalc();
+  $('#entryModal').classList.add('open');
 }
-function nextSI(){ const nums=STATE.invoices.map(i=>parseInt(String(i.si).replace(/\D/g,''))).filter(n=>!isNaN(n)); return 'SI-'+String((nums.length?Math.max(...nums):0)+1).padStart(4,'0'); }
-function deleteSI(id){
-  const inv=STATE.invoices.find(x=>x.id===id); if(!inv)return;
-  const tickCount=Object.keys(STATE.ticks[id]||{}).length;
-  let msg='Delete invoice '+(inv.si||'')+(inv.period?' ('+inv.period+')':'')+'?';
-  if(tickCount) msg+='\n\nThis also removes '+tickCount+' confirmed trip tick'+(tickCount>1?'s':'')+' on this SI. Those trips will show as unbilled again.';
-  msg+='\n\nThis cannot be undone.';
-  if(!confirm(msg)) return;
-  STATE.invoices=STATE.invoices.filter(x=>x.id!==id);
-  delete STATE.ticks[id];
-  renderAll(); saveBilling(); toast('Deleted '+(inv.si||'invoice'));
+function closeEntry(){ $('#entryModal').classList.remove('open'); }
+function onEntryStatusChange(){ $('#ePaidWrap').style.display=($('#eStatus').value==='paid')?'grid':'none'; }
+function renderEntryCalc(){ const c=entryCalc({net:$('#eNet').value,penalty:$('#ePenalty').value}); $('#eVat').value=peso(c.vat); $('#eDue').value=peso(c.due); }
+function saveEntry(){
+  const bu=$('#eBu').value, sbu=$('#eSbu').value;
+  if(!bu||!sbu){ toast('Pick a BU and SBU','error'); return; }
+  const entry={ id:editingId||uid(), bu, sbu, type:$('#eType').value,
+    tripStart:$('#eStart').value, tripEnd:$('#eEnd').value, si:$('#eSi').value.trim(),
+    status:$('#eStatus').value, submitted:$('#eSubmitted').value, dueDays:parseInt($('#eDueDays').value)||30,
+    paidDate:$('#eStatus').value==='paid'?$('#ePaidDate').value:'',
+    net:parseFloat($('#eNet').value)||0, penalty:parseFloat($('#ePenalty').value)||0,
+    source: editingId ? (STATE.entries.find(x=>x.id===editingId)?.source||'manual') : 'manual' };
+  if(editingId){ const ix=STATE.entries.findIndex(x=>x.id===editingId); STATE.entries[ix]=entry; }
+  else STATE.entries.unshift(entry);
+  closeEntry(); renderAll(); saveBilling(); toast('Entry saved');
 }
-function saveSI(){
-  const inv={ id:editingId||uid(), si:($('#mSi').value.trim()||nextSI()),
-    period:$('#mPeriod').value.trim(), submitted:$('#mSubmitted').value,
-    dueDays:parseInt($('#mDueDays').value)||30, status:$('#mStatus').value,
-    paidDate:$('#mStatus').value==='paid'?$('#mPaidDate').value:'',
-    lines:DRAFT_LINES.filter(l=>l.bu||l.sbu||Number(l.net)) };
-  if(editingId){ const ix=STATE.invoices.findIndex(x=>x.id===editingId); STATE.invoices[ix]=inv; }
-  else STATE.invoices.unshift(inv);
-  closeSI(); renderAll(); saveBilling(); toast('Invoice '+inv.si+' saved');
+function deleteEntry(id){
+  const e=STATE.entries.find(x=>x.id===id); if(!e)return;
+  if(!confirm('Delete this entry ('+e.bu+' / '+e.sbu+' / '+e.type+', '+(e.tripStart||'?')+'–'+(e.tripEnd||'?')+')?\n\nThis cannot be undone.')) return;
+  STATE.entries=STATE.entries.filter(x=>x.id!==id);
+  renderAll(); saveBilling(); toast('Entry deleted');
 }
 
 /* ============================================================
-   Trip checklist + auto-match
+   Date parsing (shared)
    ============================================================ */
-function normDR(x){ return String(x||'').replace(/[^0-9A-Za-z]/g,'').toUpperCase(); }
-function normPlate(x){ return String(x||'').replace(/[^0-9A-Za-z]/g,'').toUpperCase(); }
-function tripDRset(t){ return String(t.dr||'').split(/[\/,;]+/).map(normDR).filter(Boolean); }
-function tripDate(t){ return t.tripStartDate||t.dispatchedDate||''; }
-
-// bounded Levenshtein: returns edit distance, but bails out once it exceeds `max`
-function editDist(a,b,max){
-  if(a===b) return 0;
-  const la=a.length, lb=b.length;
-  if(Math.abs(la-lb)>max) return max+1;
-  let prev=Array.from({length:lb+1},(_,i)=>i);
-  for(let i=1;i<=la;i++){
-    const cur=[i]; let best=i;
-    for(let j=1;j<=lb;j++){
-      const cost=a[i-1]===b[j-1]?0:1;
-      cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost);
-      if(cur[j]<best)best=cur[j];
-    }
-    if(best>max) return max+1;   // whole row already over budget
-    prev=cur;
-  }
-  return prev[lb];
-}
-
-function buildTripIndex(){
-  const byDR=new Map(), byPD=new Map();
-  TRIPS.forEach(t=>{
-    tripDRset(t).forEach(dr=> byDR.set(dr,t));
-    byPD.set(normPlate(t.plate)+'|'+tripDate(t), t);
-  });
-  return {byDR, byPD};
-}
-
-/* Classify one client row against the app trips.
-   Returns { level, trip, note } where level ∈ high | typo | none */
-function matchClientRow(r, idx){
-  const drk=normDR(r.dr), pd=normPlate(r.plate)+'|'+(r.date||'');
-  // 1) exact DR hit
-  let trip=idx.byDR.get(drk);
-  if(trip){
-    const plateOK = normPlate(trip.plate)===normPlate(r.plate);
-    return { level:'high', trip, note: drNote(trip,drk), warn: plateOK?'':'plate differs' };
-  }
-  // 2) plate+date hit but DR wasn't in that trip -> likely DR typo
-  trip=idx.byPD.get(pd);
-  if(trip){
-    return { level:'typo', trip, note:'plate+date match', appDR: nearestDR(trip,drk) };
-  }
-  // 3) fuzzy DR: an app trip DR exactly 1 char off — but only trust it if plate OR date
-  //    also lines up, otherwise sequential DR numbers coincidentally 1 apart create false flags
-  let bestTrip=null,bestDR='';
-  for(const t of TRIPS){
-    for(const adr of tripDRset(t)){
-      if(editDist(drk,adr,1)===1){
-        const plateOK = normPlate(t.plate)===normPlate(r.plate);
-        const dateOK  = tripDate(t) && r.date && tripDate(t)===r.date;
-        if(plateOK||dateOK){ bestTrip=t; bestDR=adr; break; }
-      }
-    }
-    if(bestTrip)break;
-  }
-  if(bestTrip){
-    return { level:'typo', trip:bestTrip, note:'DR 1 char off', appDR:bestDR };
-  }
-  return { level:'none' };
-}
-function drNote(trip,drk){ const set=tripDRset(trip); const i=set.indexOf(drk); return set.length>1?`DR ${i+1} of ${set.length}`:''; }
-function nearestDR(trip,drk){ let b='',bd=99; tripDRset(trip).forEach(d=>{const e=editDist(drk,d,5); if(e<bd){bd=e;b=d;}}); return b; }
-
 function toISO(v){
   if(v==null||v==='')return'';
   if(v instanceof Date && !isNaN(v))return v.toISOString().slice(0,10);
@@ -758,149 +739,254 @@ function toISO(v){
   m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/); if(m)return `${m[3]}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
   const d=new Date(s); return isNaN(d)?'':d.toISOString().slice(0,10);
 }
-function parseClientFile(file,cb){
-  if(typeof XLSX==='undefined'){
-    cb(null,'The spreadsheet reader hasn\'t loaded yet (check your internet — it comes from a CDN). Wait a moment and try again, or reload the page.');
-    return;
-  }
+function sheetRows(ws){ return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''}); }
+
+/* Best-effort period auto-detect: scan every sheet for a date-ish column, take min/max */
+function detectPeriod(wb){
+  let bestStart='',bestEnd='',bestCount=0;
+  wb.SheetNames.forEach(name=>{
+    const rows=sheetRows(wb.Sheets[name]);
+    for(let hr=0;hr<Math.min(rows.length,8);hr++){
+      const H=(rows[hr]||[]).map(x=>String(x).toLowerCase().trim());
+      let dateC=H.findIndex(h=>h.includes('shipment')&&h.includes('date'));
+      if(dateC<0) dateC=H.findIndex(h=>h.includes('trip')&&h.includes('date'));
+      if(dateC<0) dateC=H.findIndex(h=>h==='date');
+      if(dateC<0) continue;
+      const dates=[];
+      for(let r=hr+1;r<rows.length;r++){ const iso=toISO(rows[r][dateC]); if(iso) dates.push(iso); }
+      if(dates.length>bestCount){ bestCount=dates.length; dates.sort(); bestStart=dates[0]; bestEnd=dates[dates.length-1]; }
+    }
+  });
+  return {start:bestStart,end:bestEnd};
+}
+
+/* ============================================================
+   Recon file import — parses the "for invoicing"-style summary
+   sheet into candidate BU+SBU+TYPE entries for the chosen period.
+   ============================================================ */
+let RECON_CANDIDATES=[];
+$('#reconFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f){ return; }
+  $('#reconFileName').textContent=f.name;
   const rd=new FileReader();
-  rd.onerror=()=>cb(null,'Couldn\'t read that file from disk. Try again.');
-  rd.onload=e=>{
-    let wb; try{ wb=XLSX.read(e.target.result,{type:'array',cellDates:true}); }catch(err){ cb(null,'Couldn\'t read that file — is it a valid Excel workbook?'); return; }
-    let best=null,map=null,hdrRow=0;
-    wb.SheetNames.forEach(name=>{
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
-      for(let hr=0;hr<Math.min(rows.length,6);hr++){
-        const H=rows[hr].map(x=>String(x).toLowerCase().replace(/\s+/g,' ').trim());
-        const drC=H.findIndex(h=>h==='dr'), dateC=H.findIndex(h=>h.includes('shipment document')),
-              plateC=H.findIndex(h=>h.includes('actual plate')), drvC=H.findIndex(h=>h.includes('actual driver')),
-              sbuC=H.findIndex(h=>h==='sbu'), entC=H.findIndex(h=>h.includes('entity'));
-        if(drC>-1&&(plateC>-1||dateC>-1)){ best=rows;hdrRow=hr;map={drC,dateC,plateC,drvC,sbuC,entC}; return; }
-      }
-    });
-    if(!best){ cb(null,'Couldn\'t find a detail sheet with a DR column plus plate or date. Is this the right client file (the tab with per-delivery rows)?'); return; }
-    const out=[],seen=new Set(),m=map;
-    for(let i=hdrRow+1;i<best.length;i++){ const row=best[i],dr=row[m.drC]; if(!dr)continue;
-      const plate=m.plateC>-1?row[m.plateC]:''; const key=normDR(dr)+'|'+normPlate(plate); if(seen.has(key))continue; seen.add(key);
-      out.push({ dr:String(dr), date:toISO(m.dateC>-1?row[m.dateC]:''), plate:String(plate),
-        driver:m.drvC>-1?String(row[m.drvC]):'', sbu:m.sbuC>-1?String(row[m.sbuC]):'', bu:m.entC>-1?String(row[m.entC]):'' }); }
-    cb(out,null);
+  rd.onload=ev=>{
+    window.__reconWB = XLSX.read(ev.target.result,{type:'array',cellDates:true});
+    const p=detectPeriod(window.__reconWB);
+    if(p.start) $('#reconStart').value=p.start;
+    if(p.end) $('#reconEnd').value=p.end;
+    toast("File loaded — dates are guessed from individual trip dates, NOT the billing cutoff. Set Trip Start/End to the recon file's actual cutoff period before parsing.",'error');
   };
-  rd.readAsArrayBuffer(file);
-}
-
-function renderChecklistControls(){
-  const opts=STATE.invoices.map(i=>`<option value="${i.id}">${esc(i.si)} — ${esc(i.period||'')}</option>`).join('');
-  $('#clSi').innerHTML = `<option value="">${STATE.invoices.length?'— pick an SI —':'(no invoices yet — create one first)'}</option>`+opts;
-  renderChecklist();
-}
-function renderChecklist(){
-  const siId=$('#clSi').value, idx=buildTripIndex(), ticks=STATE.ticks[siId]||{}, tb=$('#cl-table tbody');
-  const noSI = !siId;
-  // banner when trips are loaded but no SI is chosen to attach ticks to
-  const banner=$('#clNoSiBanner');
-  if(banner) banner.style.display = (noSI && CLIENT_ROWS.length) ? 'block' : 'none';
-  if(!CLIENT_ROWS.length){ tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">No client trips loaded</div>Load the client file for this SI to list its trips.</div></td></tr>`; $('#clStats').textContent=''; return; }
-  const drCount={}; CLIENT_ROWS.forEach(r=>{drCount[normDR(r.dr)]=(drCount[normDR(r.dr)]||0)+1;});
-  let matched=0,verify=0,none=0,confirmed=0;
-  tb.innerHTML=CLIENT_ROWS.map((r,ri)=>{
-    const drk=normDR(r.dr), rowKey=drk+'|'+normPlate(r.plate);
-    const M=matchClientRow(r,idx);
-    if(M.level==='high')matched++; else if(M.level==='typo')verify++; else none++;
-    const tk=ticks[rowKey]; if(tk)confirmed++;
-    const convoy=drCount[drk]>1?`<span class="chip" title="This delivery used more than one truck">convoy</span>`:'';
-    let rowCls, appCell, expandable=!!M.trip;
-    if(M.level==='high'){
-      rowCls='matched';
-      appCell=`<span class="chip">${esc(M.trip.code||M.trip.tripticket||M.trip.id)}</span>`
-             +(M.note?` <span class="muted">${M.note}</span>`:'')
-             +(M.warn?` <span class="badge badge-unpaid" title="Matched on DR but ${M.warn}">${M.warn}</span>`:'')
-             +(expandable?` <span class="muted" style="font-size:9px">▸ details</span>`:'');
-    } else if(M.level==='typo'){
-      rowCls='verify';
-      appCell=`<span class="badge badge-verify">verify</span> `
-             +`<span class="chip">${esc(M.trip.code||M.trip.tripticket||M.trip.id)}</span>`
-             +`<div class="muted" style="font-size:9px;margin-top:2px">${esc(M.note)}`
-             +(M.appDR?` · app DR <span class="mono">${esc(M.appDR)}</span> vs client <span class="mono">${esc(drk)}</span>`:'')
-             +` — fix in main app if mistyped · <span style="font-size:9px">▸ details</span></div>`;
-    } else {
-      rowCls='unmatched';
-      appCell=`<span class="badge badge-pending">no app trip</span>`;
+  rd.onerror=()=>toast('Couldn\'t read that file','error');
+  rd.readAsArrayBuffer(f);
+});
+function findInvoicingBlocks(wb){
+  let sheetName=null, rows=null;
+  for(const name of wb.SheetNames){
+    const r=sheetRows(wb.Sheets[name]);
+    const flat=r.slice(0,60).map(row=>row.map(c=>String(c).toUpperCase())).flat();
+    if(flat.some(x=>x.includes('OUTBOUND COST')) && flat.some(x=>x.trim()==='SBU')){ sheetName=name; rows=r; break; }
+  }
+  if(!rows) return {blocks:[],rows:null};
+  const blocks=[];
+  for(let r=0;r<rows.length;r++){
+    const row=rows[r]||[];
+    for(let c=0;c<row.length;c++){
+      if(String(row[c]).trim().toUpperCase()!=='SBU') continue;
+      const window=row.slice(c+1,c+10).map(x=>String(x).toUpperCase().trim());
+      let netRel=window.findIndex(x=>x.includes('FOR INVOICING LESS PENALTY'));
+      if(netRel<0) netRel=window.findIndex(x=>x.includes('NET OF VAT'));
+      const vatRel=window.findIndex(x=>x==='VAT');
+      const grossRel=window.findIndex(x=>x.includes('GROSS AMOUNT'));
+      if(netRel<0||vatRel<0) continue;
+      // classify by scanning a few rows above, in a narrow column window right around
+      // this block's own SBU column (a wide window can pick up a neighboring block's
+      // label, e.g. "DR PENALTY" sitting a few columns over from "SURCHARGE")
+      let type=null;
+      for(let up=r-1; up>=Math.max(0,r-8) && !type; up--){
+        const seg=(rows[up]||[]).slice(Math.max(0,c-1), c+2).map(x=>String(x).toUpperCase()).join(' ');
+        if(/OUTBOUND COST/.test(seg)) type='RECON';
+        else if(/INCREMENTAL/.test(seg)) type='INCREMENTALS';
+        else if(/SURCHARGE/.test(seg) && !/PENALTY/.test(seg)) type='SURCHARGE';
+      }
+      if(!type) continue;
+      blocks.push({ type, headerRow:r, sbuC:c, netC:c+1+netRel, vatC:c+1+vatRel, grossC:grossRel>-1?c+1+grossRel:null });
     }
-    const main=`<tr class="match-row ${rowCls}" ${expandable?`onclick="toggleDetail(${ri})" style="cursor:pointer"`:''}>
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="tick" ${tk?'checked':''} ${noSI?'disabled title="Pick an SI above first"':''} onchange="toggleTick('${siId}','${rowKey}',this.checked)"></td>
-      <td class="muted mono">${esc(r.date||'')}</td><td class="mono">${esc(r.dr||'')} ${convoy}</td>
-      <td class="mono">${esc(r.plate||'')}</td><td>${esc(r.driver||'')}</td><td>${esc(r.sbu||'')}</td>
-      <td>${appCell}</td>
-      <td class="muted">${tk?esc(tk.by)+' · '+tk.at:''}</td></tr>`;
-    let detail='';
-    if(expandable){
-      const t=M.trip, allDR=tripDRset(t).map(d=>{ const hit=d===drk; return `<span class="mono chip" style="${hit?'background:rgba(26,140,82,.15);border-color:var(--green)':''}">${esc(d)}</span>`; }).join(' ');
-      detail=`<tr id="det${ri}" class="detail-row" style="display:none"><td></td><td colspan="7" style="background:var(--bg3)">
-        <div style="font-size:11px;padding:4px 0;line-height:1.6">
-          <div><strong>App trip:</strong> <span class="mono">${esc(t.code||t.id)}</span>
-            ${t.tripticket?` &nbsp;·&nbsp; <strong>Ticket:</strong> <span class="mono">${esc(t.tripticket)}</span>`:''}</div>
-          <div style="margin-top:3px"><strong>Logged DR(s):</strong> ${allDR} <span class="muted">(green = the one this client row matched)</span></div>
-          <div style="margin-top:3px">
-            <strong>Plate:</strong> <span class="mono">${esc(t.plate||'—')}</span> &nbsp;·&nbsp;
-            <strong>Driver:</strong> ${esc(t.driver||'—')} &nbsp;·&nbsp;
-            <strong>Trip date:</strong> <span class="mono">${esc(t.tripStartDate||t.dispatchedDate||'—')}</span>
-            ${t.destination?` &nbsp;·&nbsp; <strong>Dest:</strong> ${esc(t.destination)}`:''}
-          </div>
-          ${(M.warn||M.level==='typo')?`<div style="margin-top:4px;color:var(--accent)"><strong>⚠ Check:</strong> client says DR <span class="mono">${esc(drk)}</span> on plate <span class="mono">${esc(r.plate||'—')}</span> — compare to the logged values above.</div>`:''}
-        </div></td></tr>`;
+  }
+  return {blocks,rows,sheetName};
+}
+function parseReconFile(){
+  const wb=window.__reconWB;
+  if(!wb){ toast('Choose a file first','error'); return; }
+  const start=$('#reconStart').value, end=$('#reconEnd').value;
+  if(!start||!end){ toast('Set the Trip Start / Trip End period','error'); return; }
+  const {blocks,rows}=findInvoicingBlocks(wb);
+  if(!rows||!blocks.length){ toast('Couldn\'t find an "for invoicing"-style sheet (OUTBOUND COST / SURCHARGE / INCREMENTAL blocks with SBU rows) in this file.','error'); return; }
+  const bySbuType={};
+  blocks.forEach(b=>{
+    for(let r=b.headerRow+1;r<rows.length;r++){
+      const sbuRaw=rows[r][b.sbuC];
+      const sbu=String(sbuRaw||'').trim();
+      if(!sbu) continue;
+      if(/grand total/i.test(sbu)) break;
+      const net=Number(rows[r][b.netC])||0;
+      if(net<=0) continue;
+      const vat=Number(rows[r][b.vatC])||net*VAT_RATE;
+      const gross=b.grossC!=null?(Number(rows[r][b.grossC])||(net+vat)):(net+vat);
+      const key=sbu.toUpperCase()+'|'+b.type;
+      bySbuType[key]=bySbuType[key]||{sbu,type:b.type,net:0,vat:0,gross:0};
+      bySbuType[key].net+=net; bySbuType[key].vat+=vat; bySbuType[key].gross+=gross;
     }
-    return main+detail;
+  });
+  const candidates=Object.values(bySbuType);
+  if(!candidates.length){ toast('Found the invoicing sheet but no SBU rows with an amount > 0.','error'); return; }
+  RECON_CANDIDATES=candidates.map(c=>{
+    const match=STATE.entries.find(e=>e.bu==='CCAC' && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart===start && e.tripEnd===end);
+    return {...c, start, end, matchId:match?match.id:null, prevNet:match?entryCalc(match).net:null};
+  });
+  renderReconPreview();
+}
+function renderReconPreview(){
+  $('#reconPreviewWrap').style.display='block';
+  let matched=0,fresh=0;
+  $('#recon-table tbody').innerHTML=RECON_CANDIDATES.map(c=>{
+    const isMatch=!!c.matchId; if(isMatch)matched++; else fresh++;
+    const diffNote = isMatch && c.prevNet!=null && Math.abs(c.prevNet-c.net)>0.02 ? ` <span class="muted">(was ₱${peso(c.prevNet)})</span>` : '';
+    return `<tr class="${isMatch?'row-matched':'row-new'}">
+      <td>${esc(c.sbu)}</td><td>${esc(c.type)}</td>
+      <td class="num-cell">₱${peso(c.net)}</td><td class="num-cell">₱${peso(c.vat)}</td><td class="num-cell">₱${peso(c.gross)}</td>
+      <td>${isMatch?'<span style="color:var(--green);font-weight:700">matched — will update</span>'+diffNote:'<span style="color:var(--blue);font-weight:700">new — will create entry</span>'}</td>
+    </tr>`;
   }).join('');
-  $('#clStats').innerHTML=`${CLIENT_ROWS.length} trips · <span style="color:var(--green)">${matched} matched</span> · <span style="color:var(--accent)">${verify} to verify</span> · <span style="color:var(--red)">${none} unmatched</span> · ${confirmed} confirmed`;
+  $('#reconStats').textContent=`${RECON_CANDIDATES.length} SBU/type rows — ${matched} matched, ${fresh} new`;
 }
-function toggleDetail(ri){ const d=document.getElementById('det'+ri); if(d) d.style.display = d.style.display==='none'?'table-row':'none'; }
-function toggleTick(siId,rowKey,on){ if(!siId){ toast('Pick an SI first','error'); return; } STATE.ticks[siId]=STATE.ticks[siId]||{}; if(on)STATE.ticks[siId][rowKey]={by:(currentName||currentRole||'?'),at:todayISO()}; else delete STATE.ticks[siId][rowKey]; renderChecklist(); saveBilling(); }
-
-/* ---- paste-rows fallback (immune to sheet-name AND column-layout drift) ---- */
-function openPaste(){ $('#pasteBox').value=''; $('#pastePreview').textContent=''; $('#pasteModal').classList.add('open'); setTimeout(()=>$('#pasteBox').focus(),50); }
-function closePaste(){ $('#pasteModal').classList.remove('open'); }
-function parsePasted(text){
-  const lines=text.split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim()!=='');
-  if(!lines.length) return {rows:[],err:'Nothing pasted.'};
-  const split=l=> l.includes('\t') ? l.split('\t') : l.split(/ {2,}|,/); // tab (Excel), else 2+ spaces or comma
-  const cells=lines.map(split).map(a=>a.map(c=>c.trim()));
-  // detect a header row: does row 0 contain recognizable column names?
-  const h0=cells[0].map(c=>c.toLowerCase());
-  const find=preds=>{ for(const p of preds){ const i=h0.findIndex(x=>p(x)); if(i>-1)return i; } return -1; };
-  let drC=find([x=>x==='dr',x=>x.includes('dr no'),x=>x.includes('dr#')]);
-  let dateC=find([x=>x.includes('shipment')&&x.includes('date'),x=>x.includes('shipment document'),x=>x==='date',x=>x.includes('deliv')&&x.includes('date')]);
-  let plateC=find([x=>x.includes('actual plate'),x=>x.includes('plate')]);
-  let drvC=find([x=>x.includes('actual driver'),x=>x==='driver',x=>x.includes("driver")]);
-  let sbuC=find([x=>x==='sbu']);
-  let start=1, hasHeader=(drC>-1||plateC>-1||dateC>-1);
-  if(!hasHeader){ // no header — assume fixed order DR, date, plate, driver, SBU
-    drC=0; dateC=1; plateC=2; drvC=3; sbuC=4; start=0;
-  }
-  if(drC<0) return {rows:[],err:'Couldn\'t find a DR column. Include a header row with "DR" (and ideally date, plate, driver, SBU), or paste columns in the order DR, date, plate, driver, SBU.'};
-  const out=[],seen=new Set();
-  for(let i=start;i<cells.length;i++){
-    const row=cells[i]; const dr=row[drC]; if(!dr||!/\d/.test(dr))continue;
-    const plate=plateC>-1?(row[plateC]||''):'';
-    const key=normDR(dr)+'|'+normPlate(plate); if(seen.has(key))continue; seen.add(key);
-    out.push({ dr, date:toISO(dateC>-1?row[dateC]:''), plate,
-      driver:drvC>-1?(row[drvC]||''):'', sbu:sbuC>-1?(row[sbuC]||''):'', bu:'CCAC' });
-  }
-  return {rows:out, err: out.length?'':'No data rows found under the header.'};
-}
-$('#pasteBox') && $('#pasteBox').addEventListener('input',()=>{ const {rows,err}=parsePasted($('#pasteBox').value); $('#pastePreview').textContent = err? err : `Ready: ${rows.length} trip row${rows.length>1?'s':''} detected.`; });
-function applyPaste(){
-  const {rows,err}=parsePasted($('#pasteBox').value);
-  if(err && !rows.length){ toast(err,'error'); return; }
-  CLIENT_ROWS=rows; closePaste(); renderChecklist(); toast(rows.length+' client trips loaded from paste');
+function cancelReconPreview(){ RECON_CANDIDATES=[]; $('#reconPreviewWrap').style.display='none'; }
+function commitRecon(){
+  if(!RECON_CANDIDATES.length) return;
+  const fname=$('#reconFileName').textContent, now=new Date().toISOString();
+  let created=0,updated=0;
+  RECON_CANDIDATES.forEach(c=>{
+    if(c.matchId){
+      const ix=STATE.entries.findIndex(x=>x.id===c.matchId);
+      if(ix>-1){ STATE.entries[ix]={...STATE.entries[ix], net:c.net, penalty:0, source:'recon', reconFile:fname, reconAt:now}; updated++; }
+    } else {
+      STATE.entries.unshift({ id:uid(), bu:'CCAC', sbu:c.sbu, type:c.type, tripStart:c.start, tripEnd:c.end,
+        si:'', status:'not_submitted', submitted:'', dueDays:30, paidDate:'',
+        net:c.net, penalty:0, source:'recon', reconFile:fname, reconAt:now });
+      created++;
+    }
+  });
+  RECON_CANDIDATES=[]; $('#reconPreviewWrap').style.display='none'; $('#reconFile').value=''; $('#reconFileName').textContent='';
+  renderAll(); saveBilling(); switchTab('entries');
+  toast(`Recon import: ${updated} entries updated, ${created} created`);
 }
 
-/* ---- file inputs ---- */
-$('#clFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error'); if(/detail sheet|reader/i.test(err)) openPaste(); return;} CLIENT_ROWS=rows; renderChecklist(); toast(rows.length+' client trips loaded'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); openPaste(); console.error(ex); } finally{ e.target.value=''; } });
-$('#soaFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; try{ parseClientFile(f,(rows,err)=>{ if(err){toast(err,'error'); if(/detail sheet|reader/i.test(err)) openPaste(); return;} CLIENT_ROWS=rows; switchTab('checklist'); renderChecklist(); toast(rows.length+' client trips loaded — pick or create an SI, then tick them'); }); }catch(ex){ toast('Import failed: '+ex.message,'error'); openPaste(); console.error(ex); } finally{ e.target.value=''; } });
+/* ============================================================
+   Historical 2026 import — CCAC tracker workbook, one entry
+   per raw row (NOT grouped by SI).
+   ============================================================ */
+let HIST_ROWS=[];
+function openHistImport(){ HIST_ROWS=[]; $('#histFileName').textContent=''; $('#histPreview').innerHTML=''; $('#histCommitBtn').style.display='none'; $('#histModal').classList.add('open'); }
+function closeHistImport(){ $('#histModal').classList.remove('open'); }
+$('#histFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  $('#histFileName').textContent=f.name;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    let wb; try{ wb=XLSX.read(ev.target.result,{type:'array',cellDates:true}); }catch(err){ toast('Not a valid Excel workbook','error'); return; }
+    let sheetName=wb.SheetNames.find(n=>/ccac/i.test(n)) || wb.SheetNames[0];
+    const rows=sheetRows(wb.Sheets[sheetName]);
+    // find header row (contains SI# / Trip Strt-ish columns) within first 8 rows
+    let hdrRow=-1;
+    for(let r=0;r<Math.min(rows.length,8);r++){
+      const H=(rows[r]||[]).map(x=>String(x).toUpperCase());
+      if(H.some(x=>x.includes('SI#')||x.includes('SI #')||x.includes('TRIP STRT')||x.includes('TRIP START'))){ hdrRow=r; break; }
+    }
+    if(hdrRow<0) hdrRow=3; // fall back to the known layout (header row 4, 0-indexed 3)
+    const out=[];
+    for(let r=hdrRow+1;r<rows.length;r++){
+      const row=rows[r]; if(!row) continue;
+      const tripStart=toISO(row[3]); if(!tripStart) continue;
+      if(new Date(tripStart).getFullYear()!==2026) continue;
+      const status=String(row[1]||'').toUpperCase();
+      if(status.includes('RJCT')) continue; // skip rejected
+      out.push({
+        si:String(row[2]||'').trim(), tripStart, tripEnd:toISO(row[4]),
+        bu:String(row[5]||'').trim(), sbu:String(row[6]||'').trim(), type:String(row[7]||'RECON').toUpperCase().trim(),
+        submitted:toISO(row[9]), dueDate:toISO(row[10]),
+        net:Number(row[12])||0, vat:Number(row[13])||0, due:Number(row[14])||0,
+        wht:Number(row[15])||0, netDue:Number(row[16])||0, paidDate:toISO(row[18]),
+        status: status.includes('PAID')?'paid':status.includes('SUBMIT')?'submitted':'not_submitted'
+      });
+    }
+    HIST_ROWS=out;
+    const dupKey=e=>[e.si,e.bu,e.sbu,e.type,e.tripStart].join('|');
+    const existingKeys=new Set(STATE.entries.map(dupKey));
+    const fresh=out.filter(e=>!existingKeys.has(dupKey(e)));
+    const skip=out.length-fresh.length;
+    const totalNet=fresh.reduce((a,e)=>a+e.net,0);
+    const paidN=fresh.filter(e=>e.status==='paid').length, subN=fresh.filter(e=>e.status==='submitted').length, openN=fresh.filter(e=>e.status==='not_submitted').length;
+    $('#histPreview').innerHTML=`Found <strong>${out.length}</strong> 2026 rows in sheet "${esc(sheetName)}". <strong>${fresh.length}</strong> new (₱${peso(totalNet)} net) will be imported — ${paidN} paid / ${subN} submitted / ${openN} not yet submitted. ${skip} already present, skipped.`;
+    HIST_ROWS=fresh;
+    $('#histCommitBtn').style.display=fresh.length?'inline-flex':'none';
+  };
+  rd.onerror=()=>toast('Couldn\'t read that file','error');
+  rd.readAsArrayBuffer(f);
+});
+function commitHistImport(){
+  HIST_ROWS.forEach(r=>{
+    STATE.entries.push({ id:uid(), bu:r.bu, sbu:r.sbu, type:r.type, tripStart:r.tripStart, tripEnd:r.tripEnd,
+      si:r.si, status:r.status, submitted:r.submitted, dueDays: (r.dueDate&&r.submitted)?daysBetween(r.submitted,r.dueDate):30,
+      paidDate:r.paidDate, net:r.net, penalty:0, source:'historical' });
+  });
+  const n=HIST_ROWS.length; HIST_ROWS=[]; closeHistImport(); renderAll(); saveBilling();
+  toast(n+' historical entries imported');
+}
+
+/* ============================================================
+   Unbilled: completed CCAC trips whose date isn't covered by
+   any entry's Trip Start–End period (+ SBU match when the trip
+   record has an sbu field; matched on period alone otherwise).
+   ============================================================ */
+function num(x){ return Number(x)||0; }
+function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
+function coveringEntry(t){
+  const d=t.tripStartDate||t.dispatchedDate; if(!d) return null;
+  return STATE.entries.find(e=>{
+    if(!e.tripStart||!e.tripEnd) return false;
+    if(d<e.tripStart||d>e.tripEnd) return false;
+    if(t.sbu && e.sbu && String(t.sbu).trim().toUpperCase()!==String(e.sbu).trim().toUpperCase()) return false;
+    return true;
+  });
+}
+function isBilled(t){ return !!coveringEntry(t); }
+function renderUnbilled(){
+  const q=($('#ubSearch')?.value||'').toLowerCase();
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  const unbilled=completed.filter(t=>!isBilled(t));
+  let billedCount=0; completed.forEach(t=>{ if(isBilled(t))billedCount++; });
+  const expTotal=unbilled.reduce((a,t)=>a+tripExpected(t),0);
+  const el=$('#ub-stats'); if(el) el.innerHTML=`
+    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no covering entry')}
+    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripExpected(t):0),0)),billedCount+' completed trips covered')}
+    ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
+  const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} CCAC trips are marked completed`;
+  const hasSbuField = TRIPS.some(t=>t.sbu);
+  const cav=$('#ub-caveat'); if(cav) cav.textContent = hasSbuField ? '' : 'Note: trip records here don\'t carry an SBU field, so coverage is matched by period only (not SBU) until that\'s added.';
+  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+  const tb=$('#ub-table tbody'); if(!tb)return;
+  tb.innerHTML=rows.length?rows.map(t=>`<tr>
+    <td class="muted mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.code||t.id||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
+    <td class="muted">${esc(t.area||t.destination||'')}</td>
+    <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
+    <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
+    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips fall inside a billing entry's period — or none are marked completed yet.</div></td></tr>`;
+}
 
 /* ---- start ---- */
-if(initRoleGate()){ boot(); }  // already logged in -> boot; else wait for login
+if(initRoleGate()){ boot(); }
 </script>
 </body>
 </html>
