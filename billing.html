@@ -560,10 +560,14 @@ function entryStatusInfo(e){
     if(e.paidDate&&e.submitted){ const d=daysBetween(entryDueDate(e),e.paidDate); const note=d<0?`early ${Math.abs(d)}d`:d>0?`late ${d}d`:'on due date'; return {cls:'paid',text:'Paid',note}; }
     return {cls:'paid',text:'Paid',note:''};
   }
-  if(e.status==='submitted') return {cls:'submitted',text:'Submitted',note:'processing'};
-  const dd=entryDueDate(e); if(!dd) return {cls:'pending',text:'Not submitted',note:''};
+  const dd=entryDueDate(e);
+  if(e.status==='submitted'){
+    if(dd){ const d=daysBetween(todayISO(),dd); if(d<0) return {cls:'unpaid',text:'Submitted',note:`overdue by ${Math.abs(d)}d`}; }
+    return {cls:'submitted',text:'Submitted',note:'processing'};
+  }
+  if(!dd) return {cls:'pending',text:'Not submitted',note:''};
   const d=daysBetween(todayISO(),dd);
-  return d<0?{cls:'unpaid',text:'Overdue',note:`by ${Math.abs(d)}d`}:{cls:'pending',text:'Due',note:`in ${d}d`};
+  return d<0?{cls:'unpaid',text:'Not submitted',note:`overdue by ${Math.abs(d)}d`}:{cls:'pending',text:'Due',note:`in ${d}d`};
 }
 function badge(cls,text,note){ return `<span class="badge badge-${cls}">${text}</span>${note?` <span class="muted">${note}</span>`:''}`; }
 function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div class="stat-label">${label}</div><div class="stat-value">${val}</div><div class="stat-sub">${sub}</div></div>`; }
@@ -674,14 +678,17 @@ function switchTab(name){
 }
 
 function renderOverview(){
-  let net=0,paid=0,proc=0,over=0;
-  STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due; if(s.cls==='paid')paid+=t.due; else if(s.cls==='submitted')proc+=t.due; else if(s.cls==='unpaid')over+=t.due; });
+  let net=0,paid=0,proc=0,over=0,overSubmitted=0,overNotSubmitted=0;
+  STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due;
+    if(s.cls==='paid')paid+=t.due;
+    else if(s.cls==='submitted')proc+=t.due;
+    else if(s.cls==='unpaid'){ over+=t.due; if(e.status==='submitted')overSubmitted+=t.due; else overNotSubmitted+=t.due; } });
   const pct=net?Math.round(paid/net*100):0;
   $('#ov-stats').innerHTML=`
     ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
-    ${stat('processing','In processing','₱'+peso(proc),'submitted to client')}
-    ${stat('overdue','Overdue','₱'+peso(over),'past due, uncollected')}`;
+    ${stat('processing','In processing','₱'+peso(proc),'submitted to client, not yet due')}
+    ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}`;
   $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
   // group by period
   const byPeriod={};
