@@ -82,6 +82,7 @@ body.role-operations .fin-only{display:none!important}
 .row-matched td:first-child{box-shadow:inset 3px 0 0 var(--green)}
 .row-new{background:rgba(37,99,235,.07)!important}
 .row-new td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
+.dateFlagDot{color:#2563eb;font-size:9px;vertical-align:middle;cursor:help}
 
 /* modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto}
@@ -180,6 +181,14 @@ body.role-operations .fin-only{display:none!important}
       <div class="hint" style="margin:4px 0 8px">Same BU + SBU + Type appears more than once with overlapping billing periods — usually means a recon file was imported twice, or a period got typed differently. Check these before trusting the totals above.</div>
       <div class="table-wrapper"><table id="dupe-table">
         <thead><tr><th>BU</th><th>SBU</th><th>Type</th><th>Periods involved</th><th class="num-cell">Net (sum)</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div id="dateFlagWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #2563eb;background:#eff6ff;border-radius:8px">
+      <div style="font-weight:700;color:#1d4ed8">🔵 <span id="dateFlagCount"></span> entries have a suggested date correction</div>
+      <div class="hint" style="margin:4px 0 8px">These came from an older data migration where Trip Start/End (and Submitted/Paid dates) were found to be off by a day versus the original CCAC tracker. Nothing has been changed automatically — open each entry (marked with a <span class="dateFlagDot">●</span> dot in Billing Entries) and correct it manually if the suggestion looks right. Editing and saving an entry clears its flag.</div>
+      <div class="table-wrapper" style="max-height:300px"><table id="dateflag-table">
+        <thead><tr><th>SI</th><th>BU</th><th>SBU</th><th>Type</th><th>Field</th><th>Current</th><th>Suggested</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -637,7 +646,25 @@ function renderDupeCheck(){
     <td class="num-cell">₱${peso(g.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); }
+function renderDateFlagCheck(){
+  const rows=[];
+  STATE.entries.forEach(e=>{
+    if(!e.dateFlag) return;
+    Object.entries(e.dateFlag).forEach(([field,suggested])=>{
+      rows.push({si:e.si||'—',bu:e.bu,sbu:e.sbu,type:e.type,field,current:e[field]||'—',suggested});
+    });
+  });
+  const wrap=$('#dateFlagWarn');
+  const flaggedEntries=STATE.entries.filter(e=>e.dateFlag).length;
+  if(!flaggedEntries){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  $('#dateFlagCount').textContent=flaggedEntries;
+  $('#dateflag-table tbody').innerHTML=rows.map(r=>`<tr>
+    <td class="mono">${esc(r.si)}</td><td>${esc(r.bu)}</td><td>${esc(r.sbu)}</td><td>${esc(r.type)}</td>
+    <td>${esc(r.field)}</td><td class="mono">${esc(r.current)}</td><td class="mono" style="color:#1d4ed8;font-weight:700">${esc(r.suggested)}</td>
+  </tr>`).join('');
+}
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderDateFlagCheck(); }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -780,7 +807,8 @@ function renderEntries(){
   if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')).toLowerCase().includes(q));
   rows.sort((a,b)=>String(b.tripStart||'').localeCompare(String(a.tripStart||'')));
   $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
-    return `<tr><td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
+    const flagDot = e.dateFlag ? ` <span class="dateFlagDot" title="Suggested date correction available — click Edit to review">●</span>` : '';
+    return `<tr><td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}${flagDot}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
       <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
       <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}</td>
