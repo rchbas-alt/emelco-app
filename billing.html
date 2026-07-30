@@ -904,7 +904,13 @@ function parseReconFile(){
   const candidates=Object.values(bySbuType);
   if(!candidates.length){ toast('Found the invoicing sheet but no SBU rows with an amount > 0.','error'); return; }
   RECON_CANDIDATES=candidates.map(c=>{
-    const match=STATE.entries.find(e=>e.bu==='CCAC' && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart===start && e.tripEnd===end);
+    // Match by BU+SBU+TYPE with an OVERLAPPING period, not an exact date match —
+    // the recon file's auto-guessed cutoff (from individual trip dates) is often
+    // a few days narrower than the period already on file, so requiring exact
+    // equality here let duplicate entries slip through instead of updating the
+    // existing one. Overlap keeps the existing entry's tripStart/tripEnd as the
+    // source of truth (only net/source/reconFile get overwritten below).
+    const match=STATE.entries.find(e=>e.bu==='CCAC' && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
     return {...c, start, end, matchId:match?match.id:null, prevNet:match?entryCalc(match).net:null};
   });
   renderReconPreview();
