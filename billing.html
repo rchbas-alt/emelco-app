@@ -82,6 +82,8 @@ body.role-operations .fin-only{display:none!important}
 .row-matched td:first-child{box-shadow:inset 3px 0 0 var(--green)}
 .row-new{background:rgba(37,99,235,.07)!important}
 .row-new td:first-child{box-shadow:inset 3px 0 0 var(--blue)}
+.row-ambiguous{background:rgba(192,57,43,.07)!important}
+.row-ambiguous td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 
 /* modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto}
@@ -321,6 +323,18 @@ body.role-operations .fin-only{display:none!important}
         <span class="muted" id="reconStats"></span>
       </div>
     </div>
+    <div class="toolbar" style="margin-top:20px">
+      <button class="btn btn-ghost btn-sm" onclick="toggleReconLog()">🕘 Recon import history<span id="reconLogToggleLabel"></span></button>
+    </div>
+    <div id="reconLogWrap" style="display:none">
+      <p class="hint" style="margin-top:-4px">Every time a recon import overwrites an existing entry, the old figures are recorded here first — so a wrong match is visible and reversible instead of silently gone. This list never gets overwritten itself.</p>
+      <div class="table-wrapper">
+        <table id="reconlog-table">
+          <thead><tr><th>When</th><th>File</th><th>SI</th><th>BU / SBU / Type</th><th>Period</th><th class="num-cell">Old Net</th><th class="num-cell">New Net</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- UNBILLED -->
@@ -523,7 +537,7 @@ async function checkVersion(){
 /* ============================================================
    State + cloud I/O
    ============================================================ */
-let STATE={ meta:{client:CLIENT,year:YEAR}, bus:[], entries:[] };
+let STATE={ meta:{client:CLIENT,year:YEAR}, bus:[], entries:[], reconLog:[] };
 let TRIPS=[];
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
@@ -567,6 +581,11 @@ function mergeBilling(local,remote){
   local.entries.forEach(i=>{ byId[i.id]=i; }); // local wins on same id (last edit in this device)
   out.entries=Object.values(byId);
   if((local.bus||[]).length>=out.bus.length) out.bus=local.bus;
+  // reconLog is append-only history, never edited after the fact — union by id (never "local wins",
+  // since a log entry from either device is equally valid and neither should be dropped).
+  const logById={}; (out.reconLog||[]).forEach(i=>logById[i.id]=i);
+  (local.reconLog||[]).forEach(i=>{ logById[i.id]=i; });
+  out.reconLog=Object.values(logById).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
   return out;
 }
 // Migrates the OLD invoice+lines+ticks shape (if a device still has it cached) into flat entries.
@@ -594,7 +613,7 @@ function migrateOldInvoices(b){
 }
 function normalize(b){
   const hasOld = Array.isArray(b.invoices) && !Array.isArray(b.entries);
-  return { meta:b.meta||{client:CLIENT,year:YEAR}, bus:b.bus||[], entries: b.entries || (hasOld?migrateOldInvoices(b):[]) };
+  return { meta:b.meta||{client:CLIENT,year:YEAR}, bus:b.bus||[], entries: b.entries || (hasOld?migrateOldInvoices(b):[]), reconLog: b.reconLog||[] };
 }
 function seedBUs(){ STATE.bus=[
   {name:'CCAC', sbus:['Trad Trade','KAG','ESG','Service','Transfer','ACS','CAAC']},
@@ -738,7 +757,7 @@ function renderBatchOutlierCheck(){
     <td class="num-cell">₱${peso(r.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -1169,34 +1188,89 @@ function parseReconFile(){
     // slip through instead of updating the existing one. Overlap keeps the
     // existing entry's tripStart/tripEnd as the source of truth (only
     // net/source/reconFile get overwritten below).
-    const match=STATE.entries.find(e=>e.bu===bu && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
-    return {...c, bu, start, end, matchId:match?match.id:null, prevNet:match?entryCalc(match).net:null};
+    //
+    // A cutoff range can legitimately overlap MORE THAN ONE existing entry, e.g.
+    // when Cutoff Start is one day too early and clips the tail of the previous
+    // period. Taking the first match silently (the old behaviour) let a correction
+    // meant for one period overwrite a different, already-correct one. So: collect
+    // every overlap; only auto-pick when there's exactly one, otherwise surface all
+    // candidates and require a manual pick before this row can be committed.
+    const allMatches=STATE.entries.filter(e=>e.bu===bu && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
+    const match = allMatches.length===1 ? allMatches[0] : null;
+    const mc = match ? entryCalc(match) : null;
+    return {...c, bu, start, end,
+      matchId: match?match.id:null,
+      prevNet: mc?mc.net:null, prevVat: mc?mc.vat:null, prevGross: mc?mc.gross:null,
+      ambiguous: allMatches.length>1 ? allMatches.map(m=>{ const mc2=entryCalc(m); return {id:m.id, si:m.si, tripStart:m.tripStart, tripEnd:m.tripEnd, net:mc2.net, vat:mc2.vat, gross:mc2.gross}; }) : null
+    };
   });
   renderReconPreview();
 }
 function renderReconPreview(){
   $('#reconPreviewWrap').style.display='block';
-  let matched=0,fresh=0;
-  $('#recon-table tbody').innerHTML=RECON_CANDIDATES.map(c=>{
+  let matched=0,fresh=0,ambiguous=0;
+  $('#recon-table tbody').innerHTML=RECON_CANDIDATES.map((c,idx)=>{
+    if(c.ambiguous && !c.matchId){
+      ambiguous++;
+      const opts=['<option value="">— skip this row, resolve manually —</option>']
+        .concat(c.ambiguous.map(m=>`<option value="${esc(m.id)}">SI ${esc(m.si||'—')} · ${esc(m.tripStart)} → ${esc(m.tripEnd)} · currently ₱${peso(m.net)}</option>`));
+      return `<tr class="row-ambiguous">
+        <td>${esc(c.sbu)}</td><td>${esc(c.type)}</td>
+        <td class="num-cell">₱${peso(c.net)}</td><td class="num-cell">₱${peso(c.vat)}</td><td class="num-cell">₱${peso(c.gross)}</td>
+        <td>
+          <span style="color:var(--red);font-weight:700">⚠ ${c.ambiguous.length} existing entries overlap this cutoff period</span>
+          <select class="form-input" style="display:block;margin-top:4px;max-width:340px" onchange="resolveAmbiguous(${idx},this.value)">${opts.join('')}</select>
+        </td>
+      </tr>`;
+    }
     const isMatch=!!c.matchId; if(isMatch)matched++; else fresh++;
-    const diffNote = isMatch && c.prevNet!=null && Math.abs(c.prevNet-c.net)>0.02 ? ` <span class="muted">(was ₱${peso(c.prevNet)})</span>` : '';
+    const before = isMatch ? `<div class="muted" style="font-size:11px;margin-top:2px">was ₱${peso(c.prevNet)} net · ₱${peso(c.prevVat)} vat · ₱${peso(c.prevGross)} gross</div>` : '';
+    // Rows that started ambiguous but were resolved via the picker keep the picker visible
+    // (so the choice can still be changed) alongside the normal matched styling.
+    const picker = c.ambiguous ? `<select class="form-input" style="display:block;margin-top:4px;max-width:340px" onchange="resolveAmbiguous(${idx},this.value)">
+        <option value="">— skip this row, resolve manually —</option>
+        ${c.ambiguous.map(m=>`<option value="${esc(m.id)}" ${c.matchId===m.id?'selected':''}>SI ${esc(m.si||'—')} · ${esc(m.tripStart)} → ${esc(m.tripEnd)} · currently ₱${peso(m.net)}</option>`).join('')}
+      </select>` : '';
     return `<tr class="${isMatch?'row-matched':'row-new'}">
       <td>${esc(c.sbu)}</td><td>${esc(c.type)}</td>
       <td class="num-cell">₱${peso(c.net)}</td><td class="num-cell">₱${peso(c.vat)}</td><td class="num-cell">₱${peso(c.gross)}</td>
-      <td>${isMatch?'<span style="color:var(--green);font-weight:700">matched — will update</span>'+diffNote:'<span style="color:var(--blue);font-weight:700">new — will create entry</span>'}</td>
+      <td>${isMatch?'<span style="color:var(--green);font-weight:700">matched — will update</span>'+before:'<span style="color:var(--blue);font-weight:700">new — will create entry</span>'}${picker}</td>
     </tr>`;
   }).join('');
-  $('#reconStats').textContent=`BU: ${esc(RECON_CANDIDATES[0]?.bu||'')} — ${RECON_CANDIDATES.length} SBU/type rows — ${matched} matched, ${fresh} new`;
+  $('#reconStats').textContent=`BU: ${esc(RECON_CANDIDATES[0]?.bu||'')} — ${RECON_CANDIDATES.length} SBU/type rows — ${matched} matched, ${fresh} new${ambiguous?`, ${ambiguous} ambiguous (pick which entry before committing — unresolved rows are skipped)`:''}`;
+}
+// Called from the <select> on an ambiguous row: pins that row to a specific existing
+// entry (or back to "skip" if the user picks the blank option) before Commit runs.
+function resolveAmbiguous(idx,entryId){
+  const c=RECON_CANDIDATES[idx];
+  if(!c) return;
+  c.matchId = entryId || null;
+  const chosen = entryId ? (c.ambiguous||[]).find(m=>m.id===entryId) : null;
+  c.prevNet = chosen?chosen.net:null; c.prevVat = chosen?chosen.vat:null; c.prevGross = chosen?chosen.gross:null;
+  renderReconPreview();
 }
 function cancelReconPreview(){ RECON_CANDIDATES=[]; $('#reconPreviewWrap').style.display='none'; }
 function commitRecon(){
   if(!RECON_CANDIDATES.length) return;
   const fname=$('#reconFileName').textContent, now=new Date().toISOString();
-  let created=0,updated=0;
+  let created=0,updated=0,skipped=0;
+  STATE.reconLog = STATE.reconLog || [];
   RECON_CANDIDATES.forEach(c=>{
+    if(c.ambiguous && !c.matchId){ skipped++; return; } // never guess an unresolved multi-match — leave it for manual handling
     if(c.matchId){
       const ix=STATE.entries.findIndex(x=>x.id===c.matchId);
-      if(ix>-1){ STATE.entries[ix]={...STATE.entries[ix], net:c.net, penalty:0, source:'recon', reconFile:fname, reconAt:now}; updated++; }
+      if(ix>-1){
+        const before=STATE.entries[ix], beforeCalc=entryCalc(before);
+        // Append-only audit trail: every overwrite is logged BEFORE it happens, so a wrong
+        // match (like the one that started all this) is visible and reversible afterwards
+        // instead of silently disappearing into the new number.
+        STATE.reconLog.unshift({ id:uid(), at:now, file:fname, entryId:before.id, si:before.si,
+          bu:before.bu, sbu:before.sbu, type:before.type, tripStart:before.tripStart, tripEnd:before.tripEnd,
+          oldNet:beforeCalc.net, oldVat:beforeCalc.vat, oldGross:beforeCalc.gross,
+          newNet:c.net, newVat:c.vat, newGross:c.gross });
+        STATE.entries[ix]={...before, net:c.net, penalty:0, source:'recon', reconFile:fname, reconAt:now};
+        updated++;
+      }
     } else {
       STATE.entries.unshift({ id:uid(), bu:c.bu, sbu:c.sbu, type:c.type, tripStart:c.start, tripEnd:c.end,
         si:'', status:'not_submitted', submitted:'', dueDays:30, paidDate:'',
@@ -1204,9 +1278,28 @@ function commitRecon(){
       created++;
     }
   });
+  if(STATE.reconLog.length>500) STATE.reconLog.length=500; // keep the file from growing unbounded
   RECON_CANDIDATES=[]; $('#reconPreviewWrap').style.display='none'; $('#reconFile').value=''; $('#reconFileName').textContent='';
   renderAll(); saveBilling(); switchTab('entries');
-  toast(`Recon import: ${updated} entries updated, ${created} created`);
+  toast(`Recon import: ${updated} entries updated, ${created} created${skipped?`, ${skipped} skipped (unresolved match — pick one and re-import)`:''}`);
+}
+function toggleReconLog(){
+  const w=$('#reconLogWrap'), show=w.style.display==='none';
+  w.style.display=show?'block':'none';
+  $('#reconLogToggleLabel').textContent = ` (${(STATE.reconLog||[]).length})`;
+  if(show) renderReconLog();
+}
+function renderReconLog(){
+  const log=STATE.reconLog||[];
+  $('#reconlog-table tbody').innerHTML = log.length ? log.map(l=>`<tr>
+      <td>${esc(new Date(l.at).toLocaleString('en-PH'))}</td>
+      <td>${esc(l.file||'')}</td>
+      <td>${esc(l.si||'—')}</td>
+      <td>${esc(l.bu)} / ${esc(l.sbu)} / ${esc(l.type)}</td>
+      <td>${esc(l.tripStart)} → ${esc(l.tripEnd)}</td>
+      <td class="num-cell">₱${peso(l.oldNet)}</td>
+      <td class="num-cell">₱${peso(l.newNet)}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="muted">No recon overwrites logged yet.</td></tr>';
 }
 
 /* ============================================================
