@@ -260,10 +260,17 @@ body.role-operations .fin-only{display:none!important}
       <select class="filter-select" id="enBuFilter" onchange="renderEntries()"><option value="">All BU</option></select>
       <input type="search" class="search-box" id="enSearch" placeholder="Search SI#, SBU, period…" oninput="renderEntries()">
     </div>
+    <div class="toolbar" id="bulkBar" style="display:none;background:#f0fdf4;border:1px solid var(--green);border-radius:8px;padding:8px 12px">
+      <span style="font-weight:700;color:var(--green)"><span id="bulkCount">0</span> selected</span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="openBulkPaid()">Mark as Paid…</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Clear</button>
+    </div>
     <p class="hint">One row per BU + SBU + TYPE + billing period — the same shape as the CCAC tracker. SI # is optional; add it once CCAC issues it. This is the unit the office confirms as submitted/paid, matching how it worked in Excel. <span class="fin-only" style="color:var(--text3);text-decoration:underline;cursor:pointer" onclick="openHistImport()">Import 2026 history…</span></p>
     <div class="table-wrapper">
       <table id="en-table">
         <thead><tr>
+          <th style="width:32px"><input type="checkbox" id="enSelectAll" onchange="toggleSelectAll(this.checked)"></th>
           <th>Period</th><th>BU</th><th>SBU</th><th>Type</th><th>SI #</th>
           <th class="num-cell">Net</th><th class="num-cell fin-only">VAT</th>
           <th class="num-cell">Due</th><th>Status</th><th>Source</th><th></th>
@@ -376,6 +383,23 @@ body.role-operations .fin-only{display:none!important}
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeEntry()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEntry()">Save entry</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="bulkPaidModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div><div class="modal-title">Mark <span id="bulkPaidCount">0</span> entries as Paid</div>
+      <div class="modal-subtitle">Applies the same paid date to every selected entry</div></div>
+      <div class="modal-close" onclick="closeBulkPaid()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Date paid</label><input type="date" class="form-input" id="bulkPaidDate"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeBulkPaid()">Cancel</button>
+      <button class="btn btn-primary" onclick="applyBulkPaid()">Mark as Paid</button>
     </div>
   </div>
 </div>
@@ -835,13 +859,15 @@ function renderEntries(){
   if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')).toLowerCase().includes(q));
   rows.sort((a,b)=>String(b.tripStart||'').localeCompare(String(a.tripStart||'')));
   $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
-    return `<tr><td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
+    return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
+      <td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
       <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
       <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}</td>
       <td class="muted">${esc(e.source||'manual')}</td>
       <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td></tr>`;
-  }).join(''):`<tr><td colspan="11"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
+  }).join(''):`<tr><td colspan="12"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
+  updateBulkBar();
 }
 
 function renderSetup(){
@@ -903,7 +929,46 @@ function deleteEntry(id){
   const e=STATE.entries.find(x=>x.id===id); if(!e)return;
   if(!confirm('Delete this entry ('+e.bu+' / '+e.sbu+' / '+e.type+', '+(e.tripStart||'?')+'–'+(e.tripEnd||'?')+')?\n\nThis cannot be undone.')) return;
   STATE.entries=STATE.entries.filter(x=>x.id!==id);
+  SELECTED_IDS.delete(id);
   renderAll(); saveBilling(); toast('Entry deleted');
+}
+
+/* ============================================================
+   Bulk "Mark as Paid" — select entries via checkboxes, pick one
+   paid date, apply to all of them at once.
+   ============================================================ */
+let SELECTED_IDS=new Set();
+function toggleEntrySelect(id,checked){ if(checked) SELECTED_IDS.add(id); else SELECTED_IDS.delete(id); updateBulkBar(); }
+function toggleSelectAll(checked){
+  $$('.enRowCheck').forEach(cb=>{ cb.checked=checked; if(checked) SELECTED_IDS.add(cb.dataset.id); else SELECTED_IDS.delete(cb.dataset.id); });
+  updateBulkBar();
+}
+function clearSelection(){ SELECTED_IDS.clear(); renderEntries(); }
+function updateBulkBar(){
+  // drop selections for rows no longer in the current filtered view or deleted entirely
+  const liveIds=new Set(STATE.entries.map(e=>e.id));
+  [...SELECTED_IDS].forEach(id=>{ if(!liveIds.has(id)) SELECTED_IDS.delete(id); });
+  const n=SELECTED_IDS.size;
+  $('#bulkBar').style.display=n?'flex':'none';
+  $('#bulkCount').textContent=n;
+  const allBoxes=$$('.enRowCheck');
+  $('#enSelectAll').checked = allBoxes.length>0 && allBoxes.every(cb=>cb.checked);
+}
+function openBulkPaid(){
+  if(!SELECTED_IDS.size) return;
+  $('#bulkPaidCount').textContent=SELECTED_IDS.size;
+  $('#bulkPaidDate').value=new Date().toISOString().slice(0,10);
+  $('#bulkPaidModal').classList.add('open');
+}
+function closeBulkPaid(){ $('#bulkPaidModal').classList.remove('open'); }
+function applyBulkPaid(){
+  const date=$('#bulkPaidDate').value;
+  if(!date){ toast('Pick a paid date','error'); return; }
+  let n=0;
+  STATE.entries.forEach(e=>{ if(SELECTED_IDS.has(e.id)){ e.status='paid'; e.paidDate=date; n++; } });
+  SELECTED_IDS.clear();
+  closeBulkPaid(); renderAll(); saveBilling();
+  toast(`${n} entries marked paid on ${date}`);
 }
 
 /* ============================================================
