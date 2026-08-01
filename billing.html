@@ -273,7 +273,7 @@ body.role-operations .fin-only{display:none!important}
           <th style="width:32px"><input type="checkbox" id="enSelectAll" onchange="toggleSelectAll(this.checked)"></th>
           <th>Period</th><th>BU</th><th>SBU</th><th>Type</th><th>SI #</th>
           <th class="num-cell">Net</th><th class="num-cell fin-only">VAT</th>
-          <th class="num-cell">Due</th><th>Status</th><th>Source</th><th></th>
+          <th class="num-cell">Due</th><th>Status</th><th>Cheque #</th><th>Source</th><th></th>
         </tr></thead><tbody></tbody>
       </table>
     </div>
@@ -369,8 +369,11 @@ body.role-operations .fin-only{display:none!important}
         <div class="form-group"><label class="form-label">Date submitted</label><input type="date" class="form-input" id="eSubmitted"></div>
         <div class="form-group"><label class="form-label">Due days</label><input type="number" class="form-input" id="eDueDays" value="30"></div>
       </div>
-      <div class="form-grid form-grid-3" style="margin-top:10px" id="ePaidWrap">
+      <div class="form-grid form-grid-4" style="margin-top:10px" id="ePaidWrap">
         <div class="form-group"><label class="form-label">Paid date</label><input type="date" class="form-input" id="ePaidDate"></div>
+        <div class="form-group"><label class="form-label">Cheque # <span class="muted">(optional)</span></label><input class="form-input" id="eChequeNo" placeholder="leave blank if none"></div>
+        <div class="form-group"><label class="form-label">Cheque amount <span class="muted">(optional)</span></label><input class="form-input" type="number" step="0.01" id="eChequeAmount" placeholder="face value of the cheque"></div>
+        <div class="form-group"><label class="form-label">Remark <span class="muted">(optional)</span></label><input class="form-input" id="eChequeRemark" placeholder="e.g. no cheque, cash, etc."></div>
       </div>
       <div class="section-title">Amount</div>
       <div class="form-grid form-grid-4">
@@ -391,11 +394,16 @@ body.role-operations .fin-only{display:none!important}
   <div class="modal">
     <div class="modal-header">
       <div><div class="modal-title">Mark <span id="bulkPaidCount">0</span> entries as Paid</div>
-      <div class="modal-subtitle">Applies the same paid date to every selected entry</div></div>
+      <div class="modal-subtitle">Applies the same paid date (and cheque, if this is one cheque covering several invoices) to every selected entry</div></div>
       <div class="modal-close" onclick="closeBulkPaid()">✕</div>
     </div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Date paid</label><input type="date" class="form-input" id="bulkPaidDate"></div>
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">Date paid</label><input type="date" class="form-input" id="bulkPaidDate"></div>
+        <div class="form-group"><label class="form-label">Cheque # <span class="muted">(optional)</span></label><input class="form-input" id="bulkChequeNo" placeholder="leave blank if none"></div>
+        <div class="form-group"><label class="form-label">Cheque amount <span class="muted">(optional)</span></label><input class="form-input" type="number" step="0.01" id="bulkChequeAmount" placeholder="face value of the cheque"></div>
+        <div class="form-group"><label class="form-label">Remark <span class="muted">(optional)</span></label><input class="form-input" id="bulkChequeRemark" placeholder="e.g. no cheque, cash, etc."></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeBulkPaid()">Cancel</button>
@@ -856,17 +864,19 @@ function renderEntries(){
   let rows=STATE.entries.slice();
   if(statusF) rows=rows.filter(e=>e.status===statusF);
   if(buF) rows=rows.filter(e=>e.bu===buF);
-  if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')).toLowerCase().includes(q));
+  if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')+' '+(e.chequeNo||'')+' '+(e.chequeRemark||'')).toLowerCase().includes(q));
   rows.sort((a,b)=>String(b.tripStart||'').localeCompare(String(a.tripStart||'')));
   $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
+    const chequeCell = e.chequeNo ? `<span class="mono" title="${esc(e.chequeRemark||'')}">${esc(e.chequeNo)}</span>` : (e.chequeRemark ? `<span class="muted" title="${esc(e.chequeRemark)}">—*</span>` : '<span class="muted">—</span>');
     return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
       <td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
       <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
       <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}</td>
+      <td>${chequeCell}</td>
       <td class="muted">${esc(e.source||'manual')}</td>
       <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td></tr>`;
-  }).join(''):`<tr><td colspan="12"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
+  }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
   updateBulkBar();
 }
 
@@ -905,6 +915,7 @@ function openEntry(id){
   $('#eStatus').value=e?.status||'not_submitted';
   $('#eSubmitted').value=e?.submitted||''; $('#eDueDays').value=e?.dueDays??30;
   $('#ePaidDate').value=e?.paidDate||'';
+  $('#eChequeNo').value=e?.chequeNo||''; $('#eChequeAmount').value=e?.chequeAmount??''; $('#eChequeRemark').value=e?.chequeRemark||'';
   $('#eNet').value=e?.net??0; $('#ePenalty').value=e?.penalty??0;
   onEntryStatusChange(); renderEntryCalc();
   $('#entryModal').classList.add('open');
@@ -915,10 +926,14 @@ function renderEntryCalc(){ const c=entryCalc({net:$('#eNet').value,penalty:$('#
 function saveEntry(){
   const bu=$('#eBu').value, sbu=$('#eSbu').value;
   if(!bu||!sbu){ toast('Pick a BU and SBU','error'); return; }
+  const isPaid=$('#eStatus').value==='paid';
   const entry={ id:editingId||uid(), bu, sbu, type:$('#eType').value,
     tripStart:$('#eStart').value, tripEnd:$('#eEnd').value, si:$('#eSi').value.trim(),
     status:$('#eStatus').value, submitted:$('#eSubmitted').value, dueDays:parseInt($('#eDueDays').value)||30,
-    paidDate:$('#eStatus').value==='paid'?$('#ePaidDate').value:'',
+    paidDate:isPaid?$('#ePaidDate').value:'',
+    chequeNo:isPaid?$('#eChequeNo').value.trim():'',
+    chequeAmount:isPaid&&$('#eChequeAmount').value!==''?parseFloat($('#eChequeAmount').value):null,
+    chequeRemark:isPaid?$('#eChequeRemark').value.trim():'',
     net:parseFloat($('#eNet').value)||0, penalty:parseFloat($('#ePenalty').value)||0,
     source: editingId ? (STATE.entries.find(x=>x.id===editingId)?.source||'manual') : 'manual' };
   if(editingId){ const ix=STATE.entries.findIndex(x=>x.id===editingId); STATE.entries[ix]=entry; }
@@ -958,14 +973,18 @@ function openBulkPaid(){
   if(!SELECTED_IDS.size) return;
   $('#bulkPaidCount').textContent=SELECTED_IDS.size;
   $('#bulkPaidDate').value=new Date().toISOString().slice(0,10);
+  $('#bulkChequeNo').value=''; $('#bulkChequeAmount').value=''; $('#bulkChequeRemark').value='';
   $('#bulkPaidModal').classList.add('open');
 }
 function closeBulkPaid(){ $('#bulkPaidModal').classList.remove('open'); }
 function applyBulkPaid(){
   const date=$('#bulkPaidDate').value;
   if(!date){ toast('Pick a paid date','error'); return; }
+  const chequeNo=$('#bulkChequeNo').value.trim();
+  const chequeAmount=$('#bulkChequeAmount').value!==''?parseFloat($('#bulkChequeAmount').value):null;
+  const chequeRemark=$('#bulkChequeRemark').value.trim();
   let n=0;
-  STATE.entries.forEach(e=>{ if(SELECTED_IDS.has(e.id)){ e.status='paid'; e.paidDate=date; n++; } });
+  STATE.entries.forEach(e=>{ if(SELECTED_IDS.has(e.id)){ e.status='paid'; e.paidDate=date; e.chequeNo=chequeNo; e.chequeAmount=chequeAmount; e.chequeRemark=chequeRemark; n++; } });
   SELECTED_IDS.clear();
   closeBulkPaid(); renderAll(); saveBilling();
   toast(`${n} entries marked paid on ${date}`);
