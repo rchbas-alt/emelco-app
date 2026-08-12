@@ -482,7 +482,7 @@ body.role-operations .fin-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608121600';
+const APP_VERSION = '202608121700';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -1188,8 +1188,24 @@ function toISO(v){
   // (e.g. PH/SG, UTC+8) — this was causing every imported date to land one
   // day early, and Jan-1 rows to be dropped entirely (year filter saw 2025).
   // Fixed 2026-08-12: read the LOCAL calendar date the object was built with.
-  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
-  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?'':`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; }
+  //
+  // SECOND fix, same day: Excel's own serial-date numbers can carry tiny
+  // floating-point drift (a cell meant to be exactly Jan 1 parsed out to
+  // Dec 31 23:59:35 — 25 seconds short of midnight). Reading the exact
+  // instant is correct but still lands on the wrong calendar day, so round
+  // to the NEAREST local day first to absorb that drift before extracting.
+  if(v instanceof Date && !isNaN(v)){
+    const msFromMidnight = ((v.getHours()*60+v.getMinutes())*60+v.getSeconds())*1000+v.getMilliseconds();
+    const snapped = new Date(v.getTime());
+    if(msFromMidnight > 12*3600*1000) snapped.setDate(snapped.getDate()+1); // closer to next midnight than this one
+    return `${snapped.getFullYear()}-${String(snapped.getMonth()+1).padStart(2,'0')}-${String(snapped.getDate()).padStart(2,'0')}`;
+  }
+  if(typeof v==='number'){
+    const raw=Math.round((v-25569)*86400); // seconds since epoch, drift-prone
+    const snappedDays=Math.round(raw/86400); // snap to nearest whole day, absorbing the same kind of serial-number drift
+    const d=new Date(snappedDays*86400*1000);
+    return isNaN(d)?'':`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
   const s=String(v).trim();
   let m=s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3})[-\/ ](\d{2,4})$/);
   if(m){ const mon={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}[m[2].toLowerCase()]; if(mon){ let y=+m[3]; if(y<100)y+=2000; return `${y}-${String(mon).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`; } }
