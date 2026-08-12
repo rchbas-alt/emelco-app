@@ -482,7 +482,7 @@ body.role-operations .fin-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608121400';
+const APP_VERSION = '202608121600';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -506,7 +506,7 @@ const ACCESS_CODES = { owner:'emelco2026', operations:'ops2026' };
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const peso=n=>(Number(n)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const uid=()=>'en'+Math.random().toString(36).slice(2,9);
-const todayISO=()=>new Date().toISOString().slice(0,10);
+const todayISO=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
 
@@ -1153,7 +1153,7 @@ function updateBulkBar(){
 function openBulkPaid(){
   if(!SELECTED_IDS.size) return;
   $('#bulkPaidCount').textContent=SELECTED_IDS.size;
-  $('#bulkPaidDate').value=new Date().toISOString().slice(0,10);
+  $('#bulkPaidDate').value=todayISO();
   $('#bulkChequeNo').value=''; $('#bulkChequeAmount').value=''; $('#bulkChequeRemark').value='';
   $('#bulkPaidModal').classList.add('open');
 }
@@ -1182,14 +1182,20 @@ function applyBulkPaid(){
    ============================================================ */
 function toISO(v){
   if(v==null||v==='')return'';
-  if(v instanceof Date && !isNaN(v))return v.toISOString().slice(0,10);
-  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?'':d.toISOString().slice(0,10); }
+  // IMPORTANT: SheetJS (cellDates:true) builds Date objects from LOCAL time
+  // components. Reading them back with toISOString() renders in UTC instead,
+  // which silently rolls the date back one day in any timezone ahead of UTC
+  // (e.g. PH/SG, UTC+8) — this was causing every imported date to land one
+  // day early, and Jan-1 rows to be dropped entirely (year filter saw 2025).
+  // Fixed 2026-08-12: read the LOCAL calendar date the object was built with.
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+  if(typeof v==='number'){ const d=new Date(Math.round((v-25569)*86400*1000)); return isNaN(d)?'':`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; }
   const s=String(v).trim();
   let m=s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3})[-\/ ](\d{2,4})$/);
   if(m){ const mon={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}[m[2].toLowerCase()]; if(mon){ let y=+m[3]; if(y<100)y+=2000; return `${y}-${String(mon).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`; } }
   m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return m[0];
   m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/); if(m)return `${m[3]}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;
-  const d=new Date(s); return isNaN(d)?'':d.toISOString().slice(0,10);
+  const d=new Date(s); return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function sheetRows(ws){ return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''}); }
 
