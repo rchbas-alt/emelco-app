@@ -177,6 +177,10 @@ body.role-operations .fin-only{display:none!important}
 <div class="main">
   <!-- OVERVIEW -->
   <div class="page active" id="page-overview">
+    <div class="toolbar">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportOverview()">⬇ Export CSV (by period)</button>
+    </div>
     <div id="dupeWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #d97706;background:#fffbeb;border-radius:8px">
       <div style="font-weight:700;color:#92400e">⚠ Possible duplicate entries found</div>
       <div class="hint" style="margin:4px 0 8px">Same BU + SBU + Type appears more than once with overlapping billing periods — usually means a recon file was imported twice, or a period got typed differently. Check these before trusting the totals above.</div>
@@ -226,6 +230,8 @@ body.role-operations .fin-only{display:none!important}
     <p class="hint">Same shape as the "2026 Billing Compilation by Trip Start / End Date" sheet — computed live from your billing entries instead of formulas, so it never drifts.</p>
     <div class="toolbar">
       <span class="muted" id="sumCount"></span>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportSummary()">⬇ Export CSV</button>
     </div>
     <div class="table-wrapper">
       <table id="sum-table">
@@ -250,6 +256,8 @@ body.role-operations .fin-only{display:none!important}
     <p class="hint">Groups paid entries by the date they were marked paid and their cheque #, so one cheque covering several invoices shows as one line. Entries marked paid with no cheque # are grouped per date under "—".</p>
     <div class="toolbar">
       <span class="muted" id="paySumCount"></span>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportPaymentsSummary()">⬇ Export CSV</button>
     </div>
     <div class="table-wrapper">
       <table id="pay-sum-table">
@@ -266,6 +274,8 @@ body.role-operations .fin-only{display:none!important}
   <div class="page" id="page-entries">
     <div class="toolbar">
       <button class="btn btn-primary" onclick="openEntry(null)">+ New entry</button>
+      <button class="btn btn-ghost" onclick="exportEntries()">⬇ Export CSV</button>
+      <button class="btn btn-danger fin-only" onclick="clearAllEntries()">🗑 Clear All Entries</button>
       <div class="spacer"></div>
       <select class="filter-select" id="enStatusFilter" onchange="renderEntries()">
         <option value="">All statuses</option>
@@ -344,6 +354,7 @@ body.role-operations .fin-only{display:none!important}
     <div class="toolbar">
       <span class="muted" id="ub-coverage"></span>
       <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportUnbilled()">⬇ Export CSV</button>
       <input type="search" class="search-box" id="ubSearch" placeholder="Search plate, driver, area…" oninput="renderUnbilled()">
     </div>
     <div class="table-wrapper">
@@ -471,7 +482,7 @@ body.role-operations .fin-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202607291400';
+const APP_VERSION = '202608121400';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -498,6 +509,59 @@ const uid=()=>'en'+Math.random().toString(36).slice(2,9);
 const todayISO=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+
+/* ============================================================
+   SBU name normalization — confirmed with office 2026-08-11.
+   Maps known casing/abbreviation variants found in the tracker
+   to one canonical spelling. Anything not listed here is left
+   as-is (trimmed) rather than guessed at.
+   TRAD TRADE / TRADITIONAL TRADE are the SAME real SBU (CCAC
+   office types it short, CMIP office types it long) — confirmed
+   merge. ECOM/ECOMMERCE and CISG/CISG and UOR are CONFIRMED
+   SEPARATE SBUs — never merge those pairs.
+   ============================================================ */
+const SBU_ALIASES = {
+  'TRAD TRADE':'Traditional Trade', 'TRADITIONAL TRADE':'Traditional Trade', 'TRADITIONAL  TRADE':'Traditional Trade',
+  'MODERN TRADE':'Modern Trade',
+  'CONSUMER SERVICE':'Consumer Service',
+  'ECOMMERCE':'Ecommerce',
+  'ECOM':'Ecom',
+  'CISG AND UOR':'CISG and UOR',
+  'CISG':'CISG',
+  'SERVICE':'Service',
+  'TRANSFER':'Transfer',
+  'STO':'STO',
+  'EMPLOYEE/B2B':'Employee/B2B',
+  'CPD LUZON':'CPD Luzon',
+  'CAAC':'CAAC', 'ACS':'ACS', 'KAG':'KAG', 'ESG':'ESG'
+};
+function normalizeSBU(raw){
+  const t=String(raw||'').trim();
+  if(!t) return t;
+  const key=t.toUpperCase().replace(/\s+/g,' ');
+  return SBU_ALIASES[key] || t;
+}
+// Keeps BU/SBU Setup in sync automatically when an import brings in a
+// canonical SBU name that isn't in the dropdown list yet, so nothing
+// has to be added by hand after a normalized import.
+function ensureSbuExists(buName, sbuName){
+  if(!buName||!sbuName) return;
+  let bu=STATE.bus.find(b=>b.name.toUpperCase()===String(buName).toUpperCase());
+  if(!bu){ bu={name:buName, sbus:[]}; STATE.bus.push(bu); }
+  if(!bu.sbus.some(s=>s.toUpperCase()===sbuName.toUpperCase())) bu.sbus.push(sbuName);
+}
+
+/* ============================================================
+   CSV export — shared by Entries / Summary / Overview / Unbilled
+   ============================================================ */
+function csvEsc(v){ const s=String(v??''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function downloadCSV(filename, headers, rows){
+  const lines=[headers.map(csvEsc).join(',')].concat(rows.map(r=>r.map(csvEsc).join(',')));
+  const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 function addDays(iso,d){ const t=new Date(iso); t.setDate(t.getDate()+d); return t.toISOString().slice(0,10); }
 function getDeviceName(){ return localStorage.getItem('emelco_device')||'billing-web'; }
 function toast(msg,type='success'){ const c=$('#toasts'); const t=document.createElement('div'); t.className='toast '+type; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.remove(),3600); }
@@ -806,7 +870,7 @@ function renderMonthly(){ renderMonthlyByTrip(); renderMonthlyByPaid(); }
    matching how the original workbook's Total Billed Amount ties
    to RECON+SURCHARGE+INCREMENTALS).
    ============================================================ */
-function renderSummary(){
+function buildSummaryRows(){
   const byPeriod={};
   STATE.entries.forEach(e=>{
     if(!e.tripStart) return; // period rows need a start date to group on
@@ -823,7 +887,17 @@ function renderSummary(){
     else if(s==='submitted') g.processing+=net;
     else g.pastDue+=net; // not yet submitted, whether due or overdue — "not settled" bucket
   });
-  const rows=Object.values(byPeriod).sort((a,b)=>a.tripStart.localeCompare(b.tripStart));
+  return Object.values(byPeriod).sort((a,b)=>a.tripStart.localeCompare(b.tripStart));
+}
+function exportSummary(){
+  const rows=buildSummaryRows();
+  if(!rows.length){ toast('Nothing to export','error'); return; }
+  const headers=['Trip Start','Trip End','Total Billed','Recon+Surcharge','Recon','Surcharge','Incrementals','CCAC Billed','CMIP Billed','Settled/Collected','In Client Processing','Past Due & Uncollected','Entries'];
+  const data=rows.map(g=>[g.tripStart, g.tripEnd||'', g.total.toFixed(2), g.reconSurcharge.toFixed(2), g.recon.toFixed(2), g.surcharge.toFixed(2), g.incrementals.toFixed(2), g.ccac.toFixed(2), g.cmip.toFixed(2), g.settled.toFixed(2), g.processing.toFixed(2), g.pastDue.toFixed(2), g.sis.size||g.count]);
+  downloadCSV('emelco_billing_summary_'+todayISO()+'.csv', headers, data);
+}
+function renderSummary(){
+  const rows=buildSummaryRows();
   $('#sumCount').textContent=rows.length?`${rows.length} billing periods`:'';
   const tb=$('#sum-table tbody');
   if(!rows.length){ tb.innerHTML=`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No entries yet</div>Add entries, or import a recon file / 2026 history, to populate this compilation.</div></td></tr>`; $('#sum-table tfoot').innerHTML=''; return; }
@@ -851,7 +925,7 @@ function renderSummary(){
     <td class="num-cell">₱${peso(t.pastDue)}</td><td class="num-cell">${t.count}</td></tr>`;
   renderPaymentsSummary();
 }
-function renderPaymentsSummary(){
+function buildPaymentsSummaryRows(){
   const byGroup={};
   STATE.entries.forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
@@ -861,7 +935,17 @@ function renderPaymentsSummary(){
     if(e.chequeAmount!=null && g.chequeAmount==null) g.chequeAmount=e.chequeAmount;
     if(e.chequeRemark && !g.remark) g.remark=e.chequeRemark;
   });
-  const rows=Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date));
+  return Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function exportPaymentsSummary(){
+  const rows=buildPaymentsSummaryRows();
+  if(!rows.length){ toast('Nothing to export','error'); return; }
+  const headers=['Date Paid','Cheque #','Cheque Amount','Invoices Covered','Total (Net)','Remark'];
+  const data=rows.map(g=>[g.date, g.chequeNo||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
+  downloadCSV('emelco_billing_payments_'+todayISO()+'.csv', headers, data);
+}
+function renderPaymentsSummary(){
+  const rows=buildPaymentsSummaryRows();
   $('#paySumCount').textContent=rows.length?`${rows.length} payment groups`:'';
   const tb=$('#pay-sum-table tbody');
   if(!rows.length){ tb.innerHTML=`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
@@ -883,6 +967,23 @@ function switchTab(name){
   if(tab)tab.classList.add('active');
 }
 
+function buildOverviewPeriods(){
+  const byPeriod={};
+  STATE.entries.forEach(e=>{ const key=(e.tripStart||'?')+' — '+(e.tripEnd||'?'); byPeriod[key]=byPeriod[key]||{entries:[],net:0,due:0,statuses:new Set()};
+    const t=entryCalc(e); byPeriod[key].entries.push(e); byPeriod[key].net+=t.net; byPeriod[key].due+=t.due; byPeriod[key].statuses.add(e.status); });
+  return byPeriod;
+}
+function exportOverview(){
+  const byPeriod=buildOverviewPeriods();
+  const keys=Object.keys(byPeriod).sort().reverse();
+  if(!keys.length){ toast('Nothing to export','error'); return; }
+  const headers=['Period (Trip Start – End)','Entries','Net','Due','Status'];
+  const data=keys.map(k=>{ const p=byPeriod[k]; const statuses=[...p.statuses];
+    const statusText = statuses.length>1 ? 'Mixed ('+statuses.join('/')+')' : (statuses[0]==='paid'?'Paid':statuses[0]==='submitted'?'Submitted':'Not submitted');
+    return [k, p.entries.length, p.net.toFixed(2), p.due.toFixed(2), statusText];
+  });
+  downloadCSV('emelco_billing_overview_'+todayISO()+'.csv', headers, data);
+}
 function renderOverview(){
   let net=0,paid=0,proc=0,over=0,overSubmitted=0,overNotSubmitted=0;
   STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due;
@@ -896,10 +997,7 @@ function renderOverview(){
     ${stat('processing','In processing','₱'+peso(proc),'submitted to client (incl. overdue)')}
     ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}`;
   $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
-  // group by period
-  const byPeriod={};
-  STATE.entries.forEach(e=>{ const key=(e.tripStart||'?')+' — '+(e.tripEnd||'?'); byPeriod[key]=byPeriod[key]||{entries:[],net:0,due:0,statuses:new Set()};
-    const t=entryCalc(e); byPeriod[key].entries.push(e); byPeriod[key].net+=t.net; byPeriod[key].due+=t.due; byPeriod[key].statuses.add(e.status); });
+  const byPeriod=buildOverviewPeriods();
   const keys=Object.keys(byPeriod).sort().reverse();
   const tb=$('#ov-table tbody');
   tb.innerHTML=keys.length?keys.map(k=>{ const p=byPeriod[k];
@@ -915,7 +1013,7 @@ function populateBuFilter(){
   sel.innerHTML=`<option value="">All BU</option>`+STATE.bus.map(b=>`<option ${b.name===cur?'selected':''}>${esc(b.name)}</option>`).join('');
 }
 
-function renderEntries(){
+function getFilteredEntries(){
   const q=($('#enSearch').value||'').toLowerCase();
   const statusF=$('#enStatusFilter').value, buF=$('#enBuFilter').value;
   let rows=STATE.entries.slice();
@@ -923,6 +1021,32 @@ function renderEntries(){
   if(buF) rows=rows.filter(e=>e.bu===buF);
   if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')+' '+(e.chequeNo||'')+' '+(e.chequeRemark||'')).toLowerCase().includes(q));
   rows.sort((a,b)=>String(b.tripStart||'').localeCompare(String(a.tripStart||'')));
+  return rows;
+}
+function exportEntries(){
+  const rows=getFilteredEntries();
+  if(!rows.length){ toast('Nothing to export','error'); return; }
+  const headers=['Period Start','Period End','BU','SBU','Type','SI #','Net','VAT','Due','Status','Submitted','Due Date','Paid Date','Cheque #','Cheque Amount','Cheque Remark','Source'];
+  const data=rows.map(e=>{ const t=entryCalc(e), s=entryStatusInfo(e);
+    return [e.tripStart||'', e.tripEnd||'', e.bu||'', e.sbu||'', e.type||'', e.si||'',
+      t.net.toFixed(2), t.vat.toFixed(2), t.due.toFixed(2), s.text+(s.note?' ('+s.note+')':''),
+      e.submitted||'', entryDueDate(e)||'', e.paidDate||'', e.chequeNo||'', e.chequeAmount??'', e.chequeRemark||'', e.source||'manual'];
+  });
+  downloadCSV('emelco_billing_entries_'+todayISO()+'.csv', headers, data);
+}
+function clearAllEntries(){
+  const n=STATE.entries.length;
+  if(!n){ toast('No entries to clear'); return; }
+  if(!confirm(`This will permanently delete ALL ${n} billing entries and the recon overwrite log. BU/SBU setup is kept.\n\nThis cannot be undone. Continue?`)) return;
+  const typed=prompt('Type DELETE to confirm wiping all '+n+' entries:');
+  if(typed!=='DELETE'){ toast('Cancelled — nothing deleted','error'); return; }
+  STATE.entries=[]; STATE.reconLog=[];
+  SELECTED_IDS.clear();
+  renderAll(); saveBilling();
+  toast('All entries cleared');
+}
+function renderEntries(){
+  const rows=getFilteredEntries();
   $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
     const chequeCell = e.chequeNo ? `<span class="mono" title="${esc(e.chequeRemark||'')}">${esc(e.chequeNo)}</span>` : (e.chequeRemark ? `<span class="muted" title="${esc(e.chequeRemark)}">—*</span>` : '<span class="muted">—</span>');
     return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
@@ -1166,7 +1290,7 @@ function parseReconFile(){
   blocks.forEach(b=>{
     for(let r=b.headerRow+1;r<rows.length;r++){
       const sbuRaw=rows[r][b.sbuC];
-      const sbu=String(sbuRaw||'').trim();
+      const sbu=normalizeSBU(sbuRaw);
       if(!sbu) continue;
       if(/grand total/i.test(sbu)) break;
       const net=Number(rows[r][b.netC])||0;
@@ -1272,6 +1396,7 @@ function commitRecon(){
         updated++;
       }
     } else {
+      ensureSbuExists(c.bu, c.sbu);
       STATE.entries.unshift({ id:uid(), bu:c.bu, sbu:c.sbu, type:c.type, tripStart:c.start, tripEnd:c.end,
         si:'', status:'not_submitted', submitted:'', dueDays:30, paidDate:'',
         net:c.net, penalty:0, source:'recon', reconFile:fname, reconAt:now });
@@ -1333,7 +1458,7 @@ $('#histFile').addEventListener('change',e=>{
       if(status.includes('RJCT')) continue; // skip rejected
       out.push({
         si:String(row[2]||'').trim(), tripStart, tripEnd:toISO(row[4]),
-        bu:String(row[5]||'').trim(), sbu:String(row[6]||'').trim(), type:String(row[7]||'RECON').toUpperCase().trim(),
+        bu:String(row[5]||'').trim(), sbu:normalizeSBU(row[6]), type:String(row[7]||'RECON').toUpperCase().trim(),
         submitted:toISO(row[9]), dueDate:toISO(row[10]),
         net:Number(row[12])||0, vat:Number(row[13])||0, due:Number(row[14])||0,
         wht:Number(row[15])||0, netDue:Number(row[16])||0, paidDate:toISO(row[18]),
@@ -1356,6 +1481,7 @@ $('#histFile').addEventListener('change',e=>{
 });
 function commitHistImport(){
   HIST_ROWS.forEach(r=>{
+    ensureSbuExists(r.bu, r.sbu);
     STATE.entries.push({ id:uid(), bu:r.bu, sbu:r.sbu, type:r.type, tripStart:r.tripStart, tripEnd:r.tripEnd,
       si:r.si, status:r.status, submitted:r.submitted, dueDays: (r.dueDate&&r.submitted)?daysBetween(r.submitted,r.dueDate):30,
       paidDate:r.paidDate, net:r.net, penalty:0, source:'historical' });
@@ -1381,6 +1507,20 @@ function coveringEntry(t){
   });
 }
 function isBilled(t){ return !!coveringEntry(t); }
+function getUnbilledRows(q){
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  const unbilled=completed.filter(t=>!isBilled(t));
+  return unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+}
+function exportUnbilled(){
+  const q=($('#ubSearch')?.value||'').toLowerCase();
+  const rows=getUnbilledRows(q);
+  if(!rows.length){ toast('Nothing to export','error'); return; }
+  const headers=['Date','Code','Plate','Driver','Area/Destination','Rate','Surcharge','Expected'];
+  const data=rows.map(t=>[t.tripStartDate||t.dispatchedDate||'', t.code||t.id||'', t.plate||'', t.driver||'', t.area||t.destination||'', num(t.rate).toFixed(2), num(t.surcharge).toFixed(2), tripExpected(t).toFixed(2)]);
+  downloadCSV('emelco_unbilled_'+todayISO()+'.csv', headers, data);
+}
 function renderUnbilled(){
   const q=($('#ubSearch')?.value||'').toLowerCase();
   const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
