@@ -1876,7 +1876,8 @@ function renderBudgetTab(){
       ? (r.lastExpense>r.lastBudget ? 'var(--red)' : 'var(--green)')
       : 'var(--text)';
     const lastTitle = r.lastDate ? `title="Last trip: ${r.lastDate}"` : '';
-    return `<tr onclick="toggleBudgetDetail('${areaEsc}','${r.type}')" style="cursor:pointer">
+    const rowBg = r.type==='multi' ? 'background:rgba(124,58,237,.06);' : '';
+    return `<tr onclick="toggleBudgetDetail('${areaEsc}','${r.type}')" style="cursor:pointer;${rowBg}">
       <td style="text-align:left;font-weight:600">${r.area}</td>
       <td><span style="background:${typeColor};color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:2px 6px">${typeLabel}</span></td>
       <td>${r.count}</td>
