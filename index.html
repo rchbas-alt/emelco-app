@@ -238,6 +238,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab" onclick="switchTab('payroll')">💰 Payroll</div>
   <div class="tab fin-only" onclick="switchTab('officepayroll')">🏢 Office Payroll</div>
   <div class="tab" onclick="switchTab('ledger')">📒 Ledger</div>
+  <div class="tab fin-only" onclick="switchTab('budget')">📊 Budget</div>
   <div class="tab" onclick="switchTab('guide')">📖 Guide</div>
 </div>
 
@@ -305,6 +306,16 @@ body.role-operations .fin-only{display:none!important}
 
 <!-- ====== SUMMARY PAGE ====== -->
 <div class="page" id="page-summary">
+  <!-- Period Filter -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:11px;color:var(--text2)" id="summary-period-note">Showing: All Time (Monthly Breakdown table always shows full history)</div>
+    <div style="display:flex;gap:6px" id="summary-period-buttons">
+      <button class="btn btn-ghost btn-sm btn-primary" onclick="setSummaryPeriod('all',this)">All Time</button>
+      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('ytd',this)">YTD</button>
+      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('mtd',this)">MTD</button>
+      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
+    </div>
+  </div>
   <!-- Grand Total Bar -->
   <div id="summary-grand-total" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px"></div>
   <!-- Monthly Breakdown full-width -->
@@ -396,6 +407,35 @@ body.role-operations .fin-only{display:none!important}
       </div>
     </div>
   </div>
+</div>
+
+<!-- ====== BUDGET PAGE ====== -->
+<div class="page" id="page-budget">
+  <div class="page-header">
+    <h2>📊 Destination Budget Analysis</h2>
+    <div style="display:flex;gap:6px" id="budget-period-buttons">
+      <button class="btn btn-ghost btn-sm" onclick="setBudgetPeriod('month',this)">This Month</button>
+      <button class="btn btn-ghost btn-sm" onclick="setBudgetPeriod('30',this)">Last 30 Days</button>
+      <button class="btn btn-ghost btn-sm" onclick="setBudgetPeriod('ytd',this)">YTD</button>
+    </div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Total Budgeted</div><div class="stat-value" id="bgt-total-budget">₱0</div><div class="stat-sub" id="bgt-period-label">This month</div></div>
+    <div class="stat-card expense"><div class="stat-label">Actual Cost</div><div class="stat-value" id="bgt-total-expense">₱0</div><div class="stat-sub">Entered trips only</div></div>
+    <div class="stat-card" style="border-color:var(--red)"><div class="stat-label">Trending Up</div><div class="stat-value" id="bgt-over-count" style="color:var(--red)">0</div><div class="stat-sub">destinations costing more lately</div></div>
+    <div class="stat-card profit"><div class="stat-label">Avg Margin</div><div class="stat-value" id="bgt-avg-margin">0%</div><div class="stat-sub">Income / Revenue</div></div>
+  </div>
+  <div id="bgt-mismatch-note" style="font-size:11px;color:var(--text2);margin:4px 0 12px"></div>
+  <div class="table-wrapper">
+    <table id="budget-table">
+      <thead><tr>
+        <th style="text-align:left">Destination</th><th>Type</th><th>Trips</th>
+        <th>Suggested Budget</th><th>Last Budget</th><th>Last Expense</th><th>Avg (5 trips)</th><th>Avg (30 days)</th><th>Trend</th><th>Avg Margin</th>
+      </tr></thead>
+      <tbody id="budget-tbody"></tbody>
+    </table>
+  </div>
+  <div id="budget-detail"></div>
 </div>
 
 <!-- ====== GUIDE PAGE ====== -->
@@ -1730,6 +1770,153 @@ function computeAll(t){
 function fmt(v){return parseFloat(v||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function pct(v){return (v*100).toFixed(2)+'%';}
 function fmtK(v){if(Math.abs(v)>=1e6)return(v/1e6).toFixed(2)+'M';if(Math.abs(v)>=1000)return(v/1000).toFixed(1)+'K';return fmt(v);}
+
+// ===== BUDGET TAB =====
+let budgetPeriod = 'month';
+function tripArea(t){ return (t.area||'').trim() || 'Unspecified'; }
+function tripType(t){ return dropCount(t)>1 ? 'multi' : 'single'; }
+function avgOf(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null; }
+function setBudgetPeriod(p,btn){
+  budgetPeriod = p;
+  document.querySelectorAll('#budget-period-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  renderBudgetTab();
+}
+
+function renderBudgetTab(){
+  const groups = {};
+  trips.forEach(t=>{
+    if(!t.tripStartDate) return;
+    const area=tripArea(t), type=tripType(t), key=area+'|'+type;
+    if(!groups[key]) groups[key]={area,type,trips:[]};
+    groups[key].trips.push(t);
+  });
+
+  const today=new Date(); today.setHours(0,0,0,0);
+  const cutoff30=new Date(today); cutoff30.setDate(cutoff30.getDate()-30);
+  let periodStart;
+  if(budgetPeriod==='month'){ periodStart=new Date(today.getFullYear(),today.getMonth(),1); }
+  else if(budgetPeriod==='30'){ periodStart=cutoff30; }
+  else { periodStart=new Date(today.getFullYear(),0,1); }
+
+  let periodBudgetSum=0, periodExpenseSum=0, marginSum=0, marginCount=0, mismatchCount=0;
+  const rows=[];
+
+  Object.values(groups).forEach(g=>{
+    const allSorted = g.trips
+      .filter(t=>t.tripStartDate)
+      .slice()
+      .sort((a,b)=>(b.tripStartDate||'').localeCompare(a.tripStartDate||''));
+    const lastTrip = allSorted[0] || null;
+    const lastBudget = lastTrip ? n(lastTrip.budget) : null;
+    const lastExpense = lastTrip ? computeAll(lastTrip).expenses : null;
+    const lastDate = lastTrip ? lastTrip.tripStartDate : null;
+
+    const withExp = g.trips
+      .filter(t=>computeAll(t).expenses>0)
+      .sort((a,b)=>(b.tripStartDate||'').localeCompare(a.tripStartDate||''));
+    const last5vals = withExp.slice(0,5).map(t=>computeAll(t).expenses);
+    const last30vals = withExp
+      .filter(t=>t.tripStartDate && new Date(t.tripStartDate+'T00:00:00')>=cutoff30)
+      .map(t=>computeAll(t).expenses);
+    const avg5 = avgOf(last5vals);
+    const avg30 = avgOf(last30vals);
+    const baselineAvg = avgOf(withExp.map(t=>computeAll(t).expenses));
+
+    const chosen = (last30vals.length>=3) ? avg30 : (avg5!==null ? avg5 : avg30);
+    const suggested = chosen!==null ? chosen : baselineAvg; // forecast: what to hand out next time
+    const trend = (baselineAvg && chosen!==null) ? (chosen-baselineAvg)/baselineAvg : null; // recent vs this destination's own history
+
+    const margins = g.trips.map(t=>{ const c=computeAll(t); return c.rs>0 ? c.pctProfit : null; }).filter(v=>v!==null);
+    const avgMargin = avgOf(margins);
+
+    g.trips.forEach(t=>{
+      if(dropCount(t)>1 && !t.isMilkRun) mismatchCount++;
+      if(!t.tripStartDate) return;
+      const d=new Date(t.tripStartDate+'T00:00:00');
+      if(d>=periodStart && d<=today){
+        periodBudgetSum += n(t.budget);
+        const c=computeAll(t);
+        if(c.expenses>0) periodExpenseSum += c.expenses;
+        if(c.rs>0){ marginSum+=c.pctProfit; marginCount++; }
+      }
+    });
+
+    rows.push({area:g.area, type:g.type, count:g.trips.length, suggested, avg5, avg30, trend, avgMargin, lastBudget, lastExpense, lastDate});
+  });
+
+  rows.sort((a,b)=>{
+    const av = a.trend===null ? -Infinity : a.trend;
+    const bv = b.trend===null ? -Infinity : b.trend;
+    return bv-av;
+  });
+
+  const trendingUpCount = rows.filter(r=>r.trend!==null && r.trend>0.1).length;
+
+  document.getElementById('bgt-total-budget').textContent = '₱'+fmt(periodBudgetSum);
+  document.getElementById('bgt-total-expense').textContent = '₱'+fmt(periodExpenseSum);
+  document.getElementById('bgt-over-count').textContent = trendingUpCount;
+  document.getElementById('bgt-avg-margin').textContent = marginCount ? pct(marginSum/marginCount) : '—';
+  document.getElementById('bgt-period-label').textContent =
+    budgetPeriod==='month' ? 'This month' : budgetPeriod==='30' ? 'Last 30 days' : 'Year to date';
+  document.getElementById('bgt-mismatch-note').innerHTML = mismatchCount
+    ? `⚠️ ${mismatchCount} trip(s) have multiple drops recorded but are not tagged MilkRun — worth a review.`
+    : '';
+
+  const tbody=document.getElementById('budget-tbody');
+  tbody.innerHTML = rows.map(r=>{
+    const typeLabel = r.type==='multi' ? 'Multi/MilkRun' : 'Single';
+    const typeColor = r.type==='multi' ? 'var(--purple)' : 'var(--blue)';
+    const trendFmt = r.trend===null ? '—' : (r.trend>=0?'+':'')+(r.trend*100).toFixed(0)+'%';
+    const trendColor = r.trend===null ? 'var(--text2)' : r.trend>0.1 ? 'var(--red)' : r.trend<-0.1 ? 'var(--green)' : 'var(--text2)';
+    const areaEsc = r.area.replace(/'/g,"\\'");
+    const lastBudgetFmt = r.lastBudget ? '₱'+fmt(r.lastBudget) : '—';
+    const lastExpenseFmt = r.lastExpense ? '₱'+fmt(r.lastExpense) : '—';
+    const lastExpenseColor = (r.lastBudget && r.lastExpense)
+      ? (r.lastExpense>r.lastBudget ? 'var(--red)' : 'var(--green)')
+      : 'var(--text)';
+    const lastTitle = r.lastDate ? `title="Last trip: ${r.lastDate}"` : '';
+    return `<tr onclick="toggleBudgetDetail('${areaEsc}','${r.type}')" style="cursor:pointer">
+      <td style="text-align:left;font-weight:600">${r.area}</td>
+      <td><span style="background:${typeColor};color:#fff;font-size:10px;font-weight:700;border-radius:4px;padding:2px 6px">${typeLabel}</span></td>
+      <td>${r.count}</td>
+      <td style="font-weight:700;color:var(--accent)">${r.suggested!==null ? '₱'+fmt(r.suggested) : '—'}</td>
+      <td ${lastTitle}>${lastBudgetFmt}</td>
+      <td ${lastTitle} style="color:${lastExpenseColor};font-weight:600">${lastExpenseFmt}</td>
+      <td>${r.avg5!==null ? '₱'+fmt(r.avg5) : '—'}</td>
+      <td>${r.avg30!==null ? '₱'+fmt(r.avg30) : '—'}</td>
+      <td style="color:${trendColor};font-weight:700">${trendFmt}</td>
+      <td>${r.avgMargin!==null ? pct(r.avgMargin) : '—'}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:20px">No trip data yet</td></tr>`;
+
+  document.getElementById('budget-detail').innerHTML='';
+}
+
+function toggleBudgetDetail(area,type){
+  const list = trips.filter(t=>tripArea(t)===area && tripType(t)===type)
+    .sort((a,b)=>(b.tripStartDate||'').localeCompare(a.tripStartDate||''))
+    .slice(0,15);
+  const expVals = list.map(t=>computeAll(t).expenses).filter(v=>v>0);
+  const avg = avgOf(expVals);
+  const detail=document.getElementById('budget-detail');
+  detail.innerHTML = `<div class="guide-section" style="margin-top:16px">
+    <h3>${area} — ${type==='multi'?'Multi/MilkRun':'Single'} — Recent Trips</h3>
+    <div class="table-wrapper" style="max-height:320px">
+    <table><thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Plate</th><th>Budget</th><th>Expenses</th><th>Spared/Over</th></tr></thead>
+    <tbody>${list.map(t=>{
+      const c=computeAll(t);
+      const isOutlier = avg && c.expenses>0 && Math.abs(c.expenses-avg)/avg > 0.5;
+      const diff = (n(t.budget) && c.expenses>0) ? n(t.budget)-c.expenses : null;
+      return `<tr style="${isOutlier?'background:rgba(192,57,43,.08)':''}">
+        <td style="text-align:left">${t.tripStartDate||''}</td>
+        <td style="text-align:left">${t.plate||''}</td>
+        <td>${n(t.budget) ? '₱'+fmt(n(t.budget)) : '—'}</td>
+        <td>${c.expenses>0 ? '₱'+fmt(c.expenses) : '—'}${isOutlier?' ⚠️':''}</td>
+        <td style="color:${diff===null?'var(--text2)':diff>=0?'var(--green)':'var(--red)'}">${diff===null?'—':'₱'+fmt(diff)}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`;
+}
 function fmtDate(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function lastTripDateFor(matchFn){
   let latest=null;
@@ -2553,19 +2740,42 @@ function renderFleet(){
 }
 
 // ===== SUMMARY PAGE =====
+// ===== SUMMARY TAB PERIOD FILTER =====
+let summaryPeriod = 'all';
+function summaryPeriodBounds(period){
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(period==='ytd') return {start:new Date(today.getFullYear(),0,1), end:today};
+  if(period==='mtd') return {start:new Date(today.getFullYear(),today.getMonth(),1), end:today};
+  if(period==='30'){ const s=new Date(today); s.setDate(s.getDate()-30); return {start:s, end:today}; }
+  return null; // 'all'
+}
+function filterTripsByPeriod(arr, period){
+  const bounds = summaryPeriodBounds(period);
+  if(!bounds) return arr;
+  return arr.filter(t=>{
+    if(!t.tripStartDate) return false;
+    const d=new Date(t.tripStartDate+'T00:00:00');
+    return d>=bounds.start && d<=bounds.end;
+  });
+}
+function setSummaryPeriod(p,btn){
+  summaryPeriod=p;
+  document.querySelectorAll('#summary-period-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  const labels={all:'All Time', ytd:'Year to Date', mtd:'Month to Date', '30':'Last 30 Days'};
+  document.getElementById('summary-period-note').textContent =
+    'Showing: '+labels[p]+' (Monthly Breakdown table always shows full history)';
+  renderSummary();
+}
+
 function renderSummary(){
+  const scopedTrips = filterTripsByPeriod(trips, summaryPeriod);
   let sumRS=0,sumExp=0,sumExpStaff=0,sumIncome=0,sumVat=0,sumIncVat=0,sumOpex=0,sumAfterOpex=0,pctSum=0,pctCnt=0,sumTrips=0;
   const areaMap={},drvMap={},wkMap={},plateMap={},clientMap={},monthMap={};
+  // Monthly Breakdown is intentionally built from ALL trips (full history), independent of the period filter —
+  // it's already a multi-month view, so scoping it to e.g. MTD would collapse it to one row.
   trips.forEach(t=>{
     const c=computeAll(t);
-    sumRS+=c.rs;sumExp+=c.expenses;sumExpStaff+=c.expStaff;sumIncome+=c.income;sumVat+=c.vat;sumIncVat+=c.incomeVat;sumOpex+=c.opex;sumAfterOpex+=c.incomeAfterOpex;sumTrips++;
-    if(c.rs>0){pctSum+=c.pctProfit;pctCnt++;}
-    const area=t.area||'Unknown';areaMap[area]=(areaMap[area]||0)+c.income;
-    const drv=t.driver||'Unknown';if(!drvMap[drv])drvMap[drv]={trips:0,income:0};drvMap[drv].trips++;drvMap[drv].income+=c.income;
-    const wk=t.weekMon||'?';if(!wkMap[wk])wkMap[wk]={trips:0,income:0};wkMap[wk].trips++;wkMap[wk].income+=c.income;
-    const cl=t.client||'?';if(!clientMap[cl])clientMap[cl]={trips:0,income:0};clientMap[cl].trips++;clientMap[cl].income+=c.income;
-    const pl=t.plate||'?';plateMap[pl]=(plateMap[pl]||0)+1;
-    // Monthly key: YYYY-MM from tripStartDate
     const mo=t.tripStartDate?t.tripStartDate.slice(0,7):'Unknown';
     if(!monthMap[mo])monthMap[mo]={trips:0,rs:0,expenses:0,expStaff:0,income:0,afterOpex:0,diesel:0};
     monthMap[mo].trips++;monthMap[mo].rs+=c.rs;monthMap[mo].expenses+=c.expenses;
@@ -2574,6 +2784,17 @@ function renderSummary(){
       ?t.dieselEntries.reduce((s,d)=>s+(d.amount||0),0)
       :(t.dieselLiter||0)*(t.dieselPrice||0);
     monthMap[mo].diesel+=dieselAmt;
+  });
+  // Everything else respects the selected period.
+  scopedTrips.forEach(t=>{
+    const c=computeAll(t);
+    sumRS+=c.rs;sumExp+=c.expenses;sumExpStaff+=c.expStaff;sumIncome+=c.income;sumVat+=c.vat;sumIncVat+=c.incomeVat;sumOpex+=c.opex;sumAfterOpex+=c.incomeAfterOpex;sumTrips++;
+    if(c.rs>0){pctSum+=c.pctProfit;pctCnt++;}
+    const area=t.area||'Unknown';areaMap[area]=(areaMap[area]||0)+c.income;
+    const drv=t.driver||'Unknown';if(!drvMap[drv])drvMap[drv]={trips:0,income:0};drvMap[drv].trips++;drvMap[drv].income+=c.income;
+    const wk=t.weekMon||'?';if(!wkMap[wk])wkMap[wk]={trips:0,income:0};wkMap[wk].trips++;wkMap[wk].income+=c.income;
+    const cl=t.client||'?';if(!clientMap[cl])clientMap[cl]={trips:0,income:0};clientMap[cl].trips++;clientMap[cl].income+=c.income;
+    const pl=t.plate||'?';plateMap[pl]=(plateMap[pl]||0)+1;
   });
 
   // ---- Profitability percentages (Rhoda): before vs after 25% OPEX ----
@@ -2660,7 +2881,7 @@ function renderSummary(){
 
   // ---- Billing by Cut-off ----
   const cutoffMap = {};
-  trips.forEach(t => {
+  scopedTrips.forEach(t => {
     const co = t.cutoff || '(No Cut-off)';
     if(!cutoffMap[co]) cutoffMap[co] = {trips:0, rs:0, byClient:{}};
     const rs = n(t.rate) + n(t.surcharge);
@@ -2710,7 +2931,7 @@ function renderSummary(){
 
   const cutoffTotal = cutoffKeys.reduce((s,co)=>s+cutoffMap[co].rs,0);
   const cutoffTotalTrips = cutoffKeys.reduce((s,co)=>s+cutoffMap[co].trips,0);
-  const cutoffClientTotals = allClients.map(c=>`<div style="text-align:right;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--blue)">₱${fmtK(trips.filter(t=>t.client===c).reduce((s,t)=>s+n(t.rate)+n(t.surcharge),0))}</div>`).join('');
+  const cutoffClientTotals = allClients.map(c=>`<div style="text-align:right;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--blue)">₱${fmtK(scopedTrips.filter(t=>t.client===c).reduce((s,t)=>s+n(t.rate)+n(t.surcharge),0))}</div>`).join('');
   const cutoffTotalRow = `<div style="display:grid;grid-template-columns:160px 55px ${allClients.map(()=>'1fr').join(' ')} 1fr;gap:4px;padding:6px 6px;border-radius:5px;border:1px solid var(--border);margin-top:4px;align-items:center;background:var(--bg)">
     <div style="font-weight:700;color:var(--accent);font-size:11px">GRAND TOTAL</div>
     <div style="text-align:center;color:var(--blue);font-weight:700;font-size:11px">${cutoffTotalTrips}</div>
@@ -2732,7 +2953,7 @@ function renderSummary(){
 
   // ---- Billing Cut-off Summary ----
   const billingMap={};
-  trips.forEach(t=>{
+  scopedTrips.forEach(t=>{
     const key=(t.cutoff||'').trim()||'(No Cut-off)';
     if(!billingMap[key])billingMap[key]={trips:0,rate:0,surcharge:0,rs:0,clients:{}};
     const cd=billingMap[key];
@@ -2780,7 +3001,7 @@ function renderSummary(){
   const grandNetDue=grandRsVat-grandWtax;
   const coTotal=`<div style="display:grid;grid-template-columns:155px 45px 1fr 1fr 1fr 1fr 1fr 1fr 1fr;gap:4px;padding:7px 8px;border-radius:5px;background:var(--bg);border:1px solid var(--border);margin-top:4px;font-size:11px;align-items:center">
     <div style="font-weight:700;color:var(--accent)">GRAND TOTAL</div>
-    <div style="text-align:center;color:var(--blue);font-weight:700">${trips.length}</div>
+    <div style="text-align:center;color:var(--blue);font-weight:700">${scopedTrips.length}</div>
     <div style="text-align:right;font-weight:700;color:var(--text2);font-family:'DM Mono',monospace">₱${fmtK(billingKeys.reduce((s,k)=>s+billingMap[k].rate,0))}</div>
     <div style="text-align:right;font-weight:700;color:var(--text2);font-family:'DM Mono',monospace">₱${fmtK(billingKeys.reduce((s,k)=>s+billingMap[k].surcharge,0))}</div>
     <div style="text-align:right;font-weight:700;color:var(--green);font-family:'DM Mono',monospace">₱${fmtK(grandBillingRS)}</div>
@@ -3220,7 +3441,8 @@ function clearAllData(){
 function switchTab(name){
   if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
   if(name==='officepayroll' && currentRole==='operations'){ toast('Office Payroll is restricted to Owner access','error'); return; }
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','ledger','guide'][i]===name));
+  if(name==='budget' && currentRole==='operations'){ toast('Budget is restricted to Owner access','error'); return; }
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','ledger','budget','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(name==='summary')renderSummary();
@@ -3230,6 +3452,7 @@ function switchTab(name){
   if(name==='payroll'){ populatePayrollWeeks(); renderPayroll(); renderPayrollTrend(); }
   if(name==='officepayroll'){ populateOfficePayrollDropdowns(); }
   if(name==='ledger'){ renderLedgerSummary(); }
+  if(name==='budget'){ renderBudgetTab(); }
 }
 
 // ===== TOAST =====
