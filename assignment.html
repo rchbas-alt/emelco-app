@@ -11,6 +11,7 @@
   --c-cmip-bg:#e2f7e9;--c-cmip-bd:#a6e0bb;
   --c-cdi-bg:#f1e8fb;--c-cdi-bd:#cdb3ee;
   --c-other-bg:#ffeede;--c-other-bd:#f3c596;
+  --money-bill:#e67e22;--money-budget:#2f7d4f;--money-expense:#7a5cc4;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
@@ -54,7 +55,12 @@ td.noassign{background:var(--noassign-bg);border-left:2px solid var(--noassign-b
 .chip.client-other{background:var(--c-other-bg);border-color:var(--c-other-bd)}
 .chip .area{font-weight:600;font-size:12px}
 .chip .who{color:var(--text2);font-size:11.5px;margin-top:1px}
-.chip .rate{color:#e67e22;font-size:10.5px;margin-top:2px;font-family:'DM Mono',monospace;font-weight:700}
+.chip .rate{color:var(--money-bill);font-size:10.5px;margin-top:2px;font-family:'DM Mono',monospace;font-weight:700}
+.chip .budget-line{font-size:10px;margin-top:1px;font-family:'DM Mono',monospace;font-weight:700}
+.chip .budget-line .b-part{color:var(--money-budget)}
+.chip .budget-line .e-part{color:var(--money-expense)}
+.chip .budget-line .e-part.pending{color:var(--text3);font-weight:400}
+.chip .budget-line .sep{color:var(--text2);font-weight:400}
 .chip .markers{display:flex;gap:4px;margin-top:3px;font-size:9px;font-weight:700}
 .chip.is-fwd{border-left:3px solid #d4820a}
 .chip.is-milkrun{border:2px solid #d4820a;border-left:3px solid #d4820a}
@@ -64,8 +70,15 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 #daily-totals-row th{background:var(--bg2);padding:5px 6px;border-bottom:2px solid var(--border2);font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--text2)}
 #daily-totals-row th.plate-cell-h{text-align:left;padding-left:14px;position:sticky;left:0;background:var(--bg2);z-index:2;font-size:10px;color:var(--text3);border-right:1px solid var(--border)}
-#daily-totals-row .day-count{font-weight:700;color:var(--text)}
-#daily-totals-row .day-billing{font-size:10px;color:#e67e22;font-weight:700;margin-top:2px}
+#daily-totals-row .day-line1{font-size:10.5px;font-weight:700}
+#daily-totals-row .day-line1 .d-count{color:var(--text)}
+#daily-totals-row .day-line1 .d-bill{color:var(--money-bill)}
+#daily-totals-row .day-line2{font-size:10px;font-weight:700;margin-top:2px}
+#daily-totals-row .day-line2 .d-bud{color:var(--money-budget)}
+#daily-totals-row .day-line2 .d-exp{color:var(--money-expense)}
+#daily-totals-row .day-line2 .d-exp.pending{color:var(--text3);font-weight:400}
+#daily-totals-row .d-sep{color:var(--text2);font-weight:400}
+#daily-totals-row .day-status{font-size:8.5px;color:var(--text3);margin-top:2px;font-weight:400}
 </style>
 </head>
 <body>
@@ -117,6 +130,9 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
     <span><span class="swatch" style="background:var(--c-cdi-bg);border:1px solid var(--c-cdi-bd)"></span>CDI</span>
     <span><span class="swatch" style="background:var(--c-other-bg);border:1px solid var(--c-other-bd)"></span>Other</span>
     <span><span class="swatch" style="background:var(--noassign-bg);border:1px solid var(--noassign-border)"></span>No assignment today</span>
+    <span style="border-left:1px solid var(--border);padding-left:18px;"><span class="swatch" style="border-radius:50%;background:var(--money-bill)"></span>Billing</span>
+    <span><span class="swatch" style="border-radius:50%;background:var(--money-budget)"></span>Budget</span>
+    <span><span class="swatch" style="border-radius:50%;background:var(--money-expense)"></span>Expenses</span>
     <span>Auto-refreshes every 60 seconds. Only trucks marked Active in Fleet are shown.</span>
   </div>
 </div>
@@ -155,6 +171,16 @@ function shortenName(full){
   const parts = full.trim().split(/\s+/);
   if(parts.length===1) return parts[0];
   return parts[0]+' '+parts[parts.length-1][0]+'.';
+}
+function n(v){ return parseFloat(v)||0; }
+function fmtPeso(v){ return '₱'+v.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function tripExpenses(t){
+  // Mirrors computeAll()'s expense formula in index.html
+  const dieselEntries = Array.isArray(t.dieselEntries) ? t.dieselEntries : [];
+  const dieselFromEntries = dieselEntries.reduce((s,d)=>s+n(d.amount),0);
+  const dieselSingle = n(t.dieselPrice)*n(t.dieselLiter);
+  const diesel = dieselFromEntries || dieselSingle;
+  return diesel + n(t.toll) + n(t.food) + n(t.passway) + n(t.parking) + n(t.checker) + n(t.load) + n(t.gcash) + n(t.maint) + n(t.otherExp);
 }
 function clientClass(client){
   const c = (client||'').trim().toUpperCase();
@@ -236,6 +262,9 @@ function renderGrid(){
   tbody.innerHTML = '';
   const dayTotals = new Array(7).fill(0);
   const dayBilling = new Array(7).fill(0);
+  const dayBudget = new Array(7).fill(0);
+  const dayExpense = new Array(7).fill(0);
+  const dayExpenseTripCount = new Array(7).fill(0);
   const clientCounts = {};
 
   if(activePlates.length===0){
@@ -266,15 +295,23 @@ function renderGrid(){
               .filter(Boolean).join(' / ');
             const cKey = t.client && t.client.trim() ? t.client.trim().toUpperCase() : 'UNSPECIFIED';
             clientCounts[cKey] = (clientCounts[cKey] || 0) + 1;
-            const rs = (parseFloat(t.rate)||0) + (parseFloat(t.surcharge)||0);
+            const rs = n(t.rate) + n(t.surcharge);
             dayBilling[idx] += rs;
-            const rsFmt = rs ? '₱' + rs.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+            const rsFmt = rs ? fmtPeso(rs) : '';
+            const budget = n(t.budget);
+            const expenses = tripExpenses(t);
+            const hasExpenses = expenses > 0;
+            dayBudget[idx] += budget;
+            if(hasExpenses){ dayExpense[idx] += expenses; dayExpenseTripCount[idx]++; }
+            const budgetFmt = budget ? fmtPeso(budget) : '';
+            const expenseFmt = hasExpenses ? fmtPeso(expenses) : '—';
+            const budgetLine = budgetFmt ? `<div class="budget-line"><span class="b-part">${budgetFmt}</span> <span class="sep">/</span> <span class="e-part${hasExpenses?'':' pending'}">${expenseFmt}</span></div>` : '';
             const markers = [];
             if(t.isFWD) markers.push('FWD');
             if(t.isMilkRun) markers.push('MR');
             const markerHtml = markers.length ? `<div class="markers">${markers.join(' / ')}</div>` : '';
             const chipClasses = [clientClass(t.client), (t.isFWD ? 'is-fwd' : ''), (t.isMilkRun ? 'is-milkrun' : '')].filter(Boolean).join(' ');
-            return `<div class="chip ${chipClasses}"><div class="area">${t.area||''}</div><div class="who">${who}</div>${rsFmt?`<div class="rate">${rsFmt}</div>`:''}<div>${markerHtml}</div></div>`;
+            return `<div class="chip ${chipClasses}"><div class="area">${t.area||''}</div><div class="who">${who}</div>${rsFmt?`<div class="rate">${rsFmt}</div>`:''}${budgetLine}<div>${markerHtml}</div></div>`;
           }).join('');
           html += `<td class="${cellClass}">${chips}</td>`;
         }
@@ -288,19 +325,33 @@ function renderGrid(){
   if(totalsRow) totalsRow.innerHTML = '';
 
   const dailyTotalsRow = document.getElementById('daily-totals-row');
-  dailyTotalsRow.innerHTML = '<th class="plate-cell-h">Trips / Billing</th>' +
+  dailyTotalsRow.innerHTML = '<th class="plate-cell-h">Trips/Bill/Bgt/Exp</th>' +
     dayTotals.map((t, i) => {
-      const b = dayBilling[i];
-      const bFmt = b ? '₱'+b.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
       if(!t) return `<th><span style="color:var(--text3)">—</span></th>`;
-      return `<th><div class="day-count">${t} trip${t>1?'s':''}</div>${bFmt?`<div class="day-billing">${bFmt}</div>`:''}</th>`;
+      const bFmt = dayBilling[i] ? fmtPeso(dayBilling[i]) : '';
+      const budFmt = dayBudget[i] ? fmtPeso(dayBudget[i]) : '';
+      const noneHaveExp = dayExpenseTripCount[i] === 0;
+      const allHaveExp = dayExpenseTripCount[i] === t;
+      const expFmt = noneHaveExp ? '—' : fmtPeso(dayExpense[i]);
+      const status = allHaveExp ? 'completed' : (noneHaveExp ? 'exp. pending' : 'partial');
+      return `<th>
+        <div class="day-line1"><span class="d-count">${t}</span> <span class="d-sep">/</span> <span class="d-bill">${bFmt}</span></div>
+        <div class="day-line2"><span class="d-bud">${budFmt}</span> <span class="d-sep">/</span> <span class="d-exp${noneHaveExp?' pending':''}">${expFmt}</span></div>
+        <div class="day-status">${status}</div>
+      </th>`;
     }).join('');
 
   const weekTotal = dayTotals.reduce((a,b)=>a+b,0);
   const weekBilling = dayBilling.reduce((a,b)=>a+b,0);
-  const weekBillingFmt = weekBilling ? ' · ₱'+weekBilling.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+  const weekBudget = dayBudget.reduce((a,b)=>a+b,0);
+  const weekExpense = dayExpense.reduce((a,b)=>a+b,0);
+  const weekParts = [];
+  if(weekBilling) weekParts.push(fmtPeso(weekBilling)+' bill');
+  if(weekBudget) weekParts.push(fmtPeso(weekBudget)+' bgt');
+  if(weekExpense) weekParts.push(fmtPeso(weekExpense)+' exp');
+  const weekMoneyStr = weekParts.length ? ' · ' + weekParts.join(' / ') : '';
   document.getElementById('week-total').textContent =
-    weekTotal + (weekTotal===1 ? ' trip' : ' trips') + weekBillingFmt + ' this week';
+    'Tot ' + weekTotal + (weekTotal===1 ? ' trip' : ' trips') + weekMoneyStr;
 
   const order = ['CCAC','CMIP','CDI'];
   const seen = new Set();
