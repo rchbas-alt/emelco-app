@@ -269,6 +269,7 @@ function renderGrid(){
   const dayBudget = new Array(7).fill(0);
   const dayExpense = new Array(7).fill(0);
   const dayExpenseTripCount = new Array(7).fill(0);
+  const dayBudgetTripCount = new Array(7).fill(0);
   const clientCounts = {};
 
   if(activePlates.length===0){
@@ -306,6 +307,7 @@ function renderGrid(){
             const expenses = tripExpenses(t);
             const hasExpenses = expenses > 0;
             dayBudget[idx] += budget;
+            if(budget) dayBudgetTripCount[idx]++;
             if(hasExpenses){ dayExpense[idx] += expenses; dayExpenseTripCount[idx]++; }
             const budgetFmt = budget ? fmtPeso(budget) : '';
             const expenseFmt = hasExpenses ? fmtPeso(expenses) : '—';
@@ -336,8 +338,13 @@ function renderGrid(){
       const budFmt = dayBudget[i] ? fmtPeso(dayBudget[i]) : '';
       const noneHaveExp = dayExpenseTripCount[i] === 0;
       const allHaveExp = dayExpenseTripCount[i] === t;
+      const noneHaveBudget = dayBudgetTripCount[i] === 0;
       const expFmt = noneHaveExp ? '—' : fmtPeso(dayExpense[i]);
-      const status = allHaveExp ? 'completed' : (noneHaveExp ? 'exp. pending' : 'partial');
+      let status;
+      if(allHaveExp) status = 'completed';
+      else if(noneHaveBudget) status = 'not yet budgeted';
+      else if(noneHaveExp) status = 'exp. pending';
+      else status = 'partial';
       return `<th>
         <div class="day-line1"><span class="d-count">${t}</span> <span class="d-sep">/</span> <span class="d-bill">${bFmt}</span></div>
         <div class="day-line2"><span class="d-bud">${budFmt}</span> <span class="d-sep">/</span> <span class="d-exp${noneHaveExp?' pending':''}">${expFmt}</span></div>
