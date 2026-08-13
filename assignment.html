@@ -20,7 +20,11 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .title{font-weight:700;font-size:18px;letter-spacing:.2px}
 .subtitle{font-size:12px;color:var(--text2);font-weight:400;margin-top:2px}
 .stats-bar{display:flex;justify-content:center;gap:10px;margin:12px 0;flex-wrap:wrap}
-.stat-pill{font-size:12px;font-weight:700;color:var(--accent);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 14px;white-space:nowrap}
+.stat-pill{font-size:12px;font-weight:700;color:var(--text);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 14px;white-space:nowrap}
+.stat-pill .p-bill{color:var(--money-bill)}
+.stat-pill .p-bud{color:var(--money-budget)}
+.stat-pill .p-exp{color:var(--money-expense)}
+.stat-pill .p-sep{color:var(--text2);font-weight:400}
 .client-breakdown{display:flex;align-items:center;gap:10px;color:var(--text);flex-wrap:wrap}
 .client-breakdown .seg{display:flex;align-items:center;gap:5px}
 .client-breakdown .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
@@ -346,11 +350,11 @@ function renderGrid(){
   const weekBudget = dayBudget.reduce((a,b)=>a+b,0);
   const weekExpense = dayExpense.reduce((a,b)=>a+b,0);
   const weekParts = [];
-  if(weekBilling) weekParts.push(fmtPeso(weekBilling)+' bill');
-  if(weekBudget) weekParts.push(fmtPeso(weekBudget)+' bgt');
-  if(weekExpense) weekParts.push(fmtPeso(weekExpense)+' exp');
-  const weekMoneyStr = weekParts.length ? ' · ' + weekParts.join(' / ') : '';
-  document.getElementById('week-total').textContent =
+  if(weekBilling) weekParts.push(`<span class="p-bill">${fmtPeso(weekBilling)} bill</span>`);
+  if(weekBudget) weekParts.push(`<span class="p-bud">${fmtPeso(weekBudget)} bgt</span>`);
+  if(weekExpense) weekParts.push(`<span class="p-exp">${fmtPeso(weekExpense)} exp</span>`);
+  const weekMoneyStr = weekParts.length ? ' <span class="p-sep">·</span> ' + weekParts.join(' <span class="p-sep">/</span> ') : '';
+  document.getElementById('week-total').innerHTML =
     'Tot ' + weekTotal + (weekTotal===1 ? ' trip' : ' trips') + weekMoneyStr;
 
   const order = ['CCAC','CMIP','CDI'];
