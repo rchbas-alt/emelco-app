@@ -169,6 +169,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab active" onclick="switchTab('overview')">📊 Overview</div>
   <div class="tab" onclick="switchTab('summary')">📈 Summary</div>
   <div class="tab" onclick="switchTab('entries')">🧾 Billing Entries</div>
+  <div class="tab fin-only" onclick="switchTab('paidlist')">✅ Paid Entries</div>
   <div class="tab" onclick="switchTab('import')">📥 Import Recon File</div>
   <div class="tab fin-only" onclick="switchTab('unbilled')">💰 Unbilled</div>
   <div class="tab fin-only" onclick="switchTab('setup')">⚙️ BU / SBU Setup</div>
@@ -347,6 +348,28 @@ body.role-operations .fin-only{display:none!important}
     </div>
   </div>
 
+  <!-- PAID ENTRIES -->
+  <div class="page fin-only" id="page-paidlist">
+    <div class="toolbar">
+      <select class="filter-select" id="plMonthFilter" onchange="renderPaidList()"><option value="">All months</option></select>
+      <select class="filter-select" id="plBuFilter" onchange="renderPaidList()"><option value="">All BU</option></select>
+      <input type="search" class="search-box" id="plSearch" placeholder="Search SI#, SBU, cheque #…" oninput="renderPaidList()">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportPaidList()">⬇ Export CSV</button>
+    </div>
+    <p class="hint">Every paid entry, one row each — newest paid date first. Filter by month to see exactly what made up that month's collections.</p>
+    <div class="stats-row" id="pl-stats"></div>
+    <div class="table-wrapper">
+      <table id="paidlist-table">
+        <thead><tr>
+          <th>Paid Date</th><th>SI #</th><th>BU</th><th>SBU</th><th>Type</th>
+          <th class="num-cell">Net Due</th><th>Cheque #</th><th>Remark</th>
+        </tr></thead><tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+  </div>
+
   <!-- UNBILLED -->
   <div class="page fin-only" id="page-unbilled">
     <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
@@ -496,7 +519,7 @@ body.role-operations .fin-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608151645';
+const APP_VERSION = '202608151720';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -835,7 +858,7 @@ function renderBatchOutlierCheck(){
     <td class="num-cell">₱${peso(r.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -1025,6 +1048,9 @@ function renderOverview(){
 function populateBuFilter(){
   const sel=$('#enBuFilter'); const cur=sel.value;
   sel.innerHTML=`<option value="">All BU</option>`+STATE.bus.map(b=>`<option ${b.name===cur?'selected':''}>${esc(b.name)}</option>`).join('');
+  const plSel=$('#plBuFilter'); if(plSel){ const plCur=plSel.value;
+    plSel.innerHTML=`<option value="">All BU</option>`+STATE.bus.map(b=>`<option ${b.name===plCur?'selected':''}>${esc(b.name)}</option>`).join('');
+  }
 }
 
 function getFilteredEntries(){
@@ -1086,6 +1112,48 @@ function renderEntries(){
       <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td></tr>`;
   }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
   updateBulkBar();
+}
+
+function getPaidEntries(){
+  return STATE.entries.filter(e=>e.status==='paid' && e.paidDate);
+}
+function populatePlMonthFilter(){
+  const sel=$('#plMonthFilter'); if(!sel) return;
+  const cur=sel.value;
+  const months=[...new Set(getPaidEntries().map(e=>e.paidDate.slice(0,7)))].sort().reverse();
+  sel.innerHTML=`<option value="">All months</option>`+months.map(m=>`<option value="${m}" ${m===cur?'selected':''}>${m}</option>`).join('');
+}
+function getFilteredPaidEntries(){
+  const monthF=($('#plMonthFilter')?.value)||'', buF=($('#plBuFilter')?.value)||'', q=($('#plSearch')?.value||'').toLowerCase();
+  let rows=getPaidEntries();
+  if(monthF) rows=rows.filter(e=>e.paidDate.slice(0,7)===monthF);
+  if(buF) rows=rows.filter(e=>e.bu===buF);
+  if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.chequeNo||'')+' '+(e.chequeRemark||'')).toLowerCase().includes(q));
+  rows.sort((a,b)=>String(b.paidDate||'').localeCompare(String(a.paidDate||'')));
+  return rows;
+}
+function renderPaidList(){
+  const tbl=$('#paidlist-table'); if(!tbl) return;
+  populatePlMonthFilter();
+  const rows=getFilteredPaidEntries();
+  const total=rows.reduce((s,e)=>s+entryCalc(e).due,0);
+  $('#pl-stats').innerHTML=stat('total','Entries',rows.length,'')+stat('collected','Total (Net Due)','₱'+peso(total),'');
+  tbl.querySelector('tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e);
+    const chequeCell = e.chequeNo ? `<span class="mono">${esc(e.chequeNo)}</span>` : '<span class="muted">—</span>';
+    const mismatchNote = e.mismatchFlag ? ` <span title="Cheque-amount mismatch of ₱${peso(Math.abs(e.mismatchDiff||0))}" style="color:#b91c1c">⚠</span>` : '';
+    return `<tr><td class="mono">${esc(e.paidDate)}</td><td class="mono">${esc(e.si||'—')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
+      <td class="num-cell">₱${peso(t.due)}${mismatchNote}</td><td>${chequeCell}</td><td class="muted">${esc(e.chequeRemark||'')}</td></tr>`;
+  }).join(''):`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No paid entries</div>Nothing paid yet matching this filter.</div></td></tr>`;
+  tbl.querySelector('tfoot').innerHTML = rows.length?`<tr><td colspan="5" style="text-align:right;font-weight:700">Total</td><td class="num-cell" style="font-weight:700">₱${peso(total)}</td><td colspan="2"></td></tr>`:'';
+}
+function exportPaidList(){
+  const rows=getFilteredPaidEntries();
+  if(!rows.length){ toast('Nothing to export','error'); return; }
+  const headers=['Paid Date','SI #','BU','SBU','Type','Net Due','Cheque #','Cheque Remark'];
+  const data=rows.map(e=>{ const t=entryCalc(e);
+    return [e.paidDate||'', e.si||'', e.bu||'', e.sbu||'', e.type||'', t.due.toFixed(2), e.chequeNo||'', e.chequeRemark||''];
+  });
+  downloadCSV('emelco_paid_entries_'+todayISO()+'.csv', headers, data);
 }
 
 function renderSetup(){
