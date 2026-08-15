@@ -385,7 +385,7 @@ body.role-operations .owner-only{display:none!important}
   <!-- UNBILLED -->
   <div class="page fin-only" id="page-unbilled">
     <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
-    <p class="hint">Completed trips (CCAC, CMIP, CDI) with no <strong>cutoff</strong> assigned yet — the office marks a trip's cutoff when it's actually grouped into a submission. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
+    <p class="hint">Completed trips (CCAC, CMIP, CDI) with no <strong>cutoff</strong> assigned yet — the office marks a trip's cutoff when it's actually grouped into a submission. "Expected" = trip Rate + Surcharge as logged (raw). "Expected (Net of VAT/WHT)" applies the same VAT 12% / WHT 2% used elsewhere in billing — this is the figure totals and CSV export use. <span id="ub-caveat"></span></p>
     <div class="toolbar">
       <span class="muted" id="ub-coverage"></span>
       <div class="spacer"></div>
@@ -404,6 +404,7 @@ body.role-operations .owner-only{display:none!important}
           <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('rate')">Rate <span id="ubSort-rate" class="muted"></span></th>
           <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('surcharge')">Surcharge <span id="ubSort-surcharge" class="muted"></span></th>
           <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('expected')">Expected <span id="ubSort-expected" class="muted"></span></th>
+          <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('due')">Expected (Net of VAT/WHT) <span id="ubSort-due" class="muted"></span></th>
         </tr></thead><tbody></tbody>
       </table>
     </div>
@@ -538,7 +539,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608152300';
+const APP_VERSION = '202608152330';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1110,7 +1111,7 @@ function renderOverview(){
     if(s.cls==='unpaid'){ over+=t.due; overNotSubmitted+=t.due; } });
   const pct=net?Math.round(paid/net*100):0;
   const noCutoffTrips=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed' && !isBilled(t));
-  const noCutoffTotal=noCutoffTrips.reduce((a,t)=>a+tripExpected(t),0);
+  const noCutoffTotal=noCutoffTrips.reduce((a,t)=>a+tripDue(t),0);
   $('#ov-stats').innerHTML=`
     ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
@@ -1796,6 +1797,7 @@ function commitHistImport(){
    ============================================================ */
 function num(x){ return Number(x)||0; }
 function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
+function tripDue(t){ const net=tripExpected(t); return net + net*VAT_RATE - net*WHT_RATE; } // net of VAT(12%)-WHT(2%), same formula as entryCalc().due
 function isBilled(t){ return !!String(t.cutoff||'').trim(); }
 function legacyCoveringEntry(t){
   const d=t.tripStartDate||t.dispatchedDate; if(!d) return null;
@@ -1837,6 +1839,7 @@ function ubSortValue(t,col){
     case 'rate': return num(t.rate);
     case 'surcharge': return num(t.surcharge);
     case 'expected': return tripExpected(t);
+    case 'due': return tripDue(t);
     case 'tripStartDate': return t.tripStartDate||t.dispatchedDate||'';
     default: return String(t[col]||'').toLowerCase();
   }
@@ -1849,7 +1852,7 @@ function sortUnbilledRows(rows){
   });
 }
 function updateUbSortIndicators(){
-  ['tripStartDate','client','plate','driver','rate','surcharge','expected'].forEach(c=>{
+  ['tripStartDate','client','plate','driver','rate','surcharge','expected','due'].forEach(c=>{
     const el=$('#ubSort-'+c); if(!el) return;
     el.textContent = c===UB_SORT_COL ? (UB_SORT_DIR===1?'▲':'▼') : '';
   });
@@ -1864,8 +1867,8 @@ function exportUnbilled(){
   const q=($('#ubSearch')?.value||'').toLowerCase();
   const rows=getUnbilledRows(q);
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Date','Client','Code','Plate','Driver','Area/Destination','Rate','Surcharge','Expected'];
-  const data=rows.map(t=>[t.tripStartDate||t.dispatchedDate||'', t.client||'', t.code||t.id||'', t.plate||'', t.driver||'', t.area||t.destination||'', num(t.rate).toFixed(2), num(t.surcharge).toFixed(2), tripExpected(t).toFixed(2)]);
+  const headers=['Date','Client','Code','Plate','Driver','Area/Destination','Rate','Surcharge','Expected','Expected (Net of VAT/WHT)'];
+  const data=rows.map(t=>[t.tripStartDate||t.dispatchedDate||'', t.client||'', t.code||t.id||'', t.plate||'', t.driver||'', t.area||t.destination||'', num(t.rate).toFixed(2), num(t.surcharge).toFixed(2), tripExpected(t).toFixed(2), tripDue(t).toFixed(2)]);
   downloadCSV('emelco_unbilled_'+todayISO()+'.csv', headers, data);
 }
 function renderUnbilled(){
@@ -1873,11 +1876,11 @@ function renderUnbilled(){
   const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
   const unbilled=completed.filter(t=>!isBilled(t));
   let billedCount=0; completed.forEach(t=>{ if(isBilled(t))billedCount++; });
-  const expTotal=unbilled.reduce((a,t)=>a+tripExpected(t),0);
+  const expTotal=unbilled.reduce((a,t)=>a+tripDue(t),0);
   const el=$('#ub-stats'); if(el) el.innerHTML=`
-    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no cutoff assigned')}
-    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripExpected(t):0),0)),billedCount+' completed trips with a cutoff')}
-    ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
+    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no cutoff assigned · net of VAT/WHT')}
+    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripDue(t):0),0)),billedCount+' completed trips with a cutoff')}
+    ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripDue(t),0)),completed.length+' total completed')}`;
   const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} trips (${UNBILLED_CLIENTS.join('/')}) are marked completed`;
   const cav=$('#ub-caveat'); if(cav) cav.textContent = '';
   const filtered=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)));
@@ -1891,8 +1894,9 @@ function renderUnbilled(){
     <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
     <td class="muted">${esc(t.area||t.destination||'')}</td>
     <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
-    <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
-    : `<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed trips have a cutoff assigned — or none are marked completed yet.</div></td></tr>`;
+    <td class="num-cell">₱${peso(tripExpected(t))}</td>
+    <td class="num-cell"><strong>₱${peso(tripDue(t))}</strong></td></tr>`).join('')
+    : `<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed trips have a cutoff assigned — or none are marked completed yet.</div></td></tr>`;
 }
 
 /* ---- start ---- */
