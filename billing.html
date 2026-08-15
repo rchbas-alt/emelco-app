@@ -182,7 +182,7 @@ body.role-operations .owner-only{display:none!important}
   <div class="page active" id="page-overview">
     <div class="toolbar">
       <div class="spacer"></div>
-      <button class="btn btn-primary btn-sm owner-only" onclick="publishVersionFromUI()">📤 Publish this version</button>
+      <button class="btn btn-primary btn-sm owner-only" id="publishVersionBtn" style="display:none" onclick="publishVersionFromUI()">📤 Publish this version</button>
       <button class="btn btn-ghost btn-sm" onclick="exportOverview()">⬇ Export CSV (by period)</button>
     </div>
     <div id="dupeWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #d97706;background:#fffbeb;border-radius:8px">
@@ -538,7 +538,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608152200';
+const APP_VERSION = '202608152300';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -631,13 +631,18 @@ function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
 let currentRole=null, pickedRole='owner', currentName='';
 function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
 function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ let saved=localStorage.getItem('emelco_user_name')||''; let nm=(prompt('Your name (for the record):', saved)||saved||'').trim(); if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); } setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
-function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; }
+function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; const pv=$('#publishVersionBtn'); if(pv) pv.style.display = isDeployAdmin() ? 'inline-flex' : 'none'; }
 function doLogout(){ if(!confirm('Switch user / lock billing?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations'); $('#role-badge').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
 function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
 
 /* ============================================================
    Version gate
    ============================================================ */
+// Only one specific person actually pushes code to GitHub, even though Owner login is shared
+// by several people for billing access — publish rights are scoped to that one name, not the
+// Owner role, so a shared login can't accidentally publish an in-between deploy snapshot.
+const DEPLOY_ADMIN_NAME = 'ruchan';
+function isDeployAdmin(){ return String(currentName||'').trim().toLowerCase()===DEPLOY_ADMIN_NAME; }
 async function checkVersion(){
   const isLocal = location.protocol==='file:'||/localhost|127\.0\.0\.1/.test(location.host);
   if(isLocal) return;
@@ -654,13 +659,15 @@ async function checkVersion(){
       // Only offer the publish escape hatch when THIS build is newer than what's recorded —
       // that means this is very likely the person who just deployed new code and forgot to
       // publish, not a stale client. Never offer it when older, so a stale cached tab can't
-      // accidentally roll the recorded version backward.
+      // accidentally roll the recorded version backward. Restricted to the named deploy admin,
+      // not just Owner role, since Owner login is shared by people who aren't deploying code.
       const btn=$('#version-publish-btn');
-      if(btn) btn.style.display = (Number(APP_VERSION) > Number(deployed||0)) ? 'flex' : 'none';
+      if(btn) btn.style.display = (Number(APP_VERSION) > Number(deployed||0) && isDeployAdmin()) ? 'flex' : 'none';
     }
   }catch(e){ /* non-fatal */ }
 }
 async function publishFromBlock(){
+  if(!isDeployAdmin()){ toast('Publishing a version is restricted to the deploy admin','error'); return; } // defense in depth
   if(!confirm(`Publish ${APP_VERSION} as the deployed billing version?\n\nOnly do this if you just uploaded this exact billing.html to GitHub and confirmed it's live.`)) return;
   await publishBillingVersion('');
   location.reload(true);
@@ -696,9 +703,10 @@ async function publishBillingVersion(note){
   if(res.ok){ toast('Billing version '+APP_VERSION+' published ✓','success'); }
   else { toast('Version publish failed','error'); console.error(await res.text()); }
 }
-// One-click UI wrapper around publishBillingVersion() — Owner-only button on Overview.
+// One-click UI wrapper around publishBillingVersion() — restricted to the named deploy admin.
 // Confirms first (this is a real deploy action, not reversible by undo), then runs it.
 async function publishVersionFromUI(){
+  if(!isDeployAdmin()){ toast('Publishing a version is restricted to the deploy admin','error'); return; } // defense in depth — button shouldn't be visible otherwise
   if(!confirm(`Publish version ${APP_VERSION} as the deployed billing version?\n\nOnly do this AFTER uploading this exact billing.html to GitHub and confirming it's live — publishing before that will lock everyone else out until the real file catches up.`)) return;
   const note=(prompt('Optional note for this release (leave blank to skip):')||'').trim();
   await publishBillingVersion(note);
