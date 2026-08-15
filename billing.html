@@ -76,6 +76,7 @@ tr:last-child td{border-bottom:none}
 .hint{font-size:11px;color:var(--text3);margin:6px 0 14px;line-height:1.5}
 .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:22px 0 12px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
 /* fin-only gating removed 2026-08-15 — Operations gets full owner-level access on billing.html now, since office staff are the ones tracking the billing process day to day */
+body.role-operations .owner-only{display:none!important}
 
 /* import preview row states */
 .row-matched{background:rgba(26,140,82,.08)!important}
@@ -180,6 +181,7 @@ tr:last-child td{border-bottom:none}
   <div class="page active" id="page-overview">
     <div class="toolbar">
       <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm owner-only" onclick="publishVersionFromUI()">📤 Publish this version</button>
       <button class="btn btn-ghost btn-sm" onclick="exportOverview()">⬇ Export CSV (by period)</button>
     </div>
     <div id="dupeWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #d97706;background:#fffbeb;border-radius:8px">
@@ -194,7 +196,7 @@ tr:last-child td{border-bottom:none}
       <div style="font-weight:700;color:#155e75">🔷 <span id="cutoffMismatchCount"></span> trips where cutoff-field status disagrees with date-range coverage</div>
       <div class="hint" style="margin:4px 0 8px">The Unbilled table now goes strictly by the trip's own cutoff field. These trips disagree with the old date-range check (either has a cutoff but falls outside any entry's period, or has no cutoff but its date happens to sit inside one) — usually a typo'd cutoff or a legitimate cross-BU/disputed case. Nothing here is changed automatically.</div>
       <div class="table-wrapper"><table id="cutoffMismatch-table">
-        <thead><tr><th>Date</th><th>Code</th><th>Plate</th><th>Cutoff</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date</th><th>Client</th><th>Code</th><th>Plate</th><th>Cutoff</th><th>Status</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -382,17 +384,17 @@ tr:last-child td{border-bottom:none}
   <!-- UNBILLED -->
   <div class="page fin-only" id="page-unbilled">
     <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
-    <p class="hint">Completed CCAC trips with no <strong>cutoff</strong> assigned yet — the office marks a trip's cutoff when it's actually grouped into a submission. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
+    <p class="hint">Completed trips (CCAC, CMIP, CDI) with no <strong>cutoff</strong> assigned yet — the office marks a trip's cutoff when it's actually grouped into a submission. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
     <div class="toolbar">
       <span class="muted" id="ub-coverage"></span>
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="exportUnbilled()">⬇ Export CSV</button>
-      <input type="search" class="search-box" id="ubSearch" placeholder="Search plate, driver, area…" oninput="renderUnbilled()">
+      <input type="search" class="search-box" id="ubSearch" placeholder="Search plate, driver, area, client…" oninput="renderUnbilled()">
     </div>
     <div class="table-wrapper">
       <table id="ub-table">
         <thead><tr>
-          <th>Date</th><th>Code</th><th>Plate</th><th>Driver</th><th>Area / Destination</th>
+          <th>Date</th><th>Client</th><th>Code</th><th>Plate</th><th>Driver</th><th>Area / Destination</th>
           <th class="num-cell">Rate</th><th class="num-cell">Surcharge</th><th class="num-cell">Expected</th>
         </tr></thead><tbody></tbody>
       </table>
@@ -528,8 +530,9 @@ tr:last-child td{border-bottom:none}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608151930';
+const APP_VERSION = '202608152030';
 const CLIENT   = 'CCAC';
+const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
 const TYPES = ['RECON','SURCHARGE','INCREMENTALS'];
@@ -674,6 +677,13 @@ async function publishBillingVersion(note){
   if(res.ok){ toast('Billing version '+APP_VERSION+' published ✓','success'); }
   else { toast('Version publish failed','error'); console.error(await res.text()); }
 }
+// One-click UI wrapper around publishBillingVersion() — Owner-only button on Overview.
+// Confirms first (this is a real deploy action, not reversible by undo), then runs it.
+async function publishVersionFromUI(){
+  if(!confirm(`Publish version ${APP_VERSION} as the deployed billing version?\n\nOnly do this AFTER uploading this exact billing.html to GitHub and confirming it's live — publishing before that will lock everyone else out until the real file catches up.`)) return;
+  const note=(prompt('Optional note for this release (leave blank to skip):')||'').trim();
+  await publishBillingVersion(note);
+}
 
 /* ============================================================
    State + cloud I/O
@@ -777,7 +787,7 @@ async function boot(){
   if(!STATE.bus.length) seedBUs();
   try{
     const got=await cloudGetJSON(TRIPS_API);
-    if(!got.__missing){ const c=got.data; TRIPS=(c.trips||[]).filter(t=>String(t.client||'').toUpperCase()===CLIENT); }
+    if(!got.__missing){ const c=got.data; TRIPS=(c.trips||[]).filter(t=>UNBILLED_CLIENTS.includes(String(t.client||'').toUpperCase())); }
   }catch(e){ console.warn('trips load failed',e.message); }
   renderAll();
 }
@@ -1776,6 +1786,7 @@ function renderCutoffMismatchCheck(){
   const tb=$('#cutoffMismatch-table tbody');
   if(tb) tb.innerHTML=rows.map(t=>`<tr>
     <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.client||'')}</td>
     <td class="mono">${esc(t.code||t.id||'')}</td>
     <td class="mono">${esc(t.plate||'')}</td>
     <td class="mono">${esc(t.cutoff||'—')}</td>
@@ -1785,15 +1796,15 @@ function renderCutoffMismatchCheck(){
 function getUnbilledRows(q){
   const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
   const unbilled=completed.filter(t=>!isBilled(t));
-  return unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
+  return unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)))
     .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
 }
 function exportUnbilled(){
   const q=($('#ubSearch')?.value||'').toLowerCase();
   const rows=getUnbilledRows(q);
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Date','Code','Plate','Driver','Area/Destination','Rate','Surcharge','Expected'];
-  const data=rows.map(t=>[t.tripStartDate||t.dispatchedDate||'', t.code||t.id||'', t.plate||'', t.driver||'', t.area||t.destination||'', num(t.rate).toFixed(2), num(t.surcharge).toFixed(2), tripExpected(t).toFixed(2)]);
+  const headers=['Date','Client','Code','Plate','Driver','Area/Destination','Rate','Surcharge','Expected'];
+  const data=rows.map(t=>[t.tripStartDate||t.dispatchedDate||'', t.client||'', t.code||t.id||'', t.plate||'', t.driver||'', t.area||t.destination||'', num(t.rate).toFixed(2), num(t.surcharge).toFixed(2), tripExpected(t).toFixed(2)]);
   downloadCSV('emelco_unbilled_'+todayISO()+'.csv', headers, data);
 }
 function renderUnbilled(){
@@ -1806,19 +1817,20 @@ function renderUnbilled(){
     ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no cutoff assigned')}
     ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripExpected(t):0),0)),billedCount+' completed trips with a cutoff')}
     ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
-  const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} CCAC trips are marked completed`;
+  const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} trips (${UNBILLED_CLIENTS.join('/')}) are marked completed`;
   const cav=$('#ub-caveat'); if(cav) cav.textContent = '';
-  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
+  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)))
     .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
   const tb=$('#ub-table tbody'); if(!tb)return;
   tb.innerHTML=rows.length?rows.map(t=>`<tr>
     <td class="muted mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.client||'')}</td>
     <td class="mono">${esc(t.code||t.id||'')}</td>
     <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
     <td class="muted">${esc(t.area||t.destination||'')}</td>
     <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
     <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
-    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips have a cutoff assigned — or none are marked completed yet.</div></td></tr>`;
+    : `<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed trips have a cutoff assigned — or none are marked completed yet.</div></td></tr>`;
 }
 
 /* ---- start ---- */
