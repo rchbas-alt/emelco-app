@@ -1148,7 +1148,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202608152130'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar
+const APP_VERSION = '202608152200'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar; added Publish-from-block-screen escape hatch
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -3705,6 +3705,13 @@ function showForceReloadBlock(deployedVer, note){
   const block = document.createElement('div');
   block.id = 'force-reload-block';
   block.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(10,12,20,.92);display:flex;align-items:center;justify-content:center;font-family:Sora,sans-serif;padding:20px';
+  // If THIS build's version number is newer than what's recorded as deployed, this is very
+  // likely the person who just pushed new code and forgot to publish it — not a stale client.
+  // Offer a safe escape hatch right here, since the block itself covers any in-app Publish
+  // button. Only offer it when newer (never when older/stale) so an old cached tab can't
+  // accidentally roll the recorded version backward.
+  const isNewer = Number(APP_VERSION) > Number(deployedVer||0);
+  const publishBtn = isNewer ? `<button onclick="publishFromBlock()" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;margin-top:8px">✅ I just deployed this — Publish it</button>` : '';
   block.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:30px 28px;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
       <div style="font-size:34px;margin-bottom:10px">🔄</div>
@@ -3712,9 +3719,15 @@ function showForceReloadBlock(deployedVer, note){
       <div style="font-size:12.5px;color:#5a6175;margin-bottom:4px">You're on <strong>${APP_VERSION}</strong>. Deployed is <strong>${deployedVer}</strong>.</div>
       ${note?`<div style="font-size:12px;color:#5a6175;margin-bottom:14px">${note}</div>`:'<div style="margin-bottom:14px"></div>'}
       <button onclick="location.reload(true)" style="width:100%;background:#d4820a;color:#000;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer">Reload Now</button>
+      ${publishBtn}
       <div style="font-size:10.5px;color:#9099b0;margin-top:10px">This screen will stay until you reload — the old file can no longer be used.</div>
     </div>`;
   document.body.appendChild(block);
+}
+async function publishFromBlock(){
+  if(!confirm(`Publish ${APP_VERSION} as the deployed version?\n\nOnly do this if you just uploaded this exact index.html to GitHub and confirmed it's live.`)) return;
+  await publishAppVersion('');
+  location.reload(true);
 }
 
 // Re-check periodically in case someone leaves a tab open on the old version
