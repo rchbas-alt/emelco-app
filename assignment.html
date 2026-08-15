@@ -311,7 +311,11 @@ function renderGrid(){
             if(hasExpenses){ dayExpense[idx] += expenses; dayExpenseTripCount[idx]++; }
             const budgetFmt = budget ? fmtPeso(budget) : '';
             const expenseFmt = hasExpenses ? fmtPeso(expenses) : '—';
-            const budgetLine = budgetFmt ? `<div class="budget-line"><span class="b-part">${budgetFmt}</span> <span class="sep">/</span> <span class="e-part${hasExpenses?'':' pending'}">${expenseFmt}</span></div>` : '';
+            // Show this line whenever there's a budget OR real expenses — previously it only
+            // showed when budget was set, so a trip with expenses logged but no budget entered
+            // silently disappeared from the chip while still counting toward the day's expense
+            // total, making the visible per-chip numbers not add up to the header total.
+            const budgetLine = (budgetFmt || hasExpenses) ? `<div class="budget-line"><span class="b-part">${budgetFmt||'—'}</span> <span class="sep">/</span> <span class="e-part${hasExpenses?'':' pending'}">${expenseFmt}</span></div>` : '';
             const markers = [];
             if(t.isFWD) markers.push('FWD');
             if(t.isMilkRun) markers.push('MR');
