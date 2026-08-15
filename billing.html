@@ -41,7 +41,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .main{padding:20px;max-width:1500px}
 .page{display:none}.page.active{display:block}
-.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px}
 .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:3px}
 .stat-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px}
 .stat-value{font-size:22px;font-weight:700}
@@ -394,8 +394,15 @@ body.role-operations .owner-only{display:none!important}
     <div class="table-wrapper">
       <table id="ub-table">
         <thead><tr>
-          <th>Date</th><th>Client</th><th>Code</th><th>Plate</th><th>Driver</th><th>Area / Destination</th>
-          <th class="num-cell">Rate</th><th class="num-cell">Surcharge</th><th class="num-cell">Expected</th>
+          <th style="cursor:pointer" onclick="sortUnbilled('tripStartDate')">Date <span id="ubSort-tripStartDate" class="muted"></span></th>
+          <th style="cursor:pointer" onclick="sortUnbilled('client')">Client <span id="ubSort-client" class="muted"></span></th>
+          <th>Code</th>
+          <th style="cursor:pointer" onclick="sortUnbilled('plate')">Plate <span id="ubSort-plate" class="muted"></span></th>
+          <th style="cursor:pointer" onclick="sortUnbilled('driver')">Driver <span id="ubSort-driver" class="muted"></span></th>
+          <th>Area / Destination</th>
+          <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('rate')">Rate <span id="ubSort-rate" class="muted"></span></th>
+          <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('surcharge')">Surcharge <span id="ubSort-surcharge" class="muted"></span></th>
+          <th class="num-cell" style="cursor:pointer" onclick="sortUnbilled('expected')">Expected <span id="ubSort-expected" class="muted"></span></th>
         </tr></thead><tbody></tbody>
       </table>
     </div>
@@ -530,7 +537,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608152030';
+const APP_VERSION = '202608152100';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1082,11 +1089,18 @@ function renderOverview(){
     if(e.status==='submitted'){ proc+=t.due; if(s.cls==='unpaid'){ over+=t.due; overSubmitted+=t.due; } return; }
     if(s.cls==='unpaid'){ over+=t.due; overNotSubmitted+=t.due; } });
   const pct=net?Math.round(paid/net*100):0;
+  const noCutoffTrips=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed' && !isBilled(t));
+  const noCutoffTotal=noCutoffTrips.reduce((a,t)=>a+tripExpected(t),0);
   $('#ov-stats').innerHTML=`
     ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
     ${stat('processing','In processing','₱'+peso(proc),'submitted to client (incl. overdue)')}
-    ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}`;
+    ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}
+    <div class="stat-card overdue" style="cursor:pointer" onclick="switchTab('unbilled')" title="Jump to Unbilled">
+      <div class="stat-label">No cutoff assigned</div>
+      <div class="stat-value">₱${peso(noCutoffTotal)}</div>
+      <div class="stat-sub">${noCutoffTrips.length} completed trips (CCAC/CMIP/CDI) — click to view</div>
+    </div>`;
   $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
   const byPeriod=buildOverviewPeriods();
   const keys=Object.keys(byPeriod).sort().reverse();
@@ -1793,11 +1807,38 @@ function renderCutoffMismatchCheck(){
     <td>${isBilled(t)?'Has cutoff':'No cutoff'} / ${legacyIsBilled(t)?'in a range':'no range match'}</td>
   </tr>`).join('');
 }
+let UB_SORT_COL='tripStartDate', UB_SORT_DIR=1; // default oldest-first, so the stalest backlog surfaces first
+function sortUnbilled(col){
+  if(UB_SORT_COL===col) UB_SORT_DIR*=-1; else { UB_SORT_COL=col; UB_SORT_DIR=1; }
+  renderUnbilled();
+}
+function ubSortValue(t,col){
+  switch(col){
+    case 'rate': return num(t.rate);
+    case 'surcharge': return num(t.surcharge);
+    case 'expected': return tripExpected(t);
+    case 'tripStartDate': return t.tripStartDate||t.dispatchedDate||'';
+    default: return String(t[col]||'').toLowerCase();
+  }
+}
+function sortUnbilledRows(rows){
+  return rows.sort((a,b)=>{
+    const va=ubSortValue(a,UB_SORT_COL), vb=ubSortValue(b,UB_SORT_COL);
+    if(typeof va==='number') return (va-vb)*UB_SORT_DIR;
+    return String(va).localeCompare(String(vb))*UB_SORT_DIR;
+  });
+}
+function updateUbSortIndicators(){
+  ['tripStartDate','client','plate','driver','rate','surcharge','expected'].forEach(c=>{
+    const el=$('#ubSort-'+c); if(!el) return;
+    el.textContent = c===UB_SORT_COL ? (UB_SORT_DIR===1?'▲':'▼') : '';
+  });
+}
 function getUnbilledRows(q){
   const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
   const unbilled=completed.filter(t=>!isBilled(t));
-  return unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)))
-    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+  const filtered=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)));
+  return sortUnbilledRows(filtered);
 }
 function exportUnbilled(){
   const q=($('#ubSearch')?.value||'').toLowerCase();
@@ -1819,8 +1860,9 @@ function renderUnbilled(){
     ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
   const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} trips (${UNBILLED_CLIENTS.join('/')}) are marked completed`;
   const cav=$('#ub-caveat'); if(cav) cav.textContent = '';
-  const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)))
-    .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+  const filtered=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')+' '+(t.client||'')).toLowerCase().includes(q)));
+  const rows=sortUnbilledRows(filtered);
+  updateUbSortIndicators();
   const tb=$('#ub-table tbody'); if(!tb)return;
   tb.innerHTML=rows.length?rows.map(t=>`<tr>
     <td class="muted mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
