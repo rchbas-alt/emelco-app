@@ -274,6 +274,11 @@ body.role-operations .fin-only{display:none!important}
     <select class="filter-select" id="filter-area" onchange="currentPage=1;renderTable()"><option value="">All Areas</option></select>
     <select class="filter-select" id="filter-week" onchange="currentPage=1;renderTable()"><option value="">All Weeks</option></select>
     <select class="filter-select" id="filter-driver" onchange="currentPage=1;renderTable()"><option value="">All Drivers</option></select>
+    <select class="filter-select" id="filter-cutoff" onchange="currentPage=1;renderTable()">
+      <option value="">Any Cutoff</option>
+      <option value="none">No cutoff</option>
+      <option value="has">Has cutoff</option>
+    </select>
     <select class="filter-select" id="filter-dupe" onchange="currentPage=1;renderTable()">
       <option value="">All Entries</option>
       <option value="exact">🔴 Exact Duplicates</option>
@@ -1143,7 +1148,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202607282015'; // added FWD and MilkRun trip markers: FWD checkbox near plate (higher rate indicator), MilkRun checkbox near destinations (multi-region ~2-day trips, informational furthest-drop×2 context); both surface on assignment.html chips as small badges + border styling; trip rate remains fully manual entry.
+const APP_VERSION = '202608152130'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -2312,6 +2317,7 @@ function getFiltered(){
   const wk=document.getElementById('filter-week').value;
   const dr=document.getElementById('filter-driver').value;
   const dp=document.getElementById('filter-dupe').value;
+  const co=document.getElementById('filter-cutoff').value;
   // sync dupe filter btn state
   showingDupesOnly=(dp==='any'||dp==='exact'||dp==='soft');
   return trips.filter(t=>{
@@ -2319,6 +2325,8 @@ function getFiltered(){
     if(ar&&t.area!==ar)return false;
     if(wk&&String(t.weekMon)!==wk&&String(t.weekFri)!==wk)return false;
     if(dr&&t.driver!==dr)return false;
+    if(co==='none'&&String(t.cutoff||'').trim())return false;
+    if(co==='has'&&!String(t.cutoff||'').trim())return false;
     if(dp==='exact'&&dupeMap[t.id]!=='exact')return false;
     if(dp==='soft'&&dupeMap[t.id]!=='soft')return false;
     if(dp==='any'&&!dupeMap[t.id])return false;
