@@ -151,6 +151,7 @@ body.role-operations .owner-only{display:none!important}
     <div style="font-weight:700;font-size:16px;margin-bottom:6px">Update required</div>
     <div id="version-msg" style="font-size:12px;color:var(--text2);margin-bottom:18px"></div>
     <button class="btn btn-primary" style="justify-content:center;width:100%" onclick="location.reload(true)">Reload now</button>
+    <button class="btn btn-primary" style="justify-content:center;width:100%;margin-top:8px;background:#16a34a;display:none" id="version-publish-btn" onclick="publishFromBlock()">✅ I just deployed this — Publish it</button>
   </div>
 </div>
 
@@ -537,7 +538,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608152100';
+const APP_VERSION = '202608152200';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -650,8 +651,19 @@ async function checkVersion(){
     if(deployed && deployed!==APP_VERSION){
       $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed billing version is <strong>${deployed}</strong>.`;
       $('#version-block').classList.add('show');
+      // Only offer the publish escape hatch when THIS build is newer than what's recorded —
+      // that means this is very likely the person who just deployed new code and forgot to
+      // publish, not a stale client. Never offer it when older, so a stale cached tab can't
+      // accidentally roll the recorded version backward.
+      const btn=$('#version-publish-btn');
+      if(btn) btn.style.display = (Number(APP_VERSION) > Number(deployed||0)) ? 'flex' : 'none';
     }
   }catch(e){ /* non-fatal */ }
+}
+async function publishFromBlock(){
+  if(!confirm(`Publish ${APP_VERSION} as the deployed billing version?\n\nOnly do this if you just uploaded this exact billing.html to GitHub and confirmed it's live.`)) return;
+  await publishBillingVersion('');
+  location.reload(true);
 }
 
 // Run once manually AFTER deploying billing.html, to record which billing version is now
