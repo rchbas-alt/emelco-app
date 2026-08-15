@@ -3715,14 +3715,25 @@ setInterval(checkAppVersion, 3*60*1000); // every 3 min
 // Run once manually AFTER deploying index.html, to record which version is now deployed.
 // Also run it after a ROLLBACK — from the rolled-back build — so the recorded version follows
 // the file that is actually live. Any drift between the two locks clients out.
+// IMPORTANT: this MERGES into the existing app_version.json rather than overwriting it —
+// billing.html keeps its own `billingVersion` key in the same file, and a naive overwrite
+// here would silently wipe that key every time index.html republishes. GET-then-merge-then-PUT.
 async function publishAppVersion(note){
-  const payload = { deployedVersion: APP_VERSION, latestVersion: APP_VERSION, note: note||'', publishedAt: new Date().toISOString() };
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
+  let existing = {};
   let sha = null;
   try{
     const r = await fetch(GH_VERSION_API, { headers:{ 'X-Proxy-Auth': PROXY_SECRET } });
-    if(r.ok){ const m = await r.json(); sha = m.sha; }
+    if(r.ok){
+      const m = await r.json();
+      sha = m.sha;
+      if(m.content){ try{ existing = JSON.parse(safeAtobUtf8(m.content)); }catch(e){ existing = {}; } }
+    }
   }catch(e){}
+  const payload = Object.assign({}, existing, {
+    deployedVersion: APP_VERSION, latestVersion: APP_VERSION,
+    note: note||'', publishedAt: new Date().toISOString()
+  });
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
   const body = { message:'Bump app version to '+APP_VERSION, content };
   if(sha) body.sha = sha;
   const res = await fetch(GH_VERSION_API, {
