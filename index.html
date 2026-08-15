@@ -1148,7 +1148,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202608152200'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar; added Publish-from-block-screen escape hatch
+const APP_VERSION = '202608152300'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar; publish rights restricted to named deploy admin, not just Owner role
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -3700,6 +3700,11 @@ async function checkAppVersion(){
   } catch(e){ console.warn('Version check skipped:',e); }
 }
 
+// Only one specific person actually pushes code to GitHub, even though Owner login is shared
+// by several people for billing/payroll access — publish rights are scoped to that one name,
+// not the Owner role, so a shared login can't accidentally publish an in-between deploy snapshot.
+const DEPLOY_ADMIN_NAME = 'ruchan';
+function isDeployAdmin(){ return String(currentName||'').trim().toLowerCase()===DEPLOY_ADMIN_NAME; }
 function showForceReloadBlock(deployedVer, note){
   if(document.getElementById('force-reload-block')) return; // already showing
   const block = document.createElement('div');
@@ -3709,8 +3714,9 @@ function showForceReloadBlock(deployedVer, note){
   // likely the person who just pushed new code and forgot to publish it — not a stale client.
   // Offer a safe escape hatch right here, since the block itself covers any in-app Publish
   // button. Only offer it when newer (never when older/stale) so an old cached tab can't
-  // accidentally roll the recorded version backward.
-  const isNewer = Number(APP_VERSION) > Number(deployedVer||0);
+  // accidentally roll the recorded version backward — and only to the named deploy admin,
+  // since Owner login is shared by people who aren't the one actually deploying code.
+  const isNewer = Number(APP_VERSION) > Number(deployedVer||0) && isDeployAdmin();
   const publishBtn = isNewer ? `<button onclick="publishFromBlock()" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;margin-top:8px">✅ I just deployed this — Publish it</button>` : '';
   block.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:30px 28px;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
@@ -3725,6 +3731,7 @@ function showForceReloadBlock(deployedVer, note){
   document.body.appendChild(block);
 }
 async function publishFromBlock(){
+  if(!isDeployAdmin()){ toast('Publishing a version is restricted to the deploy admin','error'); return; } // defense in depth — button shouldn't be visible otherwise
   if(!confirm(`Publish ${APP_VERSION} as the deployed version?\n\nOnly do this if you just uploaded this exact index.html to GitHub and confirmed it's live.`)) return;
   await publishAppVersion('');
   location.reload(true);
