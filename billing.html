@@ -75,7 +75,7 @@ tr:last-child td{border-bottom:none}
 .empty-icon{font-size:40px;margin-bottom:12px}.empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
 .hint{font-size:11px;color:var(--text3);margin:6px 0 14px;line-height:1.5}
 .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:22px 0 12px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
-body.role-operations .fin-only{display:none!important}
+/* fin-only gating removed 2026-08-15 — Operations gets full owner-level access on billing.html now, since office staff are the ones tracking the billing process day to day */
 
 /* import preview row states */
 .row-matched{background:rgba(26,140,82,.08)!important}
@@ -190,6 +190,14 @@ body.role-operations .fin-only{display:none!important}
         <tbody></tbody>
       </table></div>
     </div>
+    <div id="cutoffMismatchWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #0891b2;background:#ecfeff;border-radius:8px">
+      <div style="font-weight:700;color:#155e75">🔷 <span id="cutoffMismatchCount"></span> trips where cutoff-field status disagrees with date-range coverage</div>
+      <div class="hint" style="margin:4px 0 8px">The Unbilled table now goes strictly by the trip's own cutoff field. These trips disagree with the old date-range check (either has a cutoff but falls outside any entry's period, or has no cutoff but its date happens to sit inside one) — usually a typo'd cutoff or a legitimate cross-BU/disputed case. Nothing here is changed automatically.</div>
+      <div class="table-wrapper"><table id="cutoffMismatch-table">
+        <thead><tr><th>Date</th><th>Code</th><th>Plate</th><th>Cutoff</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
     <div id="outlierWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #7c3aed;background:#f5f3ff;border-radius:8px">
       <div style="font-weight:700;color:#5b21b6">🟣 <span id="outlierCount"></span> entries break from their batch's period</div>
       <div class="hint" style="margin:4px 0 8px">These share a Trip End with several other entries of the same BU (same submission batch), but their Trip Start doesn't match the rest — could be a typo, or a legitimate disputed-trip resubmission billed separately. Needs a human call either way; nothing is changed automatically.</div>
@@ -254,7 +262,7 @@ body.role-operations .fin-only{display:none!important}
       </table>
     </div>
     <div class="section-title" style="margin-top:24px">Payments Received — by date &amp; cheque</div>
-    <p class="hint">Groups paid entries by the date they were marked paid and their cheque #, so one cheque covering several invoices shows as one line. Entries marked paid with no cheque # are grouped per date under "—".</p>
+    <p class="hint">Groups paid entries by the date they were marked paid and their cheque #, so one cheque covering several invoices shows as one line. Entries marked paid with no cheque # are grouped per date under "—". Total is the Due amount (Net + VAT − 2% WHT) — this is what an actual cheque reconciles against, not raw Net. A ⚠ flags any group where the logged cheque amount doesn't match this total.</p>
     <div class="toolbar">
       <span class="muted" id="paySumCount"></span>
       <div class="spacer"></div>
@@ -264,7 +272,7 @@ body.role-operations .fin-only{display:none!important}
       <table id="pay-sum-table">
         <thead><tr>
           <th>Date paid</th><th>Cheque #</th><th class="num-cell">Cheque amount</th>
-          <th class="num-cell">Invoices covered</th><th class="num-cell">Total (net)</th><th>Remark</th>
+          <th class="num-cell">Invoices covered</th><th class="num-cell">Total (due)</th><th>Remark</th>
         </tr></thead><tbody></tbody>
         <tfoot></tfoot>
       </table>
@@ -291,6 +299,7 @@ body.role-operations .fin-only{display:none!important}
       <span style="font-weight:700;color:var(--green)"><span id="bulkCount">0</span> selected — ₱<span id="bulkTotal">0.00</span> total</span>
       <div class="spacer"></div>
       <button class="btn btn-primary btn-sm" onclick="openBulkPaid()">Mark as Paid…</button>
+      <button class="btn btn-ghost btn-sm" id="bulkUnlockBtn" style="display:none" onclick="bulkUnlockSelected()">🔓 Unlock Selected</button>
       <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Clear</button>
     </div>
     <p class="hint">One row per BU + SBU + TYPE + billing period — the same shape as the CCAC tracker. SI # is optional; add it once CCAC issues it. This is the unit the office confirms as submitted/paid, matching how it worked in Excel. <span class="fin-only" style="color:var(--text3);text-decoration:underline;cursor:pointer" onclick="openHistImport()">Import 2026 history…</span></p>
@@ -373,7 +382,7 @@ body.role-operations .fin-only{display:none!important}
   <!-- UNBILLED -->
   <div class="page fin-only" id="page-unbilled">
     <div class="stats-row" id="ub-stats" style="grid-template-columns:repeat(3,1fr)"></div>
-    <p class="hint">Completed CCAC trips whose date doesn't fall inside <strong>any</strong> billing entry's period yet. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
+    <p class="hint">Completed CCAC trips with no <strong>cutoff</strong> assigned yet — the office marks a trip's cutoff when it's actually grouped into a submission. Expected amount = trip Rate + Surcharge as logged. <span id="ub-caveat"></span></p>
     <div class="toolbar">
       <span class="muted" id="ub-coverage"></span>
       <div class="spacer"></div>
@@ -466,7 +475,7 @@ body.role-operations .fin-only{display:none!important}
       </div>
       <div class="form-grid form-grid-2">
         <div class="form-group"><label class="form-label">Date paid <span class="muted">(optional — blank keeps each entry's existing date)</span></label><input type="date" class="form-input" id="bulkPaidDate"></div>
-        <div class="form-group"><label class="form-label">Cheque # <span class="muted">(optional)</span></label><input class="form-input" id="bulkChequeNo" placeholder="leave blank if none"></div>
+        <div class="form-group"><label class="form-label">Cheque # <span class="muted">(optional)</span></label><input class="form-input" id="bulkChequeNo" placeholder="leave blank if none" oninput="updateBulkPaidMatch()"></div>
         <div class="form-group"><label class="form-label">Aggregated total <span class="muted">(sum of Net Due for selected entries)</span></label><input class="form-input" id="bulkAggTotal" readonly style="font-weight:700"></div>
         <div class="form-group"><label class="form-label">Actual cheque amount <span class="muted">(type from the check stub)</span></label><input class="form-input" type="number" step="0.01" id="bulkChequeAmount" placeholder="e.g. 958083.93" oninput="updateBulkPaidMatch()"></div>
       </div>
@@ -519,7 +528,7 @@ body.role-operations .fin-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608151720';
+const APP_VERSION = '202608151930';
 const CLIENT   = 'CCAC';
 const YEAR     = 2026;
 const VAT_RATE = 0.12, WHT_RATE = 0.02;
@@ -633,6 +642,37 @@ async function checkVersion(){
       $('#version-block').classList.add('show');
     }
   }catch(e){ /* non-fatal */ }
+}
+
+// Run once manually AFTER deploying billing.html, to record which billing version is now
+// deployed. Same shared file as index.html's app_version.json — MERGES rather than overwrites,
+// so this can never wipe out index.html's deployedVersion/latestVersion keys, and vice versa.
+async function publishBillingVersion(note){
+  let existing = {};
+  let sha = null;
+  try{
+    const r = await fetch(VERSION_API, { headers: HDRS });
+    if(r.ok){
+      const m = await r.json();
+      sha = m.sha;
+      if(m.content){ try{ existing = JSON.parse(safeAtobUtf8(m.content)); }catch(e){ existing = {}; } }
+    }
+  }catch(e){}
+  const payload = Object.assign({}, existing, {
+    billingVersion: APP_VERSION,
+    billingNote: note||'',
+    billingPublishedAt: new Date().toISOString()
+  });
+  const content = toB64Utf8(JSON.stringify(payload,null,2));
+  const body = { message:'Bump billing version to '+APP_VERSION, content };
+  if(sha) body.sha = sha;
+  const res = await fetch(VERSION_API, {
+    method:'PUT',
+    headers: Object.assign({'Content-Type':'application/json'}, HDRS),
+    body: JSON.stringify(body)
+  });
+  if(res.ok){ toast('Billing version '+APP_VERSION+' published ✓','success'); }
+  else { toast('Version publish failed','error'); console.error(await res.text()); }
 }
 
 /* ============================================================
@@ -858,7 +898,7 @@ function renderBatchOutlierCheck(){
     <td class="num-cell">₱${peso(r.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); renderCutoffMismatchCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -968,7 +1008,7 @@ function buildPaymentsSummaryRows(){
     if(e.status!=='paid'||!e.paidDate) return;
     const key=e.paidDate+'|'+(e.chequeNo||'');
     const g=byGroup[key]=byGroup[key]||{date:e.paidDate,chequeNo:e.chequeNo||'',chequeAmount:null,count:0,total:0,remark:''};
-    g.count++; g.total+=entryCalc(e).net;
+    g.count++; g.total+=entryCalc(e).due; // due = net + VAT - WHT — this is what an actual cheque amount reconciles against, not net
     if(e.chequeAmount!=null && g.chequeAmount==null) g.chequeAmount=e.chequeAmount;
     if(e.chequeRemark && !g.remark) g.remark=e.chequeRemark;
   });
@@ -977,7 +1017,7 @@ function buildPaymentsSummaryRows(){
 function exportPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Date Paid','Cheque #','Cheque Amount','Invoices Covered','Total (Net)','Remark'];
+  const headers=['Date Paid','Cheque #','Cheque Amount','Invoices Covered','Total (Due)','Remark'];
   const data=rows.map(g=>[g.date, g.chequeNo||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
   downloadCSV('emelco_billing_payments_'+todayISO()+'.csv', headers, data);
 }
@@ -986,12 +1026,16 @@ function renderPaymentsSummary(){
   $('#paySumCount').textContent=rows.length?`${rows.length} payment groups`:'';
   const tb=$('#pay-sum-table tbody');
   if(!rows.length){ tb.innerHTML=`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
-  tb.innerHTML=rows.map(g=>`<tr>
+  tb.innerHTML=rows.map(g=>{
+    const mismatch = g.chequeAmount!=null && Math.abs(g.chequeAmount-g.total)>=0.02;
+    const mismatchBadge = mismatch ? ` <span title="Cheque amount differs from this group's Total (Due) by ₱${peso(Math.abs(g.chequeAmount-g.total))}" style="color:#b91c1c">⚠</span>` : '';
+    return `<tr>
     <td class="mono">${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}</td>
-    <td class="num-cell">${g.chequeAmount!=null?'₱'+peso(g.chequeAmount):'—'}</td>
+    <td class="num-cell">${g.chequeAmount!=null?'₱'+peso(g.chequeAmount):'—'}${mismatchBadge}</td>
     <td class="num-cell">${g.count}</td>
     <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
-    <td class="muted">${esc(g.remark||'')}</td></tr>`).join('');
+    <td class="muted">${esc(g.remark||'')}</td></tr>`;
+  }).join('');
   const grand=rows.reduce((a,g)=>a+g.total,0);
   $('#pay-sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
 }
@@ -1099,10 +1143,10 @@ function renderEntries(){
   const rows=getFilteredEntries();
   $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
     const chequeCell = e.chequeNo ? `<span class="mono" title="${esc(e.chequeRemark||'')}">${esc(e.chequeNo)}</span>` : (e.chequeRemark ? `<span class="muted" title="${esc(e.chequeRemark)}">—*</span>` : '<span class="muted">—</span>');
-    const noSi=!e.si || e.locked;
+    const noSi=!e.si;
     const lockBadge = e.locked ? ` <span title="Locked — paid & cheque-matched" style="cursor:default">🔒</span>` : '';
     const mismatchBadge = e.mismatchFlag ? ` <span title="Paid with a cheque-amount mismatch of ₱${peso(Math.abs(e.mismatchDiff||0))}" style="cursor:default;color:#b91c1c">⚠</span>` : '';
-    return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} ${noSi?'disabled title="'+(e.locked?'Locked entry — unlock via Edit first':'No SI # yet — add one before including this entry in a cheque')+'"':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
+    return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} ${noSi?'disabled title="No SI # yet — add one before including this entry in a cheque"':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
       <td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
       <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
@@ -1258,10 +1302,29 @@ function updateBulkBar(){
   const n=SELECTED_IDS.size;
   $('#bulkBar').style.display=n?'flex':'none';
   $('#bulkCount').textContent=n;
-  const selectedTotal=STATE.entries.filter(e=>SELECTED_IDS.has(e.id)).reduce((s,e)=>s+entryCalc(e).due,0);
+  const selected=STATE.entries.filter(e=>SELECTED_IDS.has(e.id));
+  const selectedTotal=selected.reduce((s,e)=>s+entryCalc(e).due,0);
   $('#bulkTotal').textContent=peso(selectedTotal);
+  const lockedCount=selected.filter(e=>e.locked).length;
+  const unlockBtn=$('#bulkUnlockBtn');
+  if(unlockBtn){ unlockBtn.style.display=lockedCount?'inline-flex':'none'; unlockBtn.textContent=`🔓 Unlock Selected (${lockedCount})`; }
   const selectableBoxes=$$('.enRowCheck').filter(cb=>!cb.disabled);
   $('#enSelectAll').checked = selectableBoxes.length>0 && selectableBoxes.every(cb=>cb.checked);
+}
+function bulkUnlockSelected(){
+  const locked=STATE.entries.filter(e=>SELECTED_IDS.has(e.id) && e.locked);
+  if(!locked.length) return;
+  if(!confirm(`Unlock ${locked.length} selected entr${locked.length===1?'y':'ies'}?\n\nThey'll become editable again (e.g. to add a Cheque # later).`)) return;
+  const reason=(prompt('Reason for unlocking (applies to all '+locked.length+' entries):')||'').trim();
+  if(!reason){ toast('Unlock cancelled — reason required','error'); return; }
+  const at=new Date().toISOString();
+  locked.forEach(e=>{
+    e.locked=false;
+    e.unlockLog=e.unlockLog||[];
+    e.unlockLog.push({by:currentName||'Unknown', reason, at});
+  });
+  renderAll(); saveBilling();
+  toast(locked.length+' entries unlocked by '+(currentName||'Unknown'));
 }
 let BULK_AGG_TOTAL=0;
 function openBulkPaid(){
@@ -1291,7 +1354,10 @@ function updateBulkPaidMatch(){
   banner.style.display='block';
   if(Math.abs(diff)<0.01){
     banner.style.background='#f0fdf4'; banner.style.color='var(--green)';
-    banner.textContent=`✓ Matches — cheque amount equals the aggregated total (₱${peso(BULK_AGG_TOTAL)}). These entries will lock once marked Paid.`;
+    const chequeNoGiven=$('#bulkChequeNo').value.trim();
+    banner.textContent = chequeNoGiven
+      ? `✓ Matches — cheque amount equals the aggregated total (₱${peso(BULK_AGG_TOTAL)}). These entries will lock once marked Paid.`
+      : `✓ Amount matches (₱${peso(BULK_AGG_TOTAL)}) — but no Cheque # entered yet, so these will stay unlocked and editable until you add one.`;
     mismatchBox.style.display='none'; ack.checked=false;
   } else {
     banner.style.background='#fef2f2'; banner.style.color='#b91c1c';
@@ -1326,7 +1392,8 @@ function applyBulkPaid(){
     if(date) e.paidDate=date;
     else if(!e.paidDate) noDateSkipped++; // wasn't paid before and no date given — flag in the toast below
     e.chequeNo=chequeNo; e.chequeAmount=chequeAmount; e.chequeRemark=chequeRemark;
-    if(matched===true){ e.locked=true; e.mismatchFlag=false; e.mismatchDiff=0; }
+    if(matched===true && chequeNo){ e.locked=true; e.mismatchFlag=false; e.mismatchDiff=0; }
+    else if(matched===true && !chequeNo){ e.locked=false; e.mismatchFlag=false; e.mismatchDiff=0; }
     else if(matched===false){ e.locked=false; e.mismatchFlag=true; e.mismatchDiff=chequeAmount-BULK_AGG_TOTAL; }
     n++;
   });
@@ -1671,13 +1738,22 @@ function commitHistImport(){
 }
 
 /* ============================================================
-   Unbilled: completed CCAC trips whose date isn't covered by
-   any entry's Trip Start–End period (+ SBU match when the trip
-   record has an sbu field; matched on period alone otherwise).
+   Unbilled: completed CCAC trips with no cutoff assigned yet.
+   Source of truth is the trip's own `cutoff` field (set by the
+   office when a trip is actually grouped/submitted) — blank means
+   not yet billed, full stop. This intentionally does NOT try to
+   infer coverage from entry date-ranges, since cutoff assignment
+   is manual and can legitimately overlap across BUs/disputed trips.
+
+   The old date-range method (legacyCoveringEntry) is kept below,
+   unused by the main stats/table, purely to power the mismatch
+   diagnostic — it flags cases where the two methods disagree so a
+   human can look, but never changes what counts as billed.
    ============================================================ */
 function num(x){ return Number(x)||0; }
 function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
-function coveringEntry(t){
+function isBilled(t){ return !!String(t.cutoff||'').trim(); }
+function legacyCoveringEntry(t){
   const d=t.tripStartDate||t.dispatchedDate; if(!d) return null;
   return STATE.entries.find(e=>{
     if(!e.tripStart||!e.tripEnd) return false;
@@ -1686,7 +1762,26 @@ function coveringEntry(t){
     return true;
   });
 }
-function isBilled(t){ return !!coveringEntry(t); }
+function legacyIsBilled(t){ return !!legacyCoveringEntry(t); }
+function getCutoffMismatches(){
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  return completed.filter(t=>isBilled(t)!==legacyIsBilled(t));
+}
+function renderCutoffMismatchCheck(){
+  const box=$('#cutoffMismatchWarn'); if(!box) return;
+  const rows=getCutoffMismatches();
+  if(!rows.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  $('#cutoffMismatchCount').textContent=rows.length;
+  const tb=$('#cutoffMismatch-table tbody');
+  if(tb) tb.innerHTML=rows.map(t=>`<tr>
+    <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.code||t.id||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td>
+    <td class="mono">${esc(t.cutoff||'—')}</td>
+    <td>${isBilled(t)?'Has cutoff':'No cutoff'} / ${legacyIsBilled(t)?'in a range':'no range match'}</td>
+  </tr>`).join('');
+}
 function getUnbilledRows(q){
   const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
   const unbilled=completed.filter(t=>!isBilled(t));
@@ -1708,12 +1803,11 @@ function renderUnbilled(){
   let billedCount=0; completed.forEach(t=>{ if(isBilled(t))billedCount++; });
   const expTotal=unbilled.reduce((a,t)=>a+tripExpected(t),0);
   const el=$('#ub-stats'); if(el) el.innerHTML=`
-    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no covering entry')}
-    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripExpected(t):0),0)),billedCount+' completed trips covered')}
+    ${stat('overdue','Unbilled revenue','₱'+peso(expTotal),unbilled.length+' completed trips, no cutoff assigned')}
+    ${stat('collected','Billed','₱'+peso(completed.reduce((a,t)=>a+(isBilled(t)?tripExpected(t):0),0)),billedCount+' completed trips with a cutoff')}
     ${stat('total','Completed trips','₱'+peso(completed.reduce((a,t)=>a+tripExpected(t),0)),completed.length+' total completed')}`;
   const cov=$('#ub-coverage'); if(cov) cov.textContent=`${completed.length} of ${TRIPS.length} CCAC trips are marked completed`;
-  const hasSbuField = TRIPS.some(t=>t.sbu);
-  const cav=$('#ub-caveat'); if(cav) cav.textContent = hasSbuField ? '' : 'Note: trip records here don\'t carry an SBU field, so coverage is matched by period only (not SBU) until that\'s added.';
+  const cav=$('#ub-caveat'); if(cav) cav.textContent = '';
   const rows=unbilled.filter(t=>!q||((t.plate+' '+t.driver+' '+(t.area||'')+' '+(t.destination||'')).toLowerCase().includes(q)))
     .sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
   const tb=$('#ub-table tbody'); if(!tb)return;
@@ -1724,7 +1818,7 @@ function renderUnbilled(){
     <td class="muted">${esc(t.area||t.destination||'')}</td>
     <td class="num-cell">₱${peso(t.rate)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
     <td class="num-cell"><strong>₱${peso(tripExpected(t))}</strong></td></tr>`).join('')
-    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips fall inside a billing entry's period — or none are marked completed yet.</div></td></tr>`;
+    : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Nothing unbilled</div>All completed CCAC trips have a cutoff assigned — or none are marked completed yet.</div></td></tr>`;
 }
 
 /* ---- start ---- */
