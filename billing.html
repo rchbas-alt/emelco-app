@@ -68,6 +68,9 @@ tr:last-child td{border-bottom:none}
 .badge-pending{background:rgba(240,165,0,.15);color:var(--accent)}
 .badge-unpaid{background:rgba(231,76,60,.15);color:var(--red)}
 .badge-submitted{background:rgba(58,134,255,.15);color:var(--blue)}
+.badge-void{background:rgba(107,114,128,.18);color:#4b5563}
+tr.row-voided td{opacity:.55;text-decoration:line-through;text-decoration-color:#9ca3af}
+tr.row-voided td:last-child{text-decoration:none}
 .badge-default{background:var(--bg3);color:var(--text2)}
 .grand td{font-weight:700;background:var(--bg3)}
 .chip{display:inline-block;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;margin:1px 2px}
@@ -295,6 +298,7 @@ body.role-operations .owner-only{display:none!important}
         <option value="not_submitted">Not yet submitted</option>
         <option value="submitted">Submitted</option>
         <option value="paid">Paid</option>
+        <option value="voided">Voided</option>
       </select>
       <select class="filter-select" id="enBuFilter" onchange="renderEntries()"><option value="">All BU</option></select>
       <input type="search" class="search-box" id="enSearch" placeholder="Search SI#, SBU, period…" oninput="renderEntries()">
@@ -584,7 +588,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608161030';
+const APP_VERSION = '202608161200';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -869,8 +873,13 @@ async function boot(){
    Billing math
    ============================================================ */
 function entryCalc(e){ const net=(Number(e.net)||0)-(Number(e.penalty)||0); const vat=net*VAT_RATE; return {net,vat,gross:net+vat,wht:net*WHT_RATE,due:net+vat-net*WHT_RATE}; }
+// Voided entries are kept in STATE.entries for the audit trail (SI# stays
+// reserved, row stays visible/struck-through in the list) but must never
+// count toward totals, duplicate checks, or batch-outlier checks.
+function activeEntries(){ return STATE.entries.filter(e=>!e.voided); }
 function entryDueDate(e){ return e.submitted?addDays(e.submitted,Number(e.dueDays)||30):''; }
 function entryStatusInfo(e){
+  if(e.voided) return {cls:'void',text:'Voided',note:e.voidReason||''};
   if(e.status==='paid'){
     if(e.paidDate&&e.submitted){ const d=daysBetween(entryDueDate(e),e.paidDate); const note=d<0?`early ${Math.abs(d)}d`:d>0?`late ${d}d`:'on due date'; return {cls:'paid',text:'Paid',note}; }
     return {cls:'paid',text:'Paid',note:''};
@@ -901,7 +910,7 @@ function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div cla
 function periodsOverlap(aS,aE,bS,bE){ return !!aS && !!aE && !!bS && !!bE && aS<=bE && bS<=aE; }
 function findDuplicateGroups(){
   const byKey={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(!e.tripStart||!e.tripEnd) return;
     const key=e.bu+'|'+(e.sbu||'').trim().toUpperCase()+'|'+e.type;
     (byKey[key]=byKey[key]||[]).push(e);
@@ -945,7 +954,7 @@ function renderDupeCheck(){
    ============================================================ */
 function findBatchOutliers(){
   const byEnd={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(!e.tripStart||!e.tripEnd) return;
     (byEnd[e.tripEnd]=byEnd[e.tripEnd]||[]).push(e);
   });
@@ -990,7 +999,7 @@ function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(
    Trip Start falls in (work billed for that month, regardless of status). */
 function renderMonthlyByTrip(){
   const byMonth={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(!e.tripStart) return;
     const ym=e.tripStart.slice(0,7);
     const g=byMonth[ym]=byMonth[ym]||{net:0,count:0};
@@ -1009,7 +1018,7 @@ function renderMonthlyByTrip(){
    (after 2% WHT) since that's the cash figure that actually lands. */
 function renderMonthlyByPaid(){
   const byMonth={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
     const ym=e.paidDate.slice(0,7);
     const g=byMonth[ym]=byMonth[ym]||{due:0,count:0};
@@ -1032,7 +1041,7 @@ function renderMonthly(){ renderMonthlyByTrip(); renderMonthlyByPaid(); }
    ============================================================ */
 function buildSummaryRows(){
   const byPeriod={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(!e.tripStart) return; // period rows need a start date to group on
     const key=e.tripStart+'|'+(e.tripEnd||'');
     const g=byPeriod[key]=byPeriod[key]||{tripStart:e.tripStart,tripEnd:e.tripEnd,total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,settled:0,processing:0,pastDue:0,count:0,sis:new Set()};
@@ -1087,7 +1096,7 @@ function renderSummary(){
 }
 function buildPaymentsSummaryRows(){
   const byGroup={};
-  STATE.entries.forEach(e=>{
+  activeEntries().forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
     const key=e.paidDate+'|'+(e.chequeNo||'');
     const g=byGroup[key]=byGroup[key]||{date:e.paidDate,chequeNo:e.chequeNo||'',chequeAmount:null,count:0,total:0,remark:''};
@@ -1133,7 +1142,7 @@ function switchTab(name){
 
 function buildOverviewPeriods(){
   const byPeriod={};
-  STATE.entries.forEach(e=>{ const key=(e.tripStart||'?')+' — '+(e.tripEnd||'?'); byPeriod[key]=byPeriod[key]||{entries:[],net:0,due:0,statuses:new Set()};
+  activeEntries().forEach(e=>{ const key=(e.tripStart||'?')+' — '+(e.tripEnd||'?'); byPeriod[key]=byPeriod[key]||{entries:[],net:0,due:0,statuses:new Set()};
     const t=entryCalc(e); byPeriod[key].entries.push(e); byPeriod[key].net+=t.net; byPeriod[key].due+=t.due; byPeriod[key].statuses.add(e.status); });
   return byPeriod;
 }
@@ -1150,7 +1159,7 @@ function exportOverview(){
 }
 function renderOverview(){
   let net=0,paid=0,proc=0,over=0,overSubmitted=0,overNotSubmitted=0;
-  STATE.entries.forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due;
+  activeEntries().forEach(e=>{ const t=entryCalc(e),s=entryStatusInfo(e); net+=t.due;
     if(s.cls==='paid'){ paid+=t.due; return; }
     if(e.status==='submitted'){ proc+=t.due; if(s.cls==='unpaid'){ over+=t.due; overSubmitted+=t.due; } return; }
     if(s.cls==='unpaid'){ over+=t.due; overNotSubmitted+=t.due; } });
@@ -1158,7 +1167,7 @@ function renderOverview(){
   const noCutoffTrips=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed' && !isBilled(t));
   const noCutoffTotal=noCutoffTrips.reduce((a,t)=>a+tripDue(t),0);
   $('#ov-stats').innerHTML=`
-    ${stat('total','Net billing '+YEAR,'₱'+peso(net),STATE.entries.length+' entries')}
+    ${stat('total','Net billing '+YEAR,'₱'+peso(net),activeEntries().length+' entries')}
     ${stat('collected','Collected','₱'+peso(paid),pct+'% settled')}
     ${stat('processing','In processing','₱'+peso(proc),'submitted to client (incl. overdue)')}
     ${stat('overdue','Overdue','₱'+peso(over),`₱${peso(overSubmitted)} submitted &amp; overdue · ₱${peso(overNotSubmitted)} not even submitted`)}
@@ -1167,7 +1176,7 @@ function renderOverview(){
       <div class="stat-value">₱${peso(noCutoffTotal)}</div>
       <div class="stat-sub">${noCutoffTrips.length} completed trips (CCAC/CMIP/CDI) — click to view</div>
     </div>`;
-  $('#ov-count').textContent=STATE.entries.length?`${STATE.entries.length} entries`:'';
+  $('#ov-count').textContent=activeEntries().length?`${activeEntries().length} entries`:'';
   const byPeriod=buildOverviewPeriods();
   const keys=Object.keys(byPeriod).sort().reverse();
   const tb=$('#ov-table tbody');
@@ -1191,7 +1200,8 @@ function getFilteredEntries(){
   const q=($('#enSearch').value||'').toLowerCase();
   const statusF=$('#enStatusFilter').value, buF=$('#enBuFilter').value;
   let rows=STATE.entries.slice();
-  if(statusF) rows=rows.filter(e=>e.status===statusF);
+  if(statusF==='voided') rows=rows.filter(e=>e.voided);
+  else if(statusF){ rows=rows.filter(e=>e.status===statusF && !e.voided); }
   if(buF) rows=rows.filter(e=>e.bu===buF);
   if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')+' '+(e.chequeNo||'')+' '+(e.chequeRemark||'')).toLowerCase().includes(q));
   // Oldest Date Submitted first (matches Rhoda's workflow — filter to Submitted,
@@ -1210,11 +1220,12 @@ function getFilteredEntries(){
 function exportEntries(){
   const rows=getFilteredEntries();
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Period Start','Period End','BU','SBU','Type','SI #','Net','VAT','Due','Status','Submitted','Due Date','Paid Date','Cheque #','Cheque Amount','Cheque Remark','Source'];
+  const headers=['Period Start','Period End','BU','SBU','Type','SI #','Net','VAT','Due','Status','Submitted','Due Date','Paid Date','Cheque #','Cheque Amount','Cheque Remark','Source','Voided','Void Reason'];
   const data=rows.map(e=>{ const t=entryCalc(e), s=entryStatusInfo(e);
     return [e.tripStart||'', e.tripEnd||'', e.bu||'', e.sbu||'', e.type||'', e.si||'',
       t.net.toFixed(2), t.vat.toFixed(2), t.due.toFixed(2), s.text+(s.note?' ('+s.note+')':''),
-      e.submitted||'', entryDueDate(e)||'', e.paidDate||'', e.chequeNo||'', e.chequeAmount??'', e.chequeRemark||'', e.source||'manual'];
+      e.submitted||'', entryDueDate(e)||'', e.paidDate||'', e.chequeNo||'', e.chequeAmount??'', e.chequeRemark||'', e.source||'manual',
+      e.voided?'YES':'', e.voidReason||''];
   });
   downloadCSV('emelco_billing_entries_'+todayISO()+'.csv', headers, data);
 }
@@ -1236,20 +1247,24 @@ function renderEntries(){
     const noSi=!e.si;
     const lockBadge = e.locked ? ` <span title="Locked — paid & cheque-matched" style="cursor:default">🔒</span>` : '';
     const mismatchBadge = e.mismatchFlag ? ` <span title="Paid with a cheque-amount mismatch of ₱${peso(Math.abs(e.mismatchDiff||0))}" style="cursor:default;color:#b91c1c">⚠</span>` : '';
-    return `<tr><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} ${noSi?'disabled title="No SI # yet — add one before including this entry in a cheque"':''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
+    const voidTitle = e.voided ? ` title="Voided${e.voidReason?': '+e.voidReason.replace(/"/g,'&quot;'):''}"` : '';
+    const actionBtns = e.voided
+      ? `<button class="btn btn-ghost btn-sm" onclick="unvoidEntry('${e.id}')">Un-void</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-ghost btn-sm" onclick="voidEntry('${e.id}')" title="Void — keeps SI# reserved, excludes from totals">🚫 Void</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button>`;
+    return `<tr class="${e.voided?'row-voided':''}"${voidTitle}><td><input type="checkbox" class="enRowCheck" data-id="${e.id}" ${SELECTED_IDS.has(e.id)?'checked':''} ${(noSi||e.voided)?`disabled title="${e.voided?'Voided entry':'No SI # yet — add one before including this entry in a cheque'}"`:''} onchange="toggleEntrySelect('${e.id}',this.checked)"></td>
       <td class="mono">${esc(e.tripStart||'')}–${esc(e.tripEnd||'')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
       <td class="mono">${esc(e.si||'—')}</td>
       <td class="num-cell">₱${peso(t.net)}</td><td class="num-cell fin-only">₱${peso(t.vat)}</td>
       <td class="num-cell">₱${peso(t.due)}</td><td>${badge(s.cls,s.text,s.note)}${lockBadge}${mismatchBadge}</td>
       <td>${chequeCell}</td>
       <td class="muted">${esc(e.source||'manual')}</td>
-      <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">Delete</button></td></tr>`;
+      <td style="white-space:nowrap">${actionBtns}</td></tr>`;
   }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
   updateBulkBar();
 }
 
 function getPaidEntries(){
-  return STATE.entries.filter(e=>e.status==='paid' && e.paidDate);
+  return activeEntries().filter(e=>e.status==='paid' && e.paidDate);
 }
 function populatePlMonthFilter(){
   const sel=$('#plMonthFilter'); if(!sel) return;
@@ -1313,6 +1328,13 @@ let editingId=null;
 function buOpts(sel){ return `<option value="">—</option>`+STATE.bus.map(b=>`<option ${b.name===sel?'selected':''}>${esc(b.name)}</option>`).join(''); }
 function sbuOpts(bu,sel){ const b=STATE.bus.find(x=>x.name===bu); const list=b?b.sbus:[]; return `<option value="">—</option>`+list.map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join(''); }
 function onEntryBuChange(){ $('#eSbu').innerHTML=sbuOpts($('#eBu').value,''); }
+// Returns the existing entry using this SI# elsewhere (or null). Blank SI#s are
+// exempt — many entries legitimately have none yet — and excludeId lets an
+// edit-in-place skip flagging itself.
+function findSiConflict(si, excludeId){
+  const v=(si||'').trim(); if(!v) return null;
+  return STATE.entries.find(e=>e.id!==excludeId && (e.si||'').trim().toLowerCase()===v.toLowerCase()) || null;
+}
 function ensureUnlocked(e){
   if(!e.locked) return true;
   if(!confirm(`This entry is locked (paid & cheque-matched: ${e.bu} / ${e.sbu} / ${e.type}, ${e.tripStart||'?'}–${e.tripEnd||'?'}).\n\nUnlock to proceed?`)) return false;
@@ -1349,6 +1371,9 @@ function renderEntryCalc(){ const c=entryCalc({net:$('#eNet').value,penalty:$('#
 function saveEntry(){
   const bu=$('#eBu').value, sbu=$('#eSbu').value;
   if(!bu||!sbu){ toast('Pick a BU and SBU','error'); return; }
+  const si=$('#eSi').value.trim();
+  const conflict=findSiConflict(si, editingId);
+  if(conflict){ toast(conflict.voided ? `SI# ${si} was voided (${conflict.voidReason||'no reason given'}) — pick a different SI#` : `SI# ${si} already used on an existing entry (${conflict.bu}/${conflict.sbu}/${conflict.type}) — edit that one instead`,'error'); return; }
   const isPaid=$('#eStatus').value==='paid';
   const prev = editingId ? STATE.entries.find(x=>x.id===editingId) : null;
   const entry={ id:editingId||uid(), bu, sbu, type:$('#eType').value,
@@ -1360,10 +1385,28 @@ function saveEntry(){
     chequeRemark:isPaid?$('#eChequeRemark').value.trim():'',
     net:parseFloat($('#eNet').value)||0, penalty:parseFloat($('#ePenalty').value)||0,
     locked:prev?.locked||false, mismatchFlag:prev?.mismatchFlag||false, mismatchDiff:prev?.mismatchDiff||0, unlockLog:prev?.unlockLog||[],
+    voided:prev?.voided||false, voidReason:prev?.voidReason||'', voidedBy:prev?.voidedBy||'', voidedAt:prev?.voidedAt||'',
     source: editingId ? (prev?.source||'manual') : 'manual' };
   if(editingId){ const ix=STATE.entries.findIndex(x=>x.id===editingId); STATE.entries[ix]=entry; }
   else STATE.entries.unshift(entry);
   closeEntry(); renderAll(); saveBilling(); toast('Entry saved');
+}
+function voidEntry(id){
+  const e=STATE.entries.find(x=>x.id===id); if(!e)return;
+  if(e.voided){ toast('Already voided','error'); return; }
+  if(!ensureUnlocked(e)) return;
+  if(!confirm(`Void this entry?\n\n${e.bu} / ${e.sbu} / ${e.type}${e.si?' — SI# '+e.si:''}\n${e.tripStart||'?'}–${e.tripEnd||'?'}\n\nIt stays visible (struck through) and excluded from all totals. The SI# stays reserved so it can't be reused. This can be undone.`)) return;
+  const reason=(prompt('Reason for voiding (optional):')||'').trim();
+  e.voided=true; e.voidReason=reason; e.voidedBy=currentName||'Unknown'; e.voidedAt=new Date().toISOString();
+  SELECTED_IDS.delete(id);
+  renderAll(); saveBilling(); toast('Entry voided');
+}
+function unvoidEntry(id){
+  const e=STATE.entries.find(x=>x.id===id); if(!e)return;
+  if(!e.voided){ toast('Not voided','error'); return; }
+  if(!confirm(`Un-void this entry?\n\n${e.bu} / ${e.sbu} / ${e.type}${e.si?' — SI# '+e.si:''}\n\nIt will count toward totals again.`)) return;
+  e.voided=false; e.voidReason=''; e.voidedBy=''; e.voidedAt='';
+  renderAll(); saveBilling(); toast('Entry un-voided');
 }
 function deleteEntry(id){
   const e=STATE.entries.find(x=>x.id===id); if(!e)return;
@@ -1421,6 +1464,18 @@ function saveBatchEntries(){
   if(!rows.length){ toast('Add at least one row','error'); return; }
   const bad=rows.find(r=>!r.sbu);
   if(bad){ toast('Every row needs an SBU','error'); return; }
+  // SI# must be unique — check each row against existing entries, and rows
+  // against each other (blank SI#s are exempt from both checks).
+  for(const r of rows){
+    const conflict=findSiConflict(r.si, null);
+    if(conflict){ toast(conflict.voided ? `SI# ${(r.si||'').trim()} was voided (${conflict.voidReason||'no reason given'}) — pick a different SI#` : `SI# ${(r.si||'').trim()} already used on an existing entry (${conflict.bu}/${conflict.sbu}/${conflict.type}) — edit that one instead`,'error'); return; }
+  }
+  const seenInBatch=new Set();
+  for(const r of rows){
+    const v=(r.si||'').trim().toLowerCase(); if(!v) continue;
+    if(seenInBatch.has(v)){ toast(`SI# ${(r.si||'').trim()} is repeated on more than one row in this batch`,'error'); return; }
+    seenInBatch.add(v);
+  }
   rows.forEach(r=>{
     const entry={ id:uid(), bu, sbu:r.sbu, type:r.type||'RECON', tripStart:start, tripEnd:end, si:(r.si||'').trim(),
       status, submitted, dueDays,
@@ -1714,7 +1769,7 @@ function parseReconFile(){
     // meant for one period overwrite a different, already-correct one. So: collect
     // every overlap; only auto-pick when there's exactly one, otherwise surface all
     // candidates and require a manual pick before this row can be committed.
-    const allMatches=STATE.entries.filter(e=>e.bu===bu && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
+    const allMatches=STATE.entries.filter(e=>!e.voided && e.bu===bu && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
     const match = allMatches.length===1 ? allMatches[0] : null;
     const mc = match ? entryCalc(match) : null;
     return {...c, bu, start, end,
