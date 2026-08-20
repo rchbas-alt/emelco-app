@@ -482,10 +482,8 @@ body.role-operations .owner-only{display:none!important}
       <div class="modal-close" onclick="closeEntryBatch()">✕</div>
     </div>
     <div class="modal-body">
-      <div class="form-grid form-grid-3">
+      <div class="form-grid form-grid-2">
         <div class="form-group"><label class="form-label">BU</label><select class="form-select" id="ebBu" onchange="onBatchBuChange()"></select></div>
-        <div class="form-group"><label class="form-label">Type</label>
-          <select class="form-select" id="ebType"><option>RECON</option><option>SURCHARGE</option><option>INCREMENTALS</option></select></div>
         <div class="form-group"><label class="form-label">Status</label>
           <select class="form-select" id="ebStatus" onchange="onBatchStatusChange()">
             <option value="not_submitted">Not yet submitted</option>
@@ -504,7 +502,7 @@ body.role-operations .owner-only{display:none!important}
       <div class="table-wrapper" style="max-height:320px">
         <table style="font-size:13px">
           <thead style="position:sticky;top:0;background:var(--card)">
-            <tr><th style="width:26%">SBU</th><th style="width:18%">SI # <span class="muted">(optional)</span></th><th style="width:20%">Net of VAT</th><th style="width:20%">DR penalty</th><th></th></tr>
+            <tr><th style="width:20%">SBU</th><th style="width:16%">Type</th><th style="width:16%">SI # <span class="muted">(optional)</span></th><th style="width:18%">Net of VAT</th><th style="width:18%">DR penalty</th><th></th></tr>
           </thead>
           <tbody id="ebRows"></tbody>
         </table>
@@ -586,7 +584,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608161000';
+const APP_VERSION = '202608161030';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1381,14 +1379,14 @@ function deleteEntry(id){
    once, one row per SBU/SI#/amount, saved together.
    ============================================================ */
 let BATCH_ROWS=[];
+const BATCH_TYPES=['RECON','SURCHARGE','INCREMENTALS'];
 function openEntryBatch(){
   $('#ebBu').innerHTML=buOpts('');
-  $('#ebType').value='RECON';
   $('#ebStart').value=''; $('#ebEnd').value='';
   $('#ebStatus').value='not_submitted';
   $('#ebSubmitted').value=''; $('#ebDueDays').value=30;
   onBatchBuChange(); onBatchStatusChange();
-  BATCH_ROWS=[{sbu:'',si:'',net:'',penalty:'0'},{sbu:'',si:'',net:'',penalty:'0'}];
+  BATCH_ROWS=[{sbu:'',type:'RECON',si:'',net:'',penalty:'0'},{sbu:'',type:'RECON',si:'',net:'',penalty:'0'}];
   renderBatchRows();
   $('#entryBatchModal').classList.add('open');
 }
@@ -1398,13 +1396,15 @@ function onBatchBuChange(){
   $$('.ebSbuSelect').forEach(sel=>{ const cur=sel.value; sel.innerHTML=opts; sel.value=cur; });
 }
 function onBatchStatusChange(){ $('#ebSubmittedWrap').style.display=($('#ebStatus').value==='not_submitted')?'none':'grid'; }
-function addBatchRow(){ BATCH_ROWS.push({sbu:'',si:'',net:'',penalty:'0'}); renderBatchRows(); }
+function addBatchRow(){ BATCH_ROWS.push({sbu:'',type:'RECON',si:'',net:'',penalty:'0'}); renderBatchRows(); }
 function removeBatchRow(i){ BATCH_ROWS.splice(i,1); renderBatchRows(); }
 function updateBatchRow(i,field,val){ BATCH_ROWS[i][field]=val; }
 function renderBatchRows(){
   const opts=sbuOpts($('#ebBu').value,'');
+  const typeOpts=t=>BATCH_TYPES.map(x=>`<option ${x===t?'selected':''}>${x}</option>`).join('');
   $('#ebRows').innerHTML=BATCH_ROWS.map((r,i)=>`<tr>
     <td><select class="form-select ebSbuSelect" onchange="updateBatchRow(${i},'sbu',this.value)">${opts}</select></td>
+    <td><select class="form-select" onchange="updateBatchRow(${i},'type',this.value)">${typeOpts(r.type)}</select></td>
     <td><input class="form-input" value="${esc(r.si)}" placeholder="add once issued" oninput="updateBatchRow(${i},'si',this.value)"></td>
     <td><input class="form-input" type="number" step="0.01" value="${esc(r.net)}" oninput="updateBatchRow(${i},'net',this.value)"></td>
     <td><input class="form-input" type="number" step="0.01" value="${esc(r.penalty)}" oninput="updateBatchRow(${i},'penalty',this.value)"></td>
@@ -1414,7 +1414,7 @@ function renderBatchRows(){
   $$('.ebSbuSelect').forEach((sel,i)=>{ sel.value=BATCH_ROWS[i].sbu||''; });
 }
 function saveBatchEntries(){
-  const bu=$('#ebBu').value, type=$('#ebType').value, start=$('#ebStart').value, end=$('#ebEnd').value;
+  const bu=$('#ebBu').value, start=$('#ebStart').value, end=$('#ebEnd').value;
   const status=$('#ebStatus').value, submitted=status==='not_submitted'?'':$('#ebSubmitted').value, dueDays=parseInt($('#ebDueDays').value)||30;
   if(!bu){ toast('Pick a BU','error'); return; }
   const rows=BATCH_ROWS.filter(r=>r.sbu || r.net); // ignore fully-blank rows
@@ -1422,7 +1422,7 @@ function saveBatchEntries(){
   const bad=rows.find(r=>!r.sbu);
   if(bad){ toast('Every row needs an SBU','error'); return; }
   rows.forEach(r=>{
-    const entry={ id:uid(), bu, sbu:r.sbu, type, tripStart:start, tripEnd:end, si:(r.si||'').trim(),
+    const entry={ id:uid(), bu, sbu:r.sbu, type:r.type||'RECON', tripStart:start, tripEnd:end, si:(r.si||'').trim(),
       status, submitted, dueDays,
       paidDate:'', chequeNo:'', chequeAmount:null, chequeRemark:'',
       net:parseFloat(r.net)||0, penalty:parseFloat(r.penalty)||0,
