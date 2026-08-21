@@ -369,7 +369,7 @@ body.role-operations .fin-only{display:none!important}
       <div id="dest-chart" style="margin-bottom:16px;overflow-x:auto"></div>
       <div class="table-wrapper"><table>
         <thead><tr>
-          <th style="text-align:left">Destination</th><th>Trips</th><th>R+S</th><th>Total Cost</th><th>Income</th><th>Margin %</th><th>After OPEX Margin %</th>
+          <th style="text-align:left">Destination</th><th title="Journeys — MilkRun pairs counted once">Trips</th><th>R+S</th><th>Total Cost</th><th>Income</th><th>Margin %</th><th>After OPEX Margin %</th>
         </tr></thead>
         <tbody id="summary-dest-analysis"></tbody>
       </table></div>
@@ -445,6 +445,12 @@ body.role-operations .fin-only{display:none!important}
         <button class="btn btn-danger" onclick="clearAllData()" style="width:fit-content">🗑 Clear All Trips</button>
       </div>
     </div>
+  </div>
+  <div class="guide-section owner-only" style="margin-top:16px">
+    <h3>🔗 Link Trip Groups (MilkRun / Convoy)</h3>
+    <p style="font-size:11px;color:var(--text2);margin-bottom:14px">One-time scan for existing MilkRun and Convoy trips that don't have a group ID yet. Proposes pairings for you to review — nothing is changed until you confirm.</p>
+    <button class="btn btn-ghost" onclick="scanTripGroupCandidates()" style="width:fit-content">🔍 Scan for Ungrouped MilkRun / Convoy Trips</button>
+    <div id="group-backfill-result" style="margin-top:14px"></div>
   </div>
 </div>
 
@@ -813,10 +819,18 @@ body.role-operations .fin-only{display:none!important}
           <button type="button" onclick="addDropRow()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">+ Add Drop</button>
           <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
             <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:0">
-              <input type="checkbox" id="f-milkrun-flag" style="width:16px;height:16px">
+              <input type="checkbox" id="f-milkrun-flag" style="width:16px;height:16px" onchange="toggleMilkRunGroup()">
               <span>MilkRun</span>
             </label>
             <span class="form-hint" style="margin:0">Multi-region, ~2 days (billed furthest drop × 2)</span>
+          </div>
+          <div id="f-milkrun-group-wrap" style="display:none;margin-top:8px;padding:10px;background:var(--bg3);border-radius:8px">
+            <div style="display:flex;gap:14px;margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="radio" name="mr-group-mode" value="new" checked onchange="toggleMilkRunGroupMode()"> Start new MilkRun (Day 1)</label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="radio" name="mr-group-mode" value="link" onchange="toggleMilkRunGroupMode()"> Link to existing MilkRun</label>
+            </div>
+            <div id="mr-group-new-info" class="form-hint" style="margin:0">Will assign: <strong id="mr-group-preview">MR-001</strong></div>
+            <select class="form-select" id="f-milkrun-link" style="display:none"><option value="">— Select MilkRun trip to link —</option></select>
           </div>
           <input type="hidden" id="f-destination">
         </div>
@@ -852,6 +866,21 @@ body.role-operations .fin-only{display:none!important}
         <div class="form-group" id="f-no-driver-reason-wrap" style="grid-column:span 4;display:none">
           <label class="form-label">Reason <span class="required">*</span> <span style="color:var(--text2);font-weight:400">(required — will be saved in Gen Remarks and flagged on the trip)</span></label>
           <textarea class="form-textarea" id="f-no-driver-reason" placeholder='e.g. PINAGHATIAN PO NG TATLONG TRUCK NA KA CONVOY — assigned truck unable to travel, load delivered by another truck-driver pair'></textarea>
+        </div>
+        <div class="form-group" style="grid-column:span 4;margin-top:6px">
+          <label class="form-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="f-convoy-flag" style="width:16px;height:16px" onchange="toggleConvoyGroup()">
+            🚚 Convoy split — one shipment carried across multiple trucks (each truck keeps its own full rate/revenue)
+          </label>
+          <div class="form-hint" style="margin:4px 0 0">This only links trucks for reference — it does not change any trip's rate, revenue, or trip count. Each truck stays counted as its own trip.</div>
+        </div>
+        <div class="form-group" id="f-convoy-group-wrap" style="grid-column:span 4;display:none;margin-top:8px;padding:10px;background:var(--bg3);border-radius:8px">
+          <div style="display:flex;gap:14px;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="radio" name="cv-group-mode" value="new" checked onchange="toggleConvoyGroupMode()"> Start new convoy group</label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="radio" name="cv-group-mode" value="link" onchange="toggleConvoyGroupMode()"> Link to existing convoy</label>
+          </div>
+          <div id="cv-group-new-info" class="form-hint" style="margin:0">Will assign: <strong id="cv-group-preview">CV-001</strong></div>
+          <select class="form-select" id="f-convoy-link" style="display:none"><option value="">— Select convoy trip to link —</option></select>
         </div>
       </div>
     </div>
@@ -1182,7 +1211,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202608152300'; // added Cutoff filter (Any/No cutoff/Has cutoff) to the trip list filter bar; publish rights restricted to named deploy admin, not just Owner role
+const APP_VERSION = '202608211400'; // added MilkRun (MR-XXX) / Convoy (CV-XXX) trip group IDs, backfill tool, logical trip-count collapsing on Summary tab
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -2084,6 +2113,159 @@ function populateDriverFilter(){
   el.innerHTML='<option value="">All Drivers</option>'+drivers.map(d=>`<option ${d===cur?'selected':''}>${d}</option>`).join('');
 }
 
+// ===== TRIP GROUP IDs (MilkRun / Convoy linking) =====
+function nextGroupId(prefix, field){
+  let max=0;
+  trips.forEach(t=>{
+    const v=t[field];
+    if(v && v.startsWith(prefix+'-')){
+      const num=parseInt(v.slice(prefix.length+1),10);
+      if(!isNaN(num) && num>max) max=num;
+    }
+  });
+  return prefix+'-'+String(max+1).padStart(3,'0');
+}
+function groupIdUsageCount(id, field){
+  if(!id) return 0;
+  return trips.filter(t=>t[field]===id && t.id!==editingId).length;
+}
+function toggleMilkRunGroup(){
+  const on=document.getElementById('f-milkrun-flag').checked;
+  document.getElementById('f-milkrun-group-wrap').style.display=on?'':'none';
+  if(on){
+    document.getElementById('mr-group-preview').textContent=nextGroupId('MR','tripGroupId');
+    populateMilkRunLinkDropdown();
+  }
+}
+function toggleMilkRunGroupMode(){
+  const mode=document.querySelector('input[name="mr-group-mode"]:checked').value;
+  document.getElementById('mr-group-new-info').style.display=mode==='new'?'':'none';
+  document.getElementById('f-milkrun-link').style.display=mode==='link'?'':'none';
+}
+function populateMilkRunLinkDropdown(){
+  const el=document.getElementById('f-milkrun-link');
+  const curPlate=document.getElementById('f-plate').value;
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-10);
+  const recent=trips.filter(t=>t.isMilkRun && t.id!==editingId && t.tripStartDate && new Date(t.tripStartDate+'T00:00:00')>=cutoff)
+    .sort((a,b)=>{
+      const aMatch=a.plate===curPlate?0:1, bMatch=b.plate===curPlate?0:1;
+      if(aMatch!==bMatch) return aMatch-bMatch;
+      return (b.tripStartDate||'').localeCompare(a.tripStartDate||'');
+    });
+  el.innerHTML='<option value="">— Select MilkRun trip to link —</option>'+recent.map(t=>
+    `<option value="${t.tripGroupId||''}" data-code="${t.code}">${t.tripStartDate} · ${t.plate} · ${(t.area||'')} ${t.tripGroupId?'('+t.tripGroupId+')':'(no ID yet)'}</option>`
+  ).join('');
+}
+function toggleConvoyGroup(){
+  const on=document.getElementById('f-convoy-flag').checked;
+  document.getElementById('f-convoy-group-wrap').style.display=on?'':'none';
+  if(on){
+    document.getElementById('cv-group-preview').textContent=nextGroupId('CV','convoyGroupId');
+    populateConvoyLinkDropdown();
+  }
+}
+function toggleConvoyGroupMode(){
+  const mode=document.querySelector('input[name="cv-group-mode"]:checked').value;
+  document.getElementById('cv-group-new-info').style.display=mode==='new'?'':'none';
+  document.getElementById('f-convoy-link').style.display=mode==='link'?'':'none';
+}
+function populateConvoyLinkDropdown(){
+  const el=document.getElementById('f-convoy-link');
+  const curDr=document.getElementById('f-dr').value;
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-10);
+  const recent=trips.filter(t=>t.convoyGroupId && t.id!==editingId && t.tripStartDate && new Date(t.tripStartDate+'T00:00:00')>=cutoff)
+    .sort((a,b)=>{
+      const aMatch=(a.dr||'')===curDr?0:1, bMatch=(b.dr||'')===curDr?0:1;
+      if(aMatch!==bMatch) return aMatch-bMatch;
+      return (b.tripStartDate||'').localeCompare(a.tripStartDate||'');
+    });
+  el.innerHTML='<option value="">— Select convoy trip to link —</option>'+recent.map(t=>
+    `<option value="${t.convoyGroupId}">${t.tripStartDate} · ${t.plate} · ${(t.area||'')} (${t.convoyGroupId})</option>`
+  ).join('');
+}
+
+// ===== BACKFILL: link ungrouped MilkRun / Convoy trips =====
+let pendingGroupClusters={mr:[],cv:[]};
+function scanTripGroupCandidates(){
+  // MilkRun: ungrouped isMilkRun trips, paired by same plate + trip-start dates within 2 days.
+  // Capped at 2 per group (MilkRun is a 2-day pattern) — a run of same-plate MilkRuns close together
+  // must NOT chain into one big group, since consecutive close pairs are usually separate trips.
+  const ungroupedMR=trips.filter(t=>t.isMilkRun && !t.tripGroupId && t.tripStartDate)
+    .slice().sort((a,b)=>(a.plate||'').localeCompare(b.plate||'')||a.tripStartDate.localeCompare(b.tripStartDate));
+  const mrClusters=[]; const usedMR=new Set();
+  ungroupedMR.forEach(t=>{
+    if(usedMR.has(t.id)) return;
+    const partner=ungroupedMR.find(t2=>{
+      if(usedMR.has(t2.id)||t2.id===t.id||t2.plate!==t.plate) return false;
+      const d1=new Date(t.tripStartDate+'T00:00:00'), d2=new Date(t2.tripStartDate+'T00:00:00');
+      return Math.abs((d2-d1)/86400000)<=2;
+    });
+    if(partner){ mrClusters.push([t,partner]); usedMR.add(t.id); usedMR.add(partner.id); }
+  });
+  // Convoy: trips with convoy language in Gen Remarks, grouped by shared DR# (any trip sharing that DR#, even without the remark, joins the group)
+  const convoyKeywords=['convoy','hati','pinaghatian','sinakay','sinkay'];
+  const flaggedCV=trips.filter(t=>!t.convoyGroupId && (t.genRemarks||'').toLowerCase().split(/\s+/).some(w=>convoyKeywords.some(k=>w.includes(k))));
+  const drSeen=new Set(); const cvClusters=[];
+  flaggedCV.forEach(t=>{
+    const dr=(t.dr||'').trim();
+    if(!dr||drSeen.has(dr)) return;
+    drSeen.add(dr);
+    const cluster=trips.filter(x=>!x.convoyGroupId && (x.dr||'').trim()===dr);
+    if(cluster.length>=2) cvClusters.push(cluster);
+  });
+  renderGroupBackfillPreview(mrClusters,cvClusters);
+}
+function renderGroupBackfillPreview(mrClusters,cvClusters){
+  pendingGroupClusters={mr:mrClusters,cv:cvClusters};
+  const el=document.getElementById('group-backfill-result');
+  if(!mrClusters.length && !cvClusters.length){
+    el.innerHTML='<div class="hint">No ungrouped MilkRun or Convoy candidates found — you\'re all caught up.</div>';
+    return;
+  }
+  let html='';
+  const clusterCard=(cluster,idx,cls,label)=>`
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+        <input type="checkbox" class="${cls}" data-idx="${idx}" checked>
+        ${label} — will assign a new ID to ${cluster.length} trips
+      </label>
+      <div style="margin-top:6px;font-size:11px;color:var(--text2)">
+        ${cluster.map(t=>`${t.tripStartDate} · ${t.plate} · ${t.driver||''} · ${t.area||''} — <span class="mono">${t.code}</span>`).join('<br>')}
+      </div>
+    </div>`;
+  if(mrClusters.length){
+    html+=`<h4 style="margin:10px 0 6px">MilkRun candidates (${mrClusters.length} group${mrClusters.length>1?'s':''})</h4>`;
+    html+=mrClusters.map((c,i)=>clusterCard(c,i,'mr-cluster-check','MilkRun group')).join('');
+  }
+  if(cvClusters.length){
+    html+=`<h4 style="margin:10px 0 6px">Convoy candidates (${cvClusters.length} group${cvClusters.length>1?'s':''})</h4>`;
+    html+=cvClusters.map((c,i)=>clusterCard(c,i,'cv-cluster-check','Convoy group')).join('');
+  }
+  html+=`<button class="btn btn-primary" onclick="applyGroupBackfill()" style="margin-top:6px">✅ Assign IDs to Checked Groups</button>`;
+  el.innerHTML=html;
+}
+function applyGroupBackfill(){
+  let mrCount=0,cvCount=0;
+  document.querySelectorAll('.mr-cluster-check:checked').forEach(chk=>{
+    const cluster=pendingGroupClusters.mr[parseInt(chk.dataset.idx,10)];
+    if(!cluster) return;
+    const gid=nextGroupId('MR','tripGroupId');
+    cluster.forEach(t=>{ t.tripGroupId=gid; });
+    mrCount++;
+  });
+  document.querySelectorAll('.cv-cluster-check:checked').forEach(chk=>{
+    const cluster=pendingGroupClusters.cv[parseInt(chk.dataset.idx,10)];
+    if(!cluster) return;
+    const gid=nextGroupId('CV','convoyGroupId');
+    cluster.forEach(t=>{ t.convoyGroupId=gid; t.isConvoy=true; });
+    cvCount++;
+  });
+  if(!mrCount && !cvCount){ toast('No groups selected','error'); return; }
+  saveTripsData(); renderTable(); updateStats();
+  toast(`Linked ${mrCount} MilkRun group(s) and ${cvCount} convoy group(s) ✓`,'success');
+  document.getElementById('group-backfill-result').innerHTML='<div class="hint">Done — re-scan to check for anything remaining.</div>';
+}
+
 // ===== READ/WRITE FORM =====
 function toggleNoDriverReason(){
   const checked=document.getElementById('f-no-driver-flag').checked;
@@ -2091,6 +2273,17 @@ function toggleNoDriverReason(){
   const driverSel=document.getElementById('f-driver');
   if(checked){ /* driver becomes optional, leave whatever is currently selected (likely blank) */ }
   else { document.getElementById('f-no-driver-reason').value=''; }
+}
+function resolveGroupId(flagChecked, prefix, field, radioName, linkSelectId, existingVal){
+  if(!flagChecked) return '';
+  const modeEl=document.querySelector(`input[name="${radioName}"]:checked`);
+  const mode = modeEl ? modeEl.value : 'new';
+  if(mode==='link'){
+    const linked=document.getElementById(linkSelectId).value;
+    return linked || existingVal || '';
+  }
+  // 'new' mode: keep existing ID if this trip already has one (editing), else assign next
+  return existingVal || nextGroupId(prefix, field);
 }
 function readForm(){
   const noDriverFlag=document.getElementById('f-no-driver-flag').checked;
@@ -2102,6 +2295,11 @@ function readForm(){
       genRemarksVal=genRemarksVal?`${tag} | ${genRemarksVal}`:tag;
     }
   }
+  const existingTrip = editingId ? trips.find(x=>x.id===editingId) : null;
+  const isMilkRun = document.getElementById('f-milkrun-flag').checked;
+  const isConvoy = document.getElementById('f-convoy-flag').checked;
+  const tripGroupId = resolveGroupId(isMilkRun, 'MR', 'tripGroupId', 'mr-group-mode', 'f-milkrun-link', existingTrip?existingTrip.tripGroupId:'');
+  const convoyGroupId = resolveGroupId(isConvoy, 'CV', 'convoyGroupId', 'cv-group-mode', 'f-convoy-link', existingTrip?existingTrip.convoyGroupId:'');
   return{
     id:editingId||genId(),
     noDriverFlag, noDriverReason,
@@ -2121,7 +2319,10 @@ function readForm(){
     plate:document.getElementById('f-plate').value,
     truckType:document.getElementById('f-truck-type').value,
     isFWD:document.getElementById('f-fwd-flag').checked,
-    isMilkRun:document.getElementById('f-milkrun-flag').checked,
+    isMilkRun,
+    tripGroupId,
+    isConvoy,
+    convoyGroupId,
     rate:n(document.getElementById('f-rate').value),
     surcharge:n(document.getElementById('f-surcharge').value),
     manoDrv:n(document.getElementById('f-mano-drv').value),
@@ -2171,6 +2372,15 @@ function fillForm(t){
   document.getElementById('f-no-driver-reason-wrap').style.display=t.noDriverFlag?'':'none';
   document.getElementById('f-fwd-flag').checked=!!t.isFWD;
   document.getElementById('f-milkrun-flag').checked=!!t.isMilkRun;
+  toggleMilkRunGroup();
+  if(t.isMilkRun && t.tripGroupId){
+    document.getElementById('mr-group-preview').textContent=t.tripGroupId;
+  }
+  document.getElementById('f-convoy-flag').checked=!!t.isConvoy;
+  toggleConvoyGroup();
+  if(t.isConvoy && t.convoyGroupId){
+    document.getElementById('cv-group-preview').textContent=t.convoyGroupId;
+  }
   computeFormulas(); computeWeek();
 }
 function clearForm(){
@@ -2178,6 +2388,11 @@ function clearForm(){
   document.getElementById('f-no-driver-flag').checked=false;
   document.getElementById('f-fwd-flag').checked=false;
   document.getElementById('f-milkrun-flag').checked=false;
+  document.getElementById('f-milkrun-group-wrap').style.display='none';
+  document.querySelector('input[name="mr-group-mode"][value="new"]').checked=true;
+  document.getElementById('f-convoy-flag').checked=false;
+  document.getElementById('f-convoy-group-wrap').style.display='none';
+  document.querySelector('input[name="cv-group-mode"][value="new"]').checked=true;
   document.getElementById('f-no-driver-reason-wrap').style.display='none';
   computeFormulas();
 }
@@ -2222,6 +2437,18 @@ function saveTrip(){
   if(rolesSet.size!==rolesFilled.length){
     toast('Same staff member cannot be assigned to more than one role (Driver/H1/H2) on the same trip','error');
     return;
+  }
+  if(t.isMilkRun && t.tripGroupId){
+    const usedBy=groupIdUsageCount(t.tripGroupId,'tripGroupId');
+    if(usedBy>=2){
+      if(!confirm(`ℹ️ ${t.tripGroupId} already links ${usedBy} other trip(s). Most MilkRuns are 2 days — add this as a ${usedBy+1}${usedBy===2?'rd':'th'} linked trip?`))return;
+    }
+  }
+  if(t.isConvoy && t.convoyGroupId){
+    const usedBy=groupIdUsageCount(t.convoyGroupId,'convoyGroupId');
+    if(usedBy>=4){
+      if(!confirm(`ℹ️ ${t.convoyGroupId} already links ${usedBy} other trucks. Add this as another truck in the same convoy?`))return;
+    }
   }
   if(!t.code){
     const d=new Date(t.tripStartDate);
@@ -2858,15 +3085,28 @@ function setSummaryPeriod(p,btn){
 
 function renderSummary(){
   const scopedTrips = filterTripsByPeriod(trips, summaryPeriod);
+  // A MilkRun pair sharing the same tripGroupId represents one real journey — collapse to 1
+  // for "logical trip" counts (Grand Total, Monthly Breakdown, Destination Analysis) only.
+  // Driver/Payroll/Fleet/Billing counts intentionally stay as raw entries elsewhere — each
+  // day genuinely was worked/paid/billed, so those should NOT collapse.
+  function isMRDuplicateForCount(t, seenSet){
+    if(t.isMilkRun && t.tripGroupId){
+      if(seenSet.has(t.tripGroupId)) return true;
+      seenSet.add(t.tripGroupId);
+    }
+    return false;
+  }
   let sumRS=0,sumExp=0,sumExpStaff=0,sumIncome=0,sumVat=0,sumIncVat=0,sumOpex=0,sumAfterOpex=0,pctSum=0,pctCnt=0,sumTrips=0;
   const areaMap={},drvMap={},wkMap={},plateMap={},clientMap={},monthMap={},destMap={};
   // Monthly Breakdown is intentionally built from ALL trips (full history), independent of the period filter —
   // it's already a multi-month view, so scoping it to e.g. MTD would collapse it to one row.
+  const monthSeenGroups=new Set();
   trips.forEach(t=>{
     const c=computeAll(t);
     const mo=t.tripStartDate?t.tripStartDate.slice(0,7):'Unknown';
     if(!monthMap[mo])monthMap[mo]={trips:0,rs:0,expenses:0,expStaff:0,income:0,afterOpex:0,diesel:0};
-    monthMap[mo].trips++;monthMap[mo].rs+=c.rs;monthMap[mo].expenses+=c.expenses;
+    if(!isMRDuplicateForCount(t,monthSeenGroups)) monthMap[mo].trips++;
+    monthMap[mo].rs+=c.rs;monthMap[mo].expenses+=c.expenses;
     monthMap[mo].expStaff+=c.expStaff;monthMap[mo].income+=c.income;monthMap[mo].afterOpex+=c.incomeAfterOpex;
     const dieselAmt=Array.isArray(t.dieselEntries)&&t.dieselEntries.length>0
       ?t.dieselEntries.reduce((s,d)=>s+(d.amount||0),0)
@@ -2874,9 +3114,12 @@ function renderSummary(){
     monthMap[mo].diesel+=dieselAmt;
   });
   // Everything else respects the selected period.
+  const scopedSeenGroups=new Set();
   scopedTrips.forEach(t=>{
     const c=computeAll(t);
-    sumRS+=c.rs;sumExp+=c.expenses;sumExpStaff+=c.expStaff;sumIncome+=c.income;sumVat+=c.vat;sumIncVat+=c.incomeVat;sumOpex+=c.opex;sumAfterOpex+=c.incomeAfterOpex;sumTrips++;
+    const isDupeForCount=isMRDuplicateForCount(t,scopedSeenGroups);
+    sumRS+=c.rs;sumExp+=c.expenses;sumExpStaff+=c.expStaff;sumIncome+=c.income;sumVat+=c.vat;sumIncVat+=c.incomeVat;sumOpex+=c.opex;sumAfterOpex+=c.incomeAfterOpex;
+    if(!isDupeForCount) sumTrips++;
     if(c.rs>0){pctSum+=c.pctProfit;pctCnt++;}
     const area=t.area||'Unknown';areaMap[area]=(areaMap[area]||0)+c.income;
     const drv=t.driver||'Unknown';if(!drvMap[drv])drvMap[drv]={trips:0,income:0};drvMap[drv].trips++;drvMap[drv].income+=c.income;
@@ -2891,7 +3134,8 @@ function renderSummary(){
     if(includeForDest){
       if(!destMap[dest]) destMap[dest]={trips:0,rs:0,cost:0,income:0,pctSum:0,pctCnt:0,finalPctSum:0,finalPctCnt:0};
       const dm=destMap[dest];
-      dm.trips++; dm.rs+=c.rs; dm.cost+=c.expStaff; dm.income+=c.income;
+      dm.trips += isDupeForCount ? 0 : 1;
+      dm.rs+=c.rs; dm.cost+=c.expStaff; dm.income+=c.income;
       if(c.rs>0){ dm.pctSum+=c.pctProfit; dm.pctCnt++; }
       if(c.rsvat>0){ dm.finalPctSum+=c.pctFinal; dm.finalPctCnt++; }
     }
@@ -2910,7 +3154,7 @@ function renderSummary(){
 
   // ---- Grand Total Bar ----
   const gtItems=[
-    {label:'Total Trips',value:sumTrips,color:'var(--blue)',prefix:'',suffix:' trips'},
+    {label:'Total Trips',value:sumTrips,color:'var(--blue)',prefix:'',suffix:' trips',sub:'Journeys — MilkRun pairs counted once'},
     {label:'Total Revenue',value:sumRS,color:'var(--green)'},
     {label:'Net Income',value:sumIncome,color:sumIncome>=0?'var(--green)':'var(--red)'},
     {label:'After VAT',value:sumIncVat,color:'var(--blue)'},
@@ -2924,13 +3168,14 @@ function renderSummary(){
       <div style="font-size:16px;font-weight:700;font-family:'DM Mono',monospace;color:${g.color}">
         ${g.prefix||'₱'}${g.suffix?g.value.toLocaleString():fmt(g.value)}${g.suffix||''}
       </div>
+      ${g.sub?`<div style="font-size:9px;color:var(--text2);margin-top:2px">${g.sub}</div>`:''}
     </div>`).join('');
 
   // ---- Monthly Breakdown ----
   const months=Object.keys(monthMap).filter(m=>m!=='Unknown').sort();
   const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const moHeader=`<div style="display:grid;grid-template-columns:90px 50px 1fr 1fr 1fr 1fr 1fr 56px 56px;gap:4px;padding:4px 6px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);margin-bottom:4px">
-    <div>Month</div><div style="text-align:center">Trips</div><div style="text-align:right">Revenue</div><div style="text-align:right">Expenses</div><div style="text-align:right">Diesel</div><div style="text-align:right">Net Income</div><div style="text-align:right">After OPEX</div><div style="text-align:right" title="(Income+VAT) / (Revenue+VAT)">% Pre-OPEX</div><div style="text-align:right" title="After-OPEX income / (Revenue+VAT)">% Final</div>
+    <div>Month</div><div style="text-align:center" title="Journeys — MilkRun pairs counted once">Trips</div><div style="text-align:right">Revenue</div><div style="text-align:right">Expenses</div><div style="text-align:right">Diesel</div><div style="text-align:right">Net Income</div><div style="text-align:right">After OPEX</div><div style="text-align:right" title="(Income+VAT) / (Revenue+VAT)">% Pre-OPEX</div><div style="text-align:right" title="After-OPEX income / (Revenue+VAT)">% Final</div>
   </div>`;
   const moRows=months.map(m=>{
     const d=monthMap[m];
