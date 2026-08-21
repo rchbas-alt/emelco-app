@@ -491,7 +491,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step"><div class="step-num">🚚</div><div class="step-content"><div class="step-title">Trips</div><div class="step-desc">The daily workspace. Add, edit, search and filter trips. Formula fields (Week numbers, computed totals) fill in automatically as you type.</div></div></div>
       <div class="guide-step"><div class="step-num">👤</div><div class="step-content"><div class="step-title">Staff</div><div class="step-desc">Drivers, helpers, and office staff — names, status (Active / On Call / Idle / Resigned), start dates, licenses. Changes reflect immediately in trip and payroll dropdowns. Idle days are tracked automatically from trip history.</div></div></div>
       <div class="guide-step"><div class="step-num">🚛</div><div class="step-content"><div class="step-title">Fleet</div><div class="step-desc">All trucks with plates, types, status and usage stats. Mark a truck Under Maintenance here to flag it on the assignment board.</div></div></div>
-      <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, plus a JSON backup download of trips/staff/fleet for an extra offline copy.</div></div></div>
+      <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, a JSON backup download of trips/staff/fleet for an extra offline copy, and a one-time <strong>🔗 Link Trip Groups</strong> tool for pairing up MilkRun and Convoy trips that don't have a group ID yet.</div></div></div>
       <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
       <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
       <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and office/admin bi-monthly payroll are visible to the Owner account only. If you don't see these tabs, that's by design — not a bug.</div></div></div>
@@ -526,11 +526,43 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step">
         <div class="step-num">⚠️</div>
         <div class="step-content">
-          <div class="step-title">No Driver / No Plate — Convoy & Reassignment Trips</div>
+          <div class="step-title">No Driver / No Plate — Missing or Reassigned Crew</div>
           <div class="step-desc">
-            Some trips legitimately have no driver or no plate assigned — e.g. a load was split across multiple trucks/drivers ("convoy"), or an assigned truck broke down and another truck picked up the load instead.<br><br>
-            To save a trip like this: check the box <strong>"⚠️ No driver and/or no plate — convoy reassignment"</strong> in the New/Edit Trip form, and type a short reason in the box that appears (e.g. <em>"PINAGHATIAN PO NG TATLONG TRUCK NA KA CONVOY"</em>). The reason is required — the trip will not save without it.<br><br>
-            The reason is automatically added to <strong>Gen Remarks</strong>, and the trip is flagged with an orange <strong>⚠️ NO DRIVER</strong> / <strong>⚠️ NO PLATE</strong> badge in the table so it's easy to spot for review during billing or audits.
+            Use this when a trip genuinely has no driver or no plate confirmed yet — e.g. an assigned truck broke down mid-route and another truck/driver picked up the load, and you don't want to hold up saving the trip while that gets sorted out.<br><br>
+            Check the box <strong>"⚠️ No driver and/or no plate — convoy reassignment"</strong> in the New/Edit Trip form, and type a short reason in the box that appears. The reason is required — the trip will not save without it. It's auto-added to <strong>Gen Remarks</strong>, and the trip is flagged with an orange <strong>⚠️ NO DRIVER</strong> / <strong>⚠️ NO PLATE</strong> badge in the table.<br><br>
+            <strong>This is not the same as the Convoy split checkbox below</strong> — this one is about uncertain/missing crew info on a single trip; Convoy split is about linking multiple trucks that shared one real shipment. A trip can use either, both, or neither.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">🥛</div>
+        <div class="step-content">
+          <div class="step-title">MilkRun — multi-region, multi-day trips</div>
+          <div class="step-desc">
+            Check <strong>"MilkRun"</strong> (next to Drop Destinations) for a multi-region trip spanning ~2 days with several drops, typically billed at furthest-drop-distance × 2. The rate itself stays fully manual — the app doesn't calculate the × 2, it's just a marker.<br><br>
+            Because these span 2 calendar days, office staff normally enter <strong>two separate trip rows</strong> — one per day. To keep those linked as one real journey: on the <strong>first day's</strong> entry, leave the picker on <strong>"Start new MilkRun (Day 1)"</strong> — it'll show you the ID it's about to assign (e.g. <strong>MR-018</strong>). On the <strong>second day's</strong> entry, switch to <strong>"Link to existing MilkRun"</strong> and pick the Day 1 trip from the dropdown (it's sorted with the same plate at the top).<br><br>
+            Why bother: linked MilkRun pairs count as <strong>one journey</strong> on the Summary tab (Grand Total, Monthly Breakdown, Destination Analysis) instead of two — see "Entries vs. Trips" below. Revenue and cost are never affected either way; both days' figures always add up in full everywhere.
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">🚚</div>
+        <div class="step-content">
+          <div class="step-title">Convoy split — one shipment, multiple trucks</div>
+          <div class="step-desc">
+            Check <strong>"🚚 Convoy split"</strong> (under Crew &amp; Vehicle) when one shipment genuinely gets carried across several trucks — each truck still keeps its own full rate and revenue; this box never changes any money figures or trip counts. It exists purely so you can trace which trucks belong to the same shipment later.<br><br>
+            On the first truck's entry, leave it on <strong>"Start new convoy group"</strong> (assigns e.g. <strong>CV-007</strong>). For every other truck in the same convoy, check the box and switch to <strong>"Link to existing convoy"</strong>, picking the matching group from the dropdown (sorted with the same DR# at the top).
+          </div>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="step-num">📊</div>
+        <div class="step-content">
+          <div class="step-title">Entries vs. Trips — what the two counts mean</div>
+          <div class="step-desc">
+            <strong>Entries</strong> = every saved trip record, exactly as entered — shown on the Trips tab badge, Payroll, Fleet, and Driver stats. This never changes based on MilkRun/Convoy linking.<br><br>
+            <strong>Trips (journeys)</strong> = Entries, but with linked MilkRun pairs counted once instead of twice — shown on the Summary tab's Grand Total, Monthly Breakdown, and Destination Analysis. Convoy-linked trucks are <strong>never</strong> collapsed this way — each truck is a real, separate, fully-paid trip.<br><br>
+            If the two numbers ever match exactly, it just means no MilkRun trips have been linked yet — nothing is broken.
           </div>
         </div>
       </div>
@@ -613,6 +645,7 @@ body.role-operations .fin-only{display:none!important}
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>R+S+VAT</strong><br><span style="color:var(--text2)">Rate+Surcharge + VAT</span></div>
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>Expenses</strong><br><span style="color:var(--text2)">Diesel+Toll+Food+Passway+Parking+Checker+Load+GCash+Maint+Other</span></div>
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>Staff Pay Total</strong><br><span style="color:var(--text2)">ManoCCAC(D+H1+H2)+ManoOthers+DrvPay+H1Pay+H2Pay</span></div>
+      <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>Total Cost</strong><br><span style="color:var(--text2)">Expenses + Staff Pay Total</span></div>
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>Income</strong><br><span style="color:var(--text2)">Rate+Surcharge − (Expenses + Staff Pay)</span></div>
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>% Profit</strong><br><span style="color:var(--text2)">Income ÷ Rate+Surcharge</span></div>
       <div style="background:var(--bg3);padding:8px 10px;border-radius:6px"><strong>Income With VAT</strong><br><span style="color:var(--text2)">Income + VAT</span></div>
