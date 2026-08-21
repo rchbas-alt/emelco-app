@@ -3129,7 +3129,22 @@ function renderSummary(){
       <td>${margin}</td>
       <td>${finalMargin}</td>
     </tr>`;
-  }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">No trips for this filter/period</td></tr>`;
+  }).join('') + (()=>{
+    const t={trips:0,rs:0,cost:0,income:0,pctSum:0,pctCnt:0,finalPctSum:0,finalPctCnt:0};
+    destRows.forEach(([,d])=>{ t.trips+=d.trips; t.rs+=d.rs; t.cost+=d.cost; t.income+=d.income;
+      t.pctSum+=d.pctSum; t.pctCnt+=d.pctCnt; t.finalPctSum+=d.finalPctSum; t.finalPctCnt+=d.finalPctCnt; });
+    const tMargin = t.pctCnt ? pct(t.pctSum/t.pctCnt) : '—';
+    const tFinalMargin = t.finalPctCnt ? pct(t.finalPctSum/t.finalPctCnt) : '—';
+    return `<tr style="font-weight:700;border-top:2px solid var(--border2)">
+      <td style="text-align:left">TOTAL</td>
+      <td>${t.trips}</td>
+      <td>₱${fmt(t.rs)}</td>
+      <td>₱${fmt(t.cost)}</td>
+      <td style="color:${t.income>=0?'var(--green)':'var(--red)'}">₱${fmt(t.income)}</td>
+      <td>${tMargin}</td>
+      <td>${tFinalMargin}</td>
+    </tr>`;
+  })() : `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">No trips for this filter/period</td></tr>`;
   const topDrv=Object.entries(drvMap).sort((a,b)=>b[1].trips-a[1].trips).slice(0,10);
   document.getElementById('summary-drivers').innerHTML=topDrv.map(([d,data])=>`<div class="summary-row"><span class="summary-row-label">${d}</span><span class="summary-row-value" style="color:var(--blue)">${data.trips} trips</span></div>`).join('');
   const topWk=Object.entries(wkMap).sort((a,b)=>Number(a[0])-Number(b[0])).slice(0,15);
