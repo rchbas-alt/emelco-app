@@ -20,6 +20,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .btn{padding:8px 14px;border-radius:var(--radius);border:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .btn-primary{background:var(--accent);color:#000}.btn-primary:hover{background:#ffc02a;transform:translateY(-1px)}
 .btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--border2)}
+.btn-ghost.btn-primary{background:var(--accent);color:#000;border-color:var(--accent)}.btn-ghost.btn-primary:hover{background:#ffc02a}
 .btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#c0392b}
 .btn-success{background:var(--green);color:#000}.btn-success:hover{background:#27ae60}
 .btn-sm{padding:4px 9px;font-size:11px}
@@ -319,6 +320,8 @@ body.role-operations .fin-only{display:none!important}
       <button class="btn btn-ghost btn-sm btn-primary" onclick="setSummaryPeriod('all',this)">All Time</button>
       <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('mtd',this)">MTD</button>
       <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
+      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('90',this)">Last 90 Days</button>
+      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('160',this)">Last 160 Days</button>
     </div>
   </div>
   <!-- Grand Total Bar -->
@@ -2823,6 +2826,8 @@ function summaryPeriodBounds(period){
   const today=new Date(); today.setHours(0,0,0,0);
   if(period==='mtd') return {start:new Date(today.getFullYear(),today.getMonth(),1), end:today};
   if(period==='30'){ const s=new Date(today); s.setDate(s.getDate()-30); return {start:s, end:today}; }
+  if(period==='90'){ const s=new Date(today); s.setDate(s.getDate()-90); return {start:s, end:today}; }
+  if(period==='160'){ const s=new Date(today); s.setDate(s.getDate()-160); return {start:s, end:today}; }
   return null; // 'all'
 }
 function filterTripsByPeriod(arr, period){
@@ -2838,7 +2843,7 @@ function setSummaryPeriod(p,btn){
   summaryPeriod=p;
   document.querySelectorAll('#summary-period-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
   if(btn) btn.classList.add('btn-primary');
-  const labels={all:'All Time', mtd:'Month to Date', '30':'Last 30 Days'};
+  const labels={all:'All Time', mtd:'Month to Date', '30':'Last 30 Days', '90':'Last 90 Days', '160':'Last 160 Days'};
   document.getElementById('summary-period-note').textContent =
     'Showing: '+labels[p]+' (Monthly Breakdown table always shows full history)';
   renderSummary();
