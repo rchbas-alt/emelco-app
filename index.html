@@ -317,7 +317,6 @@ body.role-operations .fin-only{display:none!important}
     <div style="font-size:11px;color:var(--text2)" id="summary-period-note">Showing: All Time (Monthly Breakdown table always shows full history)</div>
     <div style="display:flex;gap:6px" id="summary-period-buttons">
       <button class="btn btn-ghost btn-sm btn-primary" onclick="setSummaryPeriod('all',this)">All Time</button>
-      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('ytd',this)">YTD</button>
       <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('mtd',this)">MTD</button>
       <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
     </div>
@@ -341,6 +340,29 @@ body.role-operations .fin-only{display:none!important}
       <div id="summary-cutoff"></div>
     </div>
     <div class="summary-card"><h3>🗺 Top Areas by Income</h3><div id="summary-routes"></div></div>
+    <div class="summary-card" style="grid-column:span 2">
+      <h3 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>📍 Destination Analysis — R+S / Total Cost / Income</span>
+        <div style="display:flex;gap:6px" id="dest-type-buttons">
+          <button class="btn btn-ghost btn-sm" onclick="selectAllDestTypes(this)">All Types</button>
+          <button class="btn btn-ghost btn-sm" data-type="single" onclick="toggleDestType('single',this)">Single</button>
+          <button class="btn btn-ghost btn-sm" data-type="mr" onclick="toggleDestType('mr',this)">MilkRun</button>
+          <button class="btn btn-ghost btn-sm" data-type="fwd" onclick="toggleDestType('fwd',this)">FWD</button>
+        </div>
+      </h3>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px" id="dest-chart-buttons">
+        <span style="font-size:11px;color:var(--text2)">Chart:</span>
+        <button class="btn btn-ghost btn-sm btn-primary" data-metric="income" onclick="setDestChartMetric('income',this)">Income</button>
+        <button class="btn btn-ghost btn-sm" data-metric="margin" onclick="setDestChartMetric('margin',this)">Margin %</button>
+      </div>
+      <div id="dest-chart" style="margin-bottom:16px;overflow-x:auto"></div>
+      <div class="table-wrapper"><table>
+        <thead><tr>
+          <th style="text-align:left">Destination</th><th>Trips</th><th>R+S</th><th>Total Cost</th><th>Income</th><th>Margin %</th><th>After OPEX Margin %</th>
+        </tr></thead>
+        <tbody id="summary-dest-analysis"></tbody>
+      </table></div>
+    </div>
     <div class="summary-card"><h3>👤 Driver Activity (Top 10)</h3><div id="summary-drivers"></div></div>
     <div class="summary-card"><h3>📅 Weekly Income (Mon–Sun)</h3><div id="summary-weekly"></div></div>
     <div class="summary-card"><h3>🚛 Fleet Utilization</h3><div id="summary-fleet"></div></div>
@@ -2752,9 +2774,53 @@ function renderFleet(){
 // ===== SUMMARY PAGE =====
 // ===== SUMMARY TAB PERIOD FILTER =====
 let summaryPeriod = 'all';
+let destTypeFilters = new Set(['single','mr','fwd']); // default: all types shown
+let destChartMetric = 'income'; // 'income' | 'margin'
+function setDestChartMetric(m,btn){
+  destChartMetric=m;
+  document.querySelectorAll('#dest-chart-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  renderSummary();
+}
+function renderDestChart(destRows){
+  const el=document.getElementById('dest-chart');
+  if(!destRows.length){ el.innerHTML=''; return; }
+  const items = destRows.map(([dest,d])=>{
+    const val = destChartMetric==='income' ? d.income : (d.pctCnt ? (d.pctSum/d.pctCnt)*100 : 0);
+    return {dest, val};
+  }).sort((a,b)=>b.val-a.val).slice(0,12);
+  const maxAbs = Math.max(1, ...items.map(i=>Math.abs(i.val)));
+  const barH=20, gap=8, topPad=4, leftW=130, barMaxW=360, rightPad=90;
+  const svgW = leftW+barMaxW+rightPad;
+  const svgH = topPad*2 + items.length*(barH+gap);
+  const bars = items.map((it,i)=>{
+    const y = topPad + i*(barH+gap);
+    const w = Math.max(1, Math.abs(it.val)/maxAbs * barMaxW);
+    const color = it.val>=0 ? 'var(--green)' : 'var(--red)';
+    const label = destChartMetric==='income' ? '₱'+fmtK(it.val) : it.val.toFixed(1)+'%';
+    return `<text x="${leftW-8}" y="${y+barH*0.7}" text-anchor="end" font-size="11" fill="var(--text)">${it.dest}</text>
+      <rect x="${leftW}" y="${y}" width="${w}" height="${barH}" rx="3" fill="${color}"></rect>
+      <text x="${leftW+w+6}" y="${y+barH*0.7}" font-size="11" fill="var(--text2)">${label}</text>`;
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" style="max-width:${svgW}px;height:${svgH}px">${bars}</svg>`;
+}
+function renderDestTypeButtons(){
+  document.querySelectorAll('#dest-type-buttons .btn').forEach(b=>{
+    const t = b.dataset.type;
+    const active = t ? destTypeFilters.has(t) : destTypeFilters.size===3;
+    b.classList.toggle('btn-primary', active);
+  });
+}
+function toggleDestType(t,btn){
+  if(destTypeFilters.has(t)) destTypeFilters.delete(t); else destTypeFilters.add(t);
+  renderSummary();
+}
+function selectAllDestTypes(btn){
+  destTypeFilters = new Set(['single','mr','fwd']);
+  renderSummary();
+}
 function summaryPeriodBounds(period){
   const today=new Date(); today.setHours(0,0,0,0);
-  if(period==='ytd') return {start:new Date(today.getFullYear(),0,1), end:today};
   if(period==='mtd') return {start:new Date(today.getFullYear(),today.getMonth(),1), end:today};
   if(period==='30'){ const s=new Date(today); s.setDate(s.getDate()-30); return {start:s, end:today}; }
   return null; // 'all'
@@ -2772,7 +2838,7 @@ function setSummaryPeriod(p,btn){
   summaryPeriod=p;
   document.querySelectorAll('#summary-period-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
   if(btn) btn.classList.add('btn-primary');
-  const labels={all:'All Time', ytd:'Year to Date', mtd:'Month to Date', '30':'Last 30 Days'};
+  const labels={all:'All Time', mtd:'Month to Date', '30':'Last 30 Days'};
   document.getElementById('summary-period-note').textContent =
     'Showing: '+labels[p]+' (Monthly Breakdown table always shows full history)';
   renderSummary();
@@ -2781,7 +2847,7 @@ function setSummaryPeriod(p,btn){
 function renderSummary(){
   const scopedTrips = filterTripsByPeriod(trips, summaryPeriod);
   let sumRS=0,sumExp=0,sumExpStaff=0,sumIncome=0,sumVat=0,sumIncVat=0,sumOpex=0,sumAfterOpex=0,pctSum=0,pctCnt=0,sumTrips=0;
-  const areaMap={},drvMap={},wkMap={},plateMap={},clientMap={},monthMap={};
+  const areaMap={},drvMap={},wkMap={},plateMap={},clientMap={},monthMap={},destMap={};
   // Monthly Breakdown is intentionally built from ALL trips (full history), independent of the period filter —
   // it's already a multi-month view, so scoping it to e.g. MTD would collapse it to one row.
   trips.forEach(t=>{
@@ -2805,6 +2871,18 @@ function renderSummary(){
     const wk=t.weekMon||'?';if(!wkMap[wk])wkMap[wk]={trips:0,income:0};wkMap[wk].trips++;wkMap[wk].income+=c.income;
     const cl=t.client||'?';if(!clientMap[cl])clientMap[cl]={trips:0,income:0};clientMap[cl].trips++;clientMap[cl].income+=c.income;
     const pl=t.plate||'?';plateMap[pl]=(plateMap[pl]||0)+1;
+    const dest=t.area||'Unspecified';
+    const isSingle = !t.isMilkRun && !t.isFWD;
+    const includeForDest = (isSingle && destTypeFilters.has('single'))
+      || (t.isMilkRun && destTypeFilters.has('mr'))
+      || (t.isFWD && destTypeFilters.has('fwd'));
+    if(includeForDest){
+      if(!destMap[dest]) destMap[dest]={trips:0,rs:0,cost:0,income:0,pctSum:0,pctCnt:0,finalPctSum:0,finalPctCnt:0};
+      const dm=destMap[dest];
+      dm.trips++; dm.rs+=c.rs; dm.cost+=c.expStaff; dm.income+=c.income;
+      if(c.rs>0){ dm.pctSum+=c.pctProfit; dm.pctCnt++; }
+      if(c.rsvat>0){ dm.finalPctSum+=c.pctFinal; dm.finalPctCnt++; }
+    }
   });
 
   // ---- Profitability percentages (Rhoda): before vs after 25% OPEX ----
@@ -3023,6 +3101,23 @@ function renderSummary(){
   document.getElementById('summary-cutoff').innerHTML=coHeader+coRows+coTotal;
   const topAreas=Object.entries(areaMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
   document.getElementById('summary-routes').innerHTML=topAreas.map(([a,inc])=>`<div class="summary-row"><span class="summary-row-label">${a}</span><span class="summary-row-value" style="color:${inc>=0?'var(--green)':'var(--red)'}">₱${fmtK(inc)}</span></div>`).join('');
+
+  const destRows=Object.entries(destMap).sort((a,b)=>b[1].income-a[1].income);
+  renderDestTypeButtons();
+  renderDestChart(destRows);
+  document.getElementById('summary-dest-analysis').innerHTML = destRows.length ? destRows.map(([dest,d])=>{
+    const margin = d.pctCnt ? pct(d.pctSum/d.pctCnt) : '—';
+    const finalMargin = d.finalPctCnt ? pct(d.finalPctSum/d.finalPctCnt) : '—';
+    return `<tr>
+      <td style="text-align:left;font-weight:600">${dest}</td>
+      <td>${d.trips}</td>
+      <td>₱${fmt(d.rs)}</td>
+      <td>₱${fmt(d.cost)}</td>
+      <td style="color:${d.income>=0?'var(--green)':'var(--red)'};font-weight:600">₱${fmt(d.income)}</td>
+      <td>${margin}</td>
+      <td>${finalMargin}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:20px">No trips for this filter/period</td></tr>`;
   const topDrv=Object.entries(drvMap).sort((a,b)=>b[1].trips-a[1].trips).slice(0,10);
   document.getElementById('summary-drivers').innerHTML=topDrv.map(([d,data])=>`<div class="summary-row"><span class="summary-row-label">${d}</span><span class="summary-row-value" style="color:var(--blue)">${data.trips} trips</span></div>`).join('');
   const topWk=Object.entries(wkMap).sort((a,b)=>Number(a[0])-Number(b[0])).slice(0,15);
