@@ -249,7 +249,7 @@ body.role-operations .fin-only{display:none!important}
 <!-- ====== TRIPS PAGE ====== -->
 <div class="page active" id="page-trips">
   <div class="stats-row">
-    <div class="stat-card trips"><div class="stat-label">Total Trips</div><div class="stat-value" id="stat-trips">0</div><div class="stat-sub">All entries</div></div>
+    <div class="stat-card trips"><div class="stat-label">Total Trips</div><div class="stat-value" id="stat-trips">0</div><div class="stat-sub" id="stat-trips-sub">All entries</div></div>
     <div class="stat-card income fin-only"><div class="stat-label">Revenue (R+S)</div><div class="stat-value" id="stat-income">₱0</div><div class="stat-sub">Rate + Surcharge</div></div>
     <div class="stat-card expense fin-only"><div class="stat-label">Total Out</div><div class="stat-value" id="stat-expenses">₱0</div><div class="stat-sub">Exp + Staff Pay</div></div>
     <div class="stat-card profit fin-only"><div class="stat-label">Net Income</div><div class="stat-value" id="stat-profit">₱0</div><div class="stat-sub">Before OPEX</div></div>
@@ -2703,6 +2703,10 @@ function updateStats(){
   let sumRS=0,sumExpStaff=0,sumIncome=0,sumPct=0,cnt=0;
   trips.forEach(t=>{const c=computeAll(t);sumRS+=c.rs;sumExpStaff+=c.expStaff;sumIncome+=c.income;if(c.rs>0){sumPct+=c.pctProfit;cnt++;}});
   document.getElementById('stat-trips').textContent=trips.length;
+  const logicalCount=logicalTripCount(trips);
+  document.getElementById('stat-trips-sub').textContent = logicalCount!==trips.length
+    ? `${trips.length} entries · ${logicalCount} journeys (MilkRun collapsed)`
+    : 'All entries';
   document.getElementById('stat-income').textContent='₱'+fmtK(sumRS);
   document.getElementById('stat-expenses').textContent='₱'+fmtK(sumExpStaff);
   document.getElementById('stat-profit').textContent='₱'+fmtK(sumIncome);
@@ -3083,19 +3087,25 @@ function setSummaryPeriod(p,btn){
   renderSummary();
 }
 
+// A MilkRun pair sharing the same tripGroupId represents one real journey — collapse to 1
+// for "logical trip" counts (Grand Total, Monthly Breakdown, Destination Analysis, and the
+// Trips tab sub-label) only. Driver/Payroll/Fleet/Billing counts intentionally stay as raw
+// entries elsewhere — each day genuinely was worked/paid/billed, so those should NOT collapse.
+function isMRDuplicateForCount(t, seenSet){
+  if(t.isMilkRun && t.tripGroupId){
+    if(seenSet.has(t.tripGroupId)) return true;
+    seenSet.add(t.tripGroupId);
+  }
+  return false;
+}
+function logicalTripCount(arr){
+  const seen=new Set();
+  let count=0;
+  arr.forEach(t=>{ if(!isMRDuplicateForCount(t,seen)) count++; });
+  return count;
+}
 function renderSummary(){
   const scopedTrips = filterTripsByPeriod(trips, summaryPeriod);
-  // A MilkRun pair sharing the same tripGroupId represents one real journey — collapse to 1
-  // for "logical trip" counts (Grand Total, Monthly Breakdown, Destination Analysis) only.
-  // Driver/Payroll/Fleet/Billing counts intentionally stay as raw entries elsewhere — each
-  // day genuinely was worked/paid/billed, so those should NOT collapse.
-  function isMRDuplicateForCount(t, seenSet){
-    if(t.isMilkRun && t.tripGroupId){
-      if(seenSet.has(t.tripGroupId)) return true;
-      seenSet.add(t.tripGroupId);
-    }
-    return false;
-  }
   let sumRS=0,sumExp=0,sumExpStaff=0,sumIncome=0,sumVat=0,sumIncVat=0,sumOpex=0,sumAfterOpex=0,pctSum=0,pctCnt=0,sumTrips=0;
   const areaMap={},drvMap={},wkMap={},plateMap={},clientMap={},monthMap={},destMap={};
   // Monthly Breakdown is intentionally built from ALL trips (full history), independent of the period filter —
