@@ -317,11 +317,11 @@ body.role-operations .fin-only{display:none!important}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
     <div style="font-size:11px;color:var(--text2)" id="summary-period-note">Showing: All Time (Monthly Breakdown table always shows full history)</div>
     <div style="display:flex;gap:6px" id="summary-period-buttons">
-      <button class="btn btn-ghost btn-sm btn-primary" onclick="setSummaryPeriod('all',this)">All Time</button>
-      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('mtd',this)">MTD</button>
-      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
-      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('90',this)">Last 90 Days</button>
-      <button class="btn btn-ghost btn-sm" onclick="setSummaryPeriod('160',this)">Last 160 Days</button>
+      <button class="btn btn-ghost btn-sm btn-primary period-btn" data-period="all" onclick="setSummaryPeriod('all',this)">All Time</button>
+      <button class="btn btn-ghost btn-sm period-btn" data-period="mtd" onclick="setSummaryPeriod('mtd',this)">MTD</button>
+      <button class="btn btn-ghost btn-sm period-btn" data-period="30" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
+      <button class="btn btn-ghost btn-sm period-btn" data-period="90" onclick="setSummaryPeriod('90',this)">Last 90 Days</button>
+      <button class="btn btn-ghost btn-sm period-btn" data-period="160" onclick="setSummaryPeriod('160',this)">Last 160 Days</button>
     </div>
   </div>
   <!-- Grand Total Bar -->
@@ -353,6 +353,14 @@ body.role-operations .fin-only{display:none!important}
           <button class="btn btn-ghost btn-sm" data-type="fwd" onclick="toggleDestType('fwd',this)">FWD</button>
         </div>
       </h3>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap" id="dest-period-buttons">
+        <span style="font-size:11px;color:var(--text2)">Period:</span>
+        <button class="btn btn-ghost btn-sm period-btn" data-period="all" onclick="setSummaryPeriod('all',this)">All Time</button>
+        <button class="btn btn-ghost btn-sm period-btn" data-period="mtd" onclick="setSummaryPeriod('mtd',this)">MTD</button>
+        <button class="btn btn-ghost btn-sm period-btn" data-period="30" onclick="setSummaryPeriod('30',this)">Last 30 Days</button>
+        <button class="btn btn-ghost btn-sm period-btn" data-period="90" onclick="setSummaryPeriod('90',this)">Last 90 Days</button>
+        <button class="btn btn-ghost btn-sm period-btn" data-period="160" onclick="setSummaryPeriod('160',this)">Last 160 Days</button>
+      </div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px" id="dest-chart-buttons">
         <span style="font-size:11px;color:var(--text2)">Chart:</span>
         <button class="btn btn-ghost btn-sm btn-primary" data-metric="income" onclick="setDestChartMetric('income',this)">Income</button>
@@ -2841,8 +2849,7 @@ function filterTripsByPeriod(arr, period){
 }
 function setSummaryPeriod(p,btn){
   summaryPeriod=p;
-  document.querySelectorAll('#summary-period-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
-  if(btn) btn.classList.add('btn-primary');
+  document.querySelectorAll('.period-btn').forEach(b=>b.classList.toggle('btn-primary', b.dataset.period===p));
   const labels={all:'All Time', mtd:'Month to Date', '30':'Last 30 Days', '90':'Last 90 Days', '160':'Last 160 Days'};
   document.getElementById('summary-period-note').textContent =
     'Showing: '+labels[p]+' (Monthly Breakdown table always shows full history)';
