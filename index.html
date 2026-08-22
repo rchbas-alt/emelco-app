@@ -223,6 +223,7 @@ body.role-operations .fin-only{display:none!important}
     <span id="version-badge" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;cursor:default;border:1px solid var(--border);border-radius:4px;padding:1px 5px"></span>
     <a href="https://rchbas-alt.github.io/emelco-app/assignment.html" target="_blank" class="btn btn-ghost btn-sm" title="View weekly truck assignment grid">📅 Assignment</a>
     <a href="https://rchbas-alt.github.io/emelco-app/billing.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Billing">🧾 Billing 2026</a>
+    <a href="https://rchbas-alt.github.io/emelco-app/fleet.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Fleet Registry &amp; Maintenance">🚛 Fleet</a>
     <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
     <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
@@ -1236,6 +1237,7 @@ const DEFAULT_FLEET = [
 
 // ===== STATE =====
 let trips=[], staff=[], fleet=[];
+let fleetRegistryPlates=null; // populated by fetchFleetRegistry() — null means "use local fleet array"
 let editingId=null, deleteId=null, deleteType=null;
 let editingStaffId=null, editingTruckId=null, originalStaffPosition=null;
 let sortCol='tripStartDate', sortDir=-1;
@@ -1244,7 +1246,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202608211400'; // added MilkRun (MR-XXX) / Convoy (CV-XXX) trip group IDs, backfill tool, logical trip-count collapsing on Summary tab
+const APP_VERSION = '202608231500'; // Phase 2: added Fleet nav link + read-only plate-dropdown fetch from fleet.html's Registry (fleetRegistryPlates, fetchFleetRegistry()), local fleet array kept as fallback and unchanged elsewhere
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -1537,6 +1539,38 @@ function scheduleCloudPush(){
 }
 
 // Load from GitHub first, fallback to localStorage
+// ============================================================
+// Phase 2 (2026-08-23): read-only fetch of fleet.html's Registry
+// for the plate dropdown. This is ADDITIVE ONLY — it never writes
+// to fleet.html's data, never touches the Fleet tab's own CRUD,
+// trip stats, or idle tracking, all of which keep using the local
+// `fleet` array exactly as before. If this fetch fails or the file
+// is empty, populatePlateDropdown() silently falls back to `fleet`.
+// ============================================================
+async function fetchFleetRegistry(){
+  try{
+    const r = await fetch(`${PROXY_URL}/contents/emelco_fleet_2026.json?t=`+Date.now(), {
+      headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+    });
+    if(!r.ok) return;
+    const meta = await r.json();
+    let text;
+    if(meta.content && meta.encoding==='base64'){ text = safeAtobUtf8(meta.content); }
+    else {
+      const blobRes = await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`, {
+        headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+      });
+      if(!blobRes.ok) return;
+      const blob = await blobRes.json();
+      text = safeAtobUtf8(blob.content);
+    }
+    const data = JSON.parse(text);
+    const trucks = data.trucks || [];
+    if(!trucks.length) return; // don't replace a working local list with an empty one
+    fleetRegistryPlates = trucks.map(t=>({ plate:t.plate, type:t.type||'', status:t.status||'Active' }));
+  }catch(e){ console.warn('fleet.html registry fetch failed — plate dropdown uses local fleet array instead:', e.message); }
+}
+
 async function loadData(){
   setSyncStatus('⏳ Connecting to cloud…','var(--accent)');
   try{
@@ -2136,7 +2170,19 @@ function checkRoleDuplicates(){
 function populatePlateDropdown(){
   const el=document.getElementById('f-plate');
   const cur=el.value;
-  el.innerHTML='<option value="">— Select —</option>'+fleet.filter(t=>t.status!=='sold').map(t=>`<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate} — ${t.type}${t.status==='idle'?' (idle)':''}</option>`).join('');
+  // Prefer fleet.html's Registry when it loaded successfully (fresher chassis-tracked data);
+  // fall back to this app's own local `fleet` array otherwise — populatePlateDropdown never
+  // breaks even if fleet.html's file is unreachable or empty.
+  const source = (fleetRegistryPlates && fleetRegistryPlates.length) ? fleetRegistryPlates : fleet;
+  el.innerHTML='<option value="">— Select —</option>'+source.filter(t=>{
+    const st=String(t.status||'').toLowerCase();
+    return st!=='sold' && st!=='retired';
+  }).map(t=>{
+    const st=String(t.status||'').toLowerCase();
+    const label = st==='idle' ? ' (idle)' : st.startsWith('under repair') ? ' (under repair)' : '';
+    const type = t.type ? ` — ${t.type}` : '';
+    return `<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate}${type}${label}</option>`;
+  }).join('');
   if(cur) el.value=cur;
 }
 function populateDriverFilter(){
@@ -4186,6 +4232,7 @@ async function publishAppVersion(note){
 
 (async()=>{
   await loadData();
+  fetchFleetRegistry(); // fire-and-forget, non-blocking — populatePlateDropdown() only reads it once it resolves
   checkAppVersion(); // non-blocking, runs in background
   // Normalize all cutoff values including preloaded
   trips.forEach(t=>{ if(t.cutoff) t.cutoff=normalizeCutoff(t.cutoff); });
