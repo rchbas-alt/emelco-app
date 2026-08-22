@@ -95,6 +95,11 @@ body.role-operations .owner-only{display:none!important}
 .form-textarea{resize:vertical;min-height:60px;font-family:'Sora',sans-serif}
 .form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(212,130,10,.1)}
 
+/* batch entry rows */
+.batch-row{display:grid;grid-template-columns:1.2fr 2fr 1fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:8px}
+.batch-row select,.batch-row input{font-size:11px;padding:6px 8px}
+.batch-row-remove{background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:4px}
+
 /* checklist */
 .checklist{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .check-item{display:flex;align-items:center;gap:8px;background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;padding:8px 10px}
@@ -217,7 +222,7 @@ body.role-operations .owner-only{display:none!important}
   <!-- ===== REGISTRY ===== -->
   <div class="page" id="page-registry">
     <div class="toolbar">
-      <input class="search-box" id="regSearch" placeholder="Search plate, chassis, name…" oninput="renderRegistry()">
+      <input class="search-box" id="regSearch" placeholder="Search plate, chassis, name..." oninput="renderRegistry()">
       <select class="filter-select" id="regStatusFilter" onchange="renderRegistry()">
         <option value="">All statuses</option>
         <option value="Active">Active</option>
@@ -245,6 +250,7 @@ body.role-operations .owner-only{display:none!important}
       </select>
       <div class="spacer"></div>
       <button class="btn btn-ghost btn-sm" onclick="exportMaintenanceExcel()">⬇ Excel</button>
+      <button class="btn btn-ghost btn-sm" onclick="openBatchModal()">+ Batch Entry</button>
       <button class="btn btn-primary btn-sm" onclick="openMaintModal()">+ New Entry</button>
     </div>
     <div class="table-wrapper">
@@ -301,7 +307,7 @@ body.role-operations .owner-only{display:none!important}
         </div>
         <div class="form-grid form-grid-2" style="margin-top:10px">
           <div class="form-group"><label class="form-label">Reason</label><input class="form-input" id="tRepairReason" placeholder="what's being fixed"></div>
-          <div class="form-group"><label class="form-label">Cost estimate</label><input type="number" step="0.01" class="form-input" id="tRepairCost"></div>
+          <div class="form-group"><label class="form-label">Cost estimate</label><input type="number" step="0.01" min="0" class="form-input" id="tRepairCost"></div>
         </div>
         <div class="form-group" style="margin-top:10px" id="tRepairMajorWrap">
           <label class="form-label">Remarks <span class="muted">(fuller explanation — major repairs)</span></label>
@@ -309,12 +315,26 @@ body.role-operations .owner-only{display:none!important}
         </div>
       </div>
 
-      <div class="section-title">📋 Inventory Checklist</div>
-      <div class="hint">Present / Missing / Expired — flags only, never blocks saving.</div>
-      <div class="checklist" id="checklistWrap"></div>
+      <div id="retireWrap" style="display:none">
+        <div class="section-title">🗄️ Retirement details</div>
+        <div class="form-grid form-grid-2">
+          <div class="form-group"><label class="form-label">Date retired</label><input type="date" class="form-input" id="tRetireDate"></div>
+          <div class="form-group"><label class="form-label">Reason</label><input class="form-input" id="tRetireReason" placeholder="e.g. total loss, sold, old age"></div>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <label class="form-label">Remarks</label>
+          <textarea class="form-textarea" id="tRetireRemarks" placeholder="free text — what happened, context for later reference"></textarea>
+        </div>
+      </div>
+
+      <div id="checklistSection">
+        <div class="section-title">📋 Inventory Checklist <span id="checklistToggle" class="muted" style="cursor:pointer;text-decoration:underline;font-weight:400;text-transform:none;letter-spacing:0;display:none" onclick="toggleChecklistCollapse()"></span></div>
+        <div class="hint" id="checklistHint">Present / Missing / Expired — flags only, never blocks saving.</div>
+        <div class="checklist" id="checklistWrap"></div>
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-danger owner-only" id="truckDeleteBtn" style="display:none;margin-right:auto" onclick="deleteTruckConfirm()">Remove truck</button>
+      <button class="btn btn-danger" id="truckDeleteBtn" style="display:none;margin-right:auto" onclick="deleteTruckConfirm()">Remove truck</button>
       <button class="btn btn-ghost" onclick="closeTruckModalX()">Cancel</button>
       <button class="btn btn-primary" onclick="saveTruck()">Save truck</button>
     </div>
@@ -350,9 +370,33 @@ body.role-operations .owner-only{display:none!important}
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-danger owner-only" id="maintDeleteBtn" style="display:none;margin-right:auto" onclick="deleteMaintConfirm()">Delete entry</button>
+      <button class="btn btn-danger" id="maintDeleteBtn" style="display:none;margin-right:auto" onclick="deleteMaintConfirm()">Delete entry</button>
       <button class="btn btn-ghost" onclick="closeMaintModalX()">Cancel</button>
       <button class="btn btn-primary" onclick="saveMaint()">Save entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- BATCH MAINTENANCE MODAL -->
+<div class="modal-overlay" id="batchModal">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div><div class="modal-title">Batch maintenance entry</div>
+      <div class="modal-subtitle">Same plate + date, several line items in one save — good for a big repair job</div></div>
+      <div class="modal-close" onclick="closeBatchModalX()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid form-grid-2">
+        <div class="form-group"><label class="form-label">Plate</label><select class="form-select" id="bPlate"></select></div>
+        <div class="form-group"><label class="form-label">Date</label><input type="date" class="form-input" id="bDate"></div>
+      </div>
+      <div class="section-title">Line items</div>
+      <div id="batchRows"></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addBatchRow()">+ Add row</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeBatchModalX()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBatch()">Save all entries</button>
     </div>
   </div>
 </div>
@@ -365,7 +409,7 @@ body.role-operations .owner-only{display:none!important}
    Standalone module. Own data file, same Cloudflare Worker.
    index.html is NOT touched by this file (Phase 1 rule).
    ============================================================ */
-const APP_VERSION = '202608221200';
+const APP_VERSION = '202608231400';
 
 // ---- proxy wiring: identical mechanism to index.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -470,7 +514,7 @@ async function publishVersionFromUI(){
 /* ============================================================
    State + cloud I/O
    ============================================================ */
-let STATE = { trucks: [], maintenance: [] };
+let STATE = { trucks: [], maintenance: [], deletionLog: [] };
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
 
@@ -520,10 +564,13 @@ function mergeFleet(local, remote){
   const byId={}; out.maintenance.forEach(m=>byId[m.id]=m);
   local.maintenance.forEach(m=>{ byId[m.id]=m; });
   out.maintenance=Object.values(byId);
+  // deletionLog is append-only history, union rather than overwrite
+  const seen=new Set((out.deletionLog||[]).map(x=>x.deletedAt+x.ref));
+  (local.deletionLog||[]).forEach(x=>{ const k=x.deletedAt+x.ref; if(!seen.has(k)){ out.deletionLog=out.deletionLog||[]; out.deletionLog.push(x); seen.add(k); } });
   return out;
 }
 function normalize(d){
-  return { trucks: d.trucks||[], maintenance: d.maintenance||[] };
+  return { trucks: d.trucks||[], maintenance: d.maintenance||[], deletionLog: d.deletionLog||[] };
 }
 
 // Seed registry from index.html's fleet array (plate/type/status only) — chassis and the
@@ -633,6 +680,7 @@ function renderSnapshot(){
   const flaggedTrucks=trucks.filter(t=>truckFlags(t).length>0);
 
   $('#snap-stats').innerHTML=`
+    <div class="stat-card" onclick="switchTab('registry')"><div class="stat-label">Total Fleet</div><div class="stat-value">${trucks.length}</div></div>
     <div class="stat-card active" onclick="switchTab('registry')"><div class="stat-label">Active</div><div class="stat-value">${active}</div></div>
     <div class="stat-card repair" onclick="switchTab('registry')"><div class="stat-label">Under Repair</div><div class="stat-value">${repair.length}</div><div class="stat-sub">${minor} minor · ${major} major</div></div>
     <div class="stat-card retired" onclick="switchTab('registry')"><div class="stat-label">Retired</div><div class="stat-value">${retired}</div></div>
@@ -715,19 +763,45 @@ function openTruckModal(key){
   $('#tRepairReturn').value = r.returnDate||'';
   $('#tRepairCost').value = r.cost||'';
   $('#tRepairRemarks').value = r.remarks||'';
+  const rt = t&&t.retirement ? t.retirement : {date:'',reason:'',remarks:''};
+  $('#tRetireDate').value = rt.date||'';
+  $('#tRetireReason').value = rt.reason||'';
+  $('#tRetireRemarks').value = rt.remarks||'';
   onTruckStatusChange();
   onRepairSeverityChange();
   renderChecklistInputs(t? t.checklist||{} : {});
+  checklistCollapsed = ($('#tStatus').value==='Retired');
+  applyChecklistCollapse();
   $('#truckDeleteBtn').style.display = t ? 'inline-flex' : 'none';
   $('#truckModal').classList.add('open');
 }
 function closeTruckModalX(){ $('#truckModal').classList.remove('open'); }
 function onTruckStatusChange(){
-  $('#repairWrap').style.display = $('#tStatus').value==='Under Repair' ? 'block' : 'none';
+  const status = $('#tStatus').value;
+  $('#repairWrap').style.display = status==='Under Repair' ? 'block' : 'none';
+  $('#retireWrap').style.display = status==='Retired' ? 'block' : 'none';
+  checklistCollapsed = (status==='Retired');
+  applyChecklistCollapse();
 }
 function onRepairSeverityChange(){
   $('#tRepairMajorWrap').style.display = $('#tRepairSeverity').value==='Major' ? 'block' : 'none';
 }
+let checklistCollapsed=false;
+function applyChecklistCollapse(){
+  const toggle=$('#checklistToggle');
+  if(checklistCollapsed){
+    $('#checklistWrap').style.display='none';
+    $('#checklistHint').style.display='none';
+    toggle.style.display='inline';
+    toggle.textContent='(show checklist)';
+  } else {
+    $('#checklistWrap').style.display='grid';
+    $('#checklistHint').style.display = $('#tStatus').value==='Retired' ? 'block' : 'block';
+    toggle.style.display = $('#tStatus').value==='Retired' ? 'inline' : 'none';
+    toggle.textContent='(hide checklist)';
+  }
+}
+function toggleChecklistCollapse(){ checklistCollapsed=!checklistCollapsed; applyChecklistCollapse(); }
 function renderChecklistInputs(existing){
   $('#checklistWrap').innerHTML = CHECKLIST_ITEMS.map(item=>{
     const st = existing[item] || 'Present';
@@ -759,6 +833,21 @@ function saveTruck(){
   const plate=$('#tPlate').value.trim();
   if(!plate){ toast('Plate # is required','error'); return; }
   const status=$('#tStatus').value;
+  if(status==='Under Repair' && Number($('#tRepairCost').value)<0){ toast('Cost estimate can\'t be negative','error'); return; }
+
+  // Soft duplicate check — chassis and plate should each be unique, but this never blocks
+  // saving, since real-world data entry sometimes needs to proceed before it's resolved.
+  const key = editingChassisKey;
+  const others = STATE.trucks.filter(x=>(x.chassis||x.plate)!==key);
+  const dupChassis = chassis && others.find(x=>x.chassis && x.chassis===chassis);
+  const dupPlate = others.find(x=>x.plate===plate);
+  if(dupChassis || dupPlate){
+    const msgs=[];
+    if(dupChassis) msgs.push(`chassis "${chassis}" is also used by ${dupChassis.plate}`);
+    if(dupPlate) msgs.push(`plate "${plate}" is also used by ${dupPlate.plate===plate?dupPlate.chassis||'another truck':dupPlate.plate}`);
+    if(!confirm(`⚠ Possible duplicate: ${msgs.join(' and ')}.\n\nSave anyway?`)) return;
+  }
+
   const truck={
     chassis, plate, type:$('#tType').value.trim(), regName:$('#tRegName').value.trim(),
     owner:$('#tOwner').value.trim()||'Rhoda Lopez', status,
@@ -767,11 +856,14 @@ function saveTruck(){
       returnDate:$('#tRepairReturn').value, cost:Number($('#tRepairCost').value)||0,
       remarks:$('#tRepairRemarks').value.trim()
     } : null,
+    retirement: status==='Retired' ? {
+      date:$('#tRetireDate').value, reason:$('#tRetireReason').value.trim(),
+      remarks:$('#tRetireRemarks').value.trim()
+    } : null,
     regExpiry:$('#tRegExpiry').value, insExpiry:$('#tInsExpiry').value,
     checklist: collectChecklist(),
     _u:new Date().toISOString(), _by:currentName
   };
-  const key = editingChassisKey;
   const idx = key ? STATE.trucks.findIndex(x=>(x.chassis||x.plate)===key) : -1;
   if(idx!==-1){ STATE.trucks[idx]=Object.assign({}, STATE.trucks[idx], truck); toast('Truck updated ✓','success'); }
   else { STATE.trucks.push(truck); toast('Truck added ✓','success'); }
@@ -780,7 +872,12 @@ function saveTruck(){
 function deleteTruckConfirm(){
   if(!editingChassisKey) return;
   if(!confirm('Remove this truck from the registry? Maintenance history for it is kept, not deleted.')) return;
+  const removed = STATE.trucks.find(x=>(x.chassis||x.plate)===editingChassisKey);
   STATE.trucks = STATE.trucks.filter(x=>(x.chassis||x.plate)!==editingChassisKey);
+  if(removed){
+    STATE.deletionLog = STATE.deletionLog || [];
+    STATE.deletionLog.push({type:'truck', ref:removed.plate, deletedBy:currentName, deletedAt:new Date().toISOString(), snapshot:removed});
+  }
   saveFleet(); closeTruckModalX(); renderAll();
   toast('Truck removed ✓','success');
 }
@@ -847,10 +944,15 @@ function saveMaint(){
   const desc=$('#mmDesc').value.trim();
   const amount=Number($('#mmAmount').value)||0;
   if(!plate||!date||!desc){ toast('Plate, date and description are required','error'); return; }
+  if(amount<0){ toast('Amount can\'t be negative — an expense is never a negative number','error'); return; }
+  const odoVal = $('#mmOdo').value ? Number($('#mmOdo').value) : null;
+  if(odoVal!==null && (odoVal>2000000 || odoVal<0)){
+    if(!confirm(`⚠ ${odoVal.toLocaleString()} km looks unusually high/low for an odometer reading — likely a typo.\n\nSave anyway?`)) return;
+  }
   const entry={
     id: editingMaintId || uid(),
     plate, date, category:$('#mmCategory').value, description:desc, amount,
-    odometer: $('#mmOdo').value ? Number($('#mmOdo').value) : null,
+    odometer: odoVal,
     remark: $('#mmRemark').value.trim()
   };
   if(editingMaintId){
@@ -872,8 +974,13 @@ function saveMaint(){
 function deleteMaintConfirm(){
   if(!editingMaintId) return;
   if(!confirm('Delete this maintenance entry?')) return;
+  const removed = STATE.maintenance.find(x=>x.id===editingMaintId);
   STATE.maintenance = STATE.maintenance.filter(x=>x.id!==editingMaintId);
-  saveFleet(); closeMaintModalX(); renderMaintenance();
+  if(removed){
+    STATE.deletionLog = STATE.deletionLog || [];
+    STATE.deletionLog.push({type:'maintenance', ref:removed.plate+' / '+removed.description, deletedBy:currentName, deletedAt:new Date().toISOString(), snapshot:removed});
+  }
+  saveFleet(); closeMaintModalX(); renderMaintenance(); renderSnapshot();
   toast('Entry deleted ✓','success');
 }
 function exportMaintenanceExcel(){
@@ -887,6 +994,72 @@ function exportMaintenanceExcel(){
   XLSX.utils.book_append_sheet(wb,ws,'Maintenance Log');
   XLSX.writeFile(wb,`EMELCO_Maintenance_Log_${todayISO()}.xlsx`);
   toast('Maintenance log Excel exported ✓','success');
+}
+
+/* ============================================================
+   BATCH MAINTENANCE ENTRY — one plate+date, several line items
+   in a single save, for a big repair job with many parts/costs
+   ============================================================ */
+let batchRowId=0;
+function openBatchModal(){
+  populateBatchPlateSelect();
+  $('#bPlate').value = $('#mPlateFilter').value || '';
+  $('#bDate').value = todayISO();
+  $('#batchRows').innerHTML='';
+  batchRowId=0;
+  addBatchRow(); addBatchRow(); // start with 2 blank rows — common case is more than one item
+  $('#batchModal').classList.add('open');
+}
+function populateBatchPlateSelect(){
+  $('#bPlate').innerHTML = STATE.trucks.filter(t=>t.status!=='Retired').map(t=>`<option value="${esc(t.plate)}">${esc(t.plate)}</option>`).join('');
+}
+function closeBatchModalX(){ $('#batchModal').classList.remove('open'); }
+function addBatchRow(){
+  const id='br'+(batchRowId++);
+  const div=document.createElement('div');
+  div.className='batch-row';
+  div.id=id;
+  div.innerHTML=`
+    <select class="form-select batch-cat">
+      <option>Repairs/Parts</option><option>Welding</option><option>Electrical</option>
+      <option>Painting</option><option>Padlocks/Security</option><option>Upholstery</option>
+      <option>Tires</option><option>Battery</option>
+    </select>
+    <input class="form-input batch-desc" placeholder="Description">
+    <input class="form-input batch-amount" type="number" step="0.01" placeholder="Amount">
+    <input class="form-input batch-odo" type="number" placeholder="Odometer (opt.)">
+    <input class="form-input batch-remark" placeholder="Remark">
+    <button class="batch-row-remove" onclick="this.closest('.batch-row').remove()" title="Remove row">✕</button>
+  `;
+  $('#batchRows').appendChild(div);
+}
+function saveBatch(){
+  const plate=$('#bPlate').value;
+  const date=$('#bDate').value;
+  if(!plate||!date){ toast('Plate and date are required','error'); return; }
+  const rows=$$('#batchRows .batch-row');
+  if(!rows.length){ toast('Add at least one line item','error'); return; }
+  const entries=[];
+  for(const row of rows){
+    const desc=row.querySelector('.batch-desc').value.trim();
+    const amount=Number(row.querySelector('.batch-amount').value)||0;
+    if(!desc && !amount) continue; // skip fully-blank rows silently
+    if(!desc){ toast('Every row with an amount needs a description','error'); return; }
+    if(amount<0){ toast('Amount can\'t be negative','error'); return; }
+    const odoRaw=row.querySelector('.batch-odo').value;
+    const odo=odoRaw ? Number(odoRaw) : null;
+    entries.push({
+      id:uid(), plate, date, category:row.querySelector('.batch-cat').value,
+      description:desc, amount, odometer:odo, remark:row.querySelector('.batch-remark').value.trim(),
+      createdAt:new Date().toISOString(), createdBy:currentName
+    });
+  }
+  if(!entries.length){ toast('Add at least one line item','error'); return; }
+  const bigOdo = entries.find(e=>e.odometer!==null && (e.odometer>2000000||e.odometer<0));
+  if(bigOdo && !confirm(`⚠ One or more odometer readings look unusually high/low — likely a typo.\n\nSave anyway?`)) return;
+  STATE.maintenance.push(...entries);
+  saveFleet(); closeBatchModalX(); renderMaintenance(); renderSnapshot();
+  toast(`${entries.length} entries added ✓`,'success');
 }
 
 /* boot */
