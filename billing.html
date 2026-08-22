@@ -190,6 +190,18 @@ body.role-operations .owner-only{display:none!important}
       <button class="btn btn-ghost btn-sm" onclick="exportOverview()">⬇ Export CSV (by period)</button>
     </div>
     <div class="stats-row" id="ov-stats"></div>
+    <div id="overdueByBuWrap" style="display:none;margin-bottom:16px">
+      <div class="section-title">⏰ Overdue by BU <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— who to follow up with, and how overdue</span></div>
+      <div class="table-wrapper">
+        <table id="overdue-bu-table">
+          <thead><tr>
+            <th>BU</th><th class="num-cell">Overdue Amount</th><th class="num-cell">Entries</th>
+            <th class="num-cell">Oldest Overdue</th><th class="num-cell fin-only">Submitted (processing)</th><th class="num-cell fin-only">Not Submitted</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
     <div id="dupeWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #d97706;background:#fffbeb;border-radius:8px">
       <div style="font-weight:700;color:#92400e">⚠ Possible duplicate entries found</div>
       <div class="hint" style="margin:4px 0 8px">Same BU + SBU + Type appears more than once with overlapping billing periods — usually means a recon file was imported twice, or a period got typed differently. Check these before trusting the totals above.</div>
@@ -1183,6 +1195,7 @@ function renderOverview(){
       <div class="stat-sub">Overall amount still with client, expected eventually</div>
     </div>`;
   $('#ov-count').textContent=activeEntries().length?`${activeEntries().length} entries`:'';
+  renderOverdueByBU();
   const byPeriod=buildOverviewPeriods();
   const keys=Object.keys(byPeriod).sort().reverse();
   const tb=$('#ov-table tbody');
@@ -1192,6 +1205,44 @@ function renderOverview(){
     return `<tr><td class="mono">${esc(k)}</td><td class="num-cell">${p.entries.length}</td>
       <td class="num-cell">₱${peso(p.net)}</td><td class="num-cell fin-only">₱${peso(p.due)}</td><td>${statusText}</td></tr>`;
   }).join(''):`<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries yet</div>Add one under Billing Entries, or import the recon file / 2026 history.</div></td></tr>`;
+}
+function buildOverdueByBU(){
+  const map={};
+  activeEntries().forEach(e=>{
+    const s=entryStatusInfo(e);
+    if(s.cls!=='unpaid') return; // only genuinely overdue entries
+    const t=entryCalc(e);
+    const bu=e.bu||'(no BU)';
+    if(!map[bu]) map[bu]={amount:0,count:0,submittedAmount:0,notSubmittedAmount:0,maxDaysOverdue:0};
+    const dd=entryDueDate(e);
+    const daysOver = dd ? Math.abs(daysBetween(todayISO(),dd)) : 0;
+    map[bu].amount+=t.due; map[bu].count++;
+    if(e.status==='submitted') map[bu].submittedAmount+=t.due; else map[bu].notSubmittedAmount+=t.due;
+    if(daysOver>map[bu].maxDaysOverdue) map[bu].maxDaysOverdue=daysOver;
+  });
+  return map;
+}
+function jumpToBuEntries(bu){
+  switchTab('entries');
+  const sel=$('#enBuFilter'); if(sel){ sel.value=bu==='(no BU)'?'':bu; }
+  const statusSel=$('#enStatusFilter'); if(statusSel){ statusSel.value=''; }
+  renderEntries();
+}
+function renderOverdueByBU(){
+  const map=buildOverdueByBU();
+  const rows=Object.entries(map).sort((a,b)=>b[1].amount-a[1].amount);
+  const wrap=$('#overdueByBuWrap');
+  if(!rows.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  $('#overdue-bu-table tbody').innerHTML=rows.map(([bu,d])=>`
+    <tr style="cursor:pointer" onclick="jumpToBuEntries('${esc(bu).replace(/'/g,"\\'")}')" title="Click to view ${esc(bu)}'s entries">
+      <td style="font-weight:700">${esc(bu)}</td>
+      <td class="num-cell" style="color:#b91c1c;font-weight:700">₱${peso(d.amount)}</td>
+      <td class="num-cell">${d.count}</td>
+      <td class="num-cell">${d.maxDaysOverdue}d</td>
+      <td class="num-cell fin-only">₱${peso(d.submittedAmount)}</td>
+      <td class="num-cell fin-only">₱${peso(d.notSubmittedAmount)}</td>
+    </tr>`).join('');
 }
 
 function populateBuFilter(){
