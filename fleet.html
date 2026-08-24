@@ -186,10 +186,10 @@ body.role-operations .owner-only{display:none!important}
 </div>
 
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('snapshot')">📊 Snapshot</div>
-  <div class="tab" onclick="switchTab('registry')">🚛 Registry</div>
-  <div class="tab" onclick="switchTab('maintenance')">🔧 Maintenance Log</div>
-</div>
+ <div class="tab active" data-tab="snapshot" onclick="switchTab('snapshot')">📊 Snapshot</div>
+<div class="tab" data-tab="registry" onclick="switchTab('registry')">🚛 Registry</div>
+<div class="tab" data-tab="maintenance" onclick="switchTab('maintenance')">🔧 Maintenance Log</div>
+ </div>
 
 <div class="main">
 
@@ -653,7 +653,8 @@ function truckFlags(t){
 function switchTab(name){
   $$('.tab').forEach(t=>t.classList.remove('active'));
   $$('.page').forEach(p=>p.classList.remove('active'));
-  event.target.closest('.tab').classList.add('active');
+  const tabEl = $(`.tab[data-tab="${name}"]`);
+  if(tabEl) tabEl.classList.add('active');
   $('#page-'+name).classList.add('active');
   if(name==='snapshot') renderSnapshot();
   if(name==='registry') renderRegistry();
