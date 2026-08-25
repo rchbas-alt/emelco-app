@@ -311,6 +311,7 @@ body.role-operations .owner-only{display:none!important}
         <option value="not_submitted">Not yet submitted</option>
         <option value="submitted">Submitted</option>
         <option value="paid">Paid</option>
+        <option value="overdue">Overdue</option>
         <option value="voided">Voided</option>
       </select>
       <select class="filter-select" id="enBuFilter" onchange="renderEntries()"><option value="">All BU</option></select>
@@ -1225,7 +1226,7 @@ function buildOverdueByBU(){
 function jumpToBuEntries(bu){
   switchTab('entries');
   const sel=$('#enBuFilter'); if(sel){ sel.value=bu==='(no BU)'?'':bu; }
-  const statusSel=$('#enStatusFilter'); if(statusSel){ statusSel.value=''; }
+  const statusSel=$('#enStatusFilter'); if(statusSel){ statusSel.value='overdue'; }
   renderEntries();
 }
 function renderOverdueByBU(){
@@ -1258,6 +1259,7 @@ function getFilteredEntries(){
   const statusF=$('#enStatusFilter').value, buF=$('#enBuFilter').value;
   let rows=STATE.entries.slice();
   if(statusF==='voided') rows=rows.filter(e=>e.voided);
+  else if(statusF==='overdue') rows=rows.filter(e=>!e.voided && entryStatusInfo(e).cls==='unpaid');
   else if(statusF){ rows=rows.filter(e=>e.status===statusF && !e.voided); }
   if(buF) rows=rows.filter(e=>e.bu===buF);
   if(q) rows=rows.filter(e=>((e.si||'')+' '+(e.sbu||'')+' '+(e.tripStart||'')+' '+(e.tripEnd||'')+' '+(e.chequeNo||'')+' '+(e.chequeRemark||'')).toLowerCase().includes(q));
@@ -1316,7 +1318,7 @@ function renderEntries(){
       <td>${chequeCell}</td>
       <td class="muted">${esc(e.source||'manual')}</td>
       <td style="white-space:nowrap">${actionBtns}</td></tr>`;
-  }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click “+ New entry”, import a recon file, or import 2026 history.</div></td></tr>`;
+  }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click "+ New entry", import a recon file, or import 2026 history.</div></td></tr>`;
   updateBulkBar();
 }
 
@@ -1667,27 +1669,15 @@ function applyBulkPaid(){
    ============================================================ */
 function toISO(v){
   if(v==null||v==='')return'';
-  // IMPORTANT: SheetJS (cellDates:true) builds Date objects from LOCAL time
-  // components. Reading them back with toISOString() renders in UTC instead,
-  // which silently rolls the date back one day in any timezone ahead of UTC
-  // (e.g. PH/SG, UTC+8) — this was causing every imported date to land one
-  // day early, and Jan-1 rows to be dropped entirely (year filter saw 2025).
-  // Fixed 2026-08-12: read the LOCAL calendar date the object was built with.
-  //
-  // SECOND fix, same day: Excel's own serial-date numbers can carry tiny
-  // floating-point drift (a cell meant to be exactly Jan 1 parsed out to
-  // Dec 31 23:59:35 — 25 seconds short of midnight). Reading the exact
-  // instant is correct but still lands on the wrong calendar day, so round
-  // to the NEAREST local day first to absorb that drift before extracting.
   if(v instanceof Date && !isNaN(v)){
     const msFromMidnight = ((v.getHours()*60+v.getMinutes())*60+v.getSeconds())*1000+v.getMilliseconds();
     const snapped = new Date(v.getTime());
-    if(msFromMidnight > 12*3600*1000) snapped.setDate(snapped.getDate()+1); // closer to next midnight than this one
+    if(msFromMidnight > 12*3600*1000) snapped.setDate(snapped.getDate()+1);
     return `${snapped.getFullYear()}-${String(snapped.getMonth()+1).padStart(2,'0')}-${String(snapped.getDate()).padStart(2,'0')}`;
   }
   if(typeof v==='number'){
-    const raw=Math.round((v-25569)*86400); // seconds since epoch, drift-prone
-    const snappedDays=Math.round(raw/86400); // snap to nearest whole day, absorbing the same kind of serial-number drift
+    const raw=Math.round((v-25569)*86400);
+    const snappedDays=Math.round(raw/86400);
     const d=new Date(snappedDays*86400*1000);
     return isNaN(d)?'':`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
   }
@@ -1700,7 +1690,6 @@ function toISO(v){
 }
 function sheetRows(ws){ return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''}); }
 
-/* Best-effort period auto-detect: scan every sheet for a date-ish column, take min/max */
 function detectPeriod(wb){
   let bestStart='',bestEnd='',bestCount=0;
   wb.SheetNames.forEach(name=>{
@@ -1719,10 +1708,6 @@ function detectPeriod(wb){
   return {start:bestStart,end:bestEnd};
 }
 
-/* ============================================================
-   Recon file import — parses the "for invoicing"-style summary
-   sheet into candidate BU+SBU+TYPE entries for the chosen period.
-   ============================================================ */
 let RECON_CANDIDATES=[];
 function populateReconBuSelect(preferred){
   const sel=$('#reconBU'); if(!sel) return;
@@ -1768,9 +1753,6 @@ function findInvoicingBlocks(wb){
       const vatRel=window.findIndex(x=>x==='VAT');
       const grossRel=window.findIndex(x=>x.includes('GROSS AMOUNT'));
       if(netRel<0||vatRel<0) continue;
-      // classify by scanning a few rows above, in a narrow column window right around
-      // this block's own SBU column (a wide window can pick up a neighboring block's
-      // label, e.g. "DR PENALTY" sitting a few columns over from "SURCHARGE")
       let type=null;
       for(let up=r-1; up>=Math.max(0,r-8) && !type; up--){
         const seg=(rows[up]||[]).slice(Math.max(0,c-1), c+2).map(x=>String(x).toUpperCase()).join(' ');
@@ -1812,20 +1794,6 @@ function parseReconFile(){
   const candidates=Object.values(bySbuType);
   if(!candidates.length){ toast('Found the invoicing sheet but no SBU rows with an amount > 0.','error'); return; }
   RECON_CANDIDATES=candidates.map(c=>{
-    // Match by the SELECTED BU (not hardcoded) + SBU + TYPE with an OVERLAPPING
-    // period, not an exact date match — the recon file's auto-guessed cutoff
-    // (from individual trip dates) is often a few days narrower than the period
-    // already on file, so requiring exact equality here let duplicate entries
-    // slip through instead of updating the existing one. Overlap keeps the
-    // existing entry's tripStart/tripEnd as the source of truth (only
-    // net/source/reconFile get overwritten below).
-    //
-    // A cutoff range can legitimately overlap MORE THAN ONE existing entry, e.g.
-    // when Cutoff Start is one day too early and clips the tail of the previous
-    // period. Taking the first match silently (the old behaviour) let a correction
-    // meant for one period overwrite a different, already-correct one. So: collect
-    // every overlap; only auto-pick when there's exactly one, otherwise surface all
-    // candidates and require a manual pick before this row can be committed.
     const allMatches=STATE.entries.filter(e=>!e.voided && e.bu===bu && (e.sbu||'').trim().toUpperCase()===c.sbu.toUpperCase() && e.type===c.type && e.tripStart && e.tripEnd && e.tripStart<=end && e.tripEnd>=start);
     const match = allMatches.length===1 ? allMatches[0] : null;
     const mc = match ? entryCalc(match) : null;
@@ -1856,8 +1824,6 @@ function renderReconPreview(){
     }
     const isMatch=!!c.matchId; if(isMatch)matched++; else fresh++;
     const before = isMatch ? `<div class="muted" style="font-size:11px;margin-top:2px">was ₱${peso(c.prevNet)} net · ₱${peso(c.prevVat)} vat · ₱${peso(c.prevGross)} gross</div>` : '';
-    // Rows that started ambiguous but were resolved via the picker keep the picker visible
-    // (so the choice can still be changed) alongside the normal matched styling.
     const picker = c.ambiguous ? `<select class="form-input" style="display:block;margin-top:4px;max-width:340px" onchange="resolveAmbiguous(${idx},this.value)">
         <option value="">— skip this row, resolve manually —</option>
         ${c.ambiguous.map(m=>`<option value="${esc(m.id)}" ${c.matchId===m.id?'selected':''}>SI ${esc(m.si||'—')} · ${esc(m.tripStart)} → ${esc(m.tripEnd)} · currently ₱${peso(m.net)}</option>`).join('')}
@@ -1870,8 +1836,6 @@ function renderReconPreview(){
   }).join('');
   $('#reconStats').textContent=`BU: ${esc(RECON_CANDIDATES[0]?.bu||'')} — ${RECON_CANDIDATES.length} SBU/type rows — ${matched} matched, ${fresh} new${ambiguous?`, ${ambiguous} ambiguous (pick which entry before committing — unresolved rows are skipped)`:''}`;
 }
-// Called from the <select> on an ambiguous row: pins that row to a specific existing
-// entry (or back to "skip" if the user picks the blank option) before Commit runs.
 function resolveAmbiguous(idx,entryId){
   const c=RECON_CANDIDATES[idx];
   if(!c) return;
@@ -1887,14 +1851,11 @@ function commitRecon(){
   let created=0,updated=0,skipped=0;
   STATE.reconLog = STATE.reconLog || [];
   RECON_CANDIDATES.forEach(c=>{
-    if(c.ambiguous && !c.matchId){ skipped++; return; } // never guess an unresolved multi-match — leave it for manual handling
+    if(c.ambiguous && !c.matchId){ skipped++; return; }
     if(c.matchId){
       const ix=STATE.entries.findIndex(x=>x.id===c.matchId);
       if(ix>-1){
         const before=STATE.entries[ix], beforeCalc=entryCalc(before);
-        // Append-only audit trail: every overwrite is logged BEFORE it happens, so a wrong
-        // match (like the one that started all this) is visible and reversible afterwards
-        // instead of silently disappearing into the new number.
         STATE.reconLog.unshift({ id:uid(), at:now, file:fname, entryId:before.id, si:before.si,
           bu:before.bu, sbu:before.sbu, type:before.type, tripStart:before.tripStart, tripEnd:before.tripEnd,
           oldNet:beforeCalc.net, oldVat:beforeCalc.vat, oldGross:beforeCalc.gross,
@@ -1910,7 +1871,7 @@ function commitRecon(){
       created++;
     }
   });
-  if(STATE.reconLog.length>500) STATE.reconLog.length=500; // keep the file from growing unbounded
+  if(STATE.reconLog.length>500) STATE.reconLog.length=500;
   RECON_CANDIDATES=[]; $('#reconPreviewWrap').style.display='none'; $('#reconFile').value=''; $('#reconFileName').textContent='';
   renderAll(); saveBilling(); switchTab('entries');
   toast(`Recon import: ${updated} entries updated, ${created} created${skipped?`, ${skipped} skipped (unresolved match — pick one and re-import)`:''}`);
@@ -1934,10 +1895,6 @@ function renderReconLog(){
     </tr>`).join('') : '<tr><td colspan="7" class="muted">No recon overwrites logged yet.</td></tr>';
 }
 
-/* ============================================================
-   Historical 2026 import — CCAC tracker workbook, one entry
-   per raw row (NOT grouped by SI).
-   ============================================================ */
 let HIST_ROWS=[];
 function openHistImport(){ HIST_ROWS=[]; $('#histFileName').textContent=''; $('#histPreview').innerHTML=''; $('#histCommitBtn').style.display='none'; $('#histModal').classList.add('open'); }
 function closeHistImport(){ $('#histModal').classList.remove('open'); }
@@ -1949,20 +1906,19 @@ $('#histFile').addEventListener('change',e=>{
     let wb; try{ wb=XLSX.read(ev.target.result,{type:'array',cellDates:true}); }catch(err){ toast('Not a valid Excel workbook','error'); return; }
     let sheetName=wb.SheetNames.find(n=>/ccac/i.test(n)) || wb.SheetNames[0];
     const rows=sheetRows(wb.Sheets[sheetName]);
-    // find header row (contains SI# / Trip Strt-ish columns) within first 8 rows
     let hdrRow=-1;
     for(let r=0;r<Math.min(rows.length,8);r++){
       const H=(rows[r]||[]).map(x=>String(x).toUpperCase());
       if(H.some(x=>x.includes('SI#')||x.includes('SI #')||x.includes('TRIP STRT')||x.includes('TRIP START'))){ hdrRow=r; break; }
     }
-    if(hdrRow<0) hdrRow=3; // fall back to the known layout (header row 4, 0-indexed 3)
+    if(hdrRow<0) hdrRow=3;
     const out=[];
     for(let r=hdrRow+1;r<rows.length;r++){
       const row=rows[r]; if(!row) continue;
       const tripStart=toISO(row[3]); if(!tripStart) continue;
       if(new Date(tripStart).getFullYear()!==2026) continue;
       const status=String(row[1]||'').toUpperCase();
-      if(status.includes('RJCT')) continue; // skip rejected
+      if(status.includes('RJCT')) continue;
       out.push({
         si:String(row[2]||'').trim(), tripStart, tripEnd:toISO(row[4]),
         bu:String(row[5]||'').trim(), sbu:normalizeSBU(row[6]), type:String(row[7]||'RECON').toUpperCase().trim(),
@@ -1997,22 +1953,9 @@ function commitHistImport(){
   toast(n+' historical entries imported');
 }
 
-/* ============================================================
-   Unbilled: completed CCAC trips with no cutoff assigned yet.
-   Source of truth is the trip's own `cutoff` field (set by the
-   office when a trip is actually grouped/submitted) — blank means
-   not yet billed, full stop. This intentionally does NOT try to
-   infer coverage from entry date-ranges, since cutoff assignment
-   is manual and can legitimately overlap across BUs/disputed trips.
-
-   The old date-range method (legacyCoveringEntry) is kept below,
-   unused by the main stats/table, purely to power the mismatch
-   diagnostic — it flags cases where the two methods disagree so a
-   human can look, but never changes what counts as billed.
-   ============================================================ */
 function num(x){ return Number(x)||0; }
 function tripExpected(t){ return num(t.rate)+num(t.surcharge); }
-function tripDue(t){ const net=tripExpected(t); return net + net*VAT_RATE - net*WHT_RATE; } // net of VAT(12%)-WHT(2%), same formula as entryCalc().due
+function tripDue(t){ const net=tripExpected(t); return net + net*VAT_RATE - net*WHT_RATE; }
 function isBilled(t){ return !!String(t.cutoff||'').trim(); }
 function legacyCoveringEntry(t){
   const d=t.tripStartDate||t.dispatchedDate; if(!d) return null;
@@ -2044,7 +1987,7 @@ function renderCutoffMismatchCheck(){
     <td>${isBilled(t)?'Has cutoff':'No cutoff'} / ${legacyIsBilled(t)?'in a range':'no range match'}</td>
   </tr>`).join('');
 }
-let UB_SORT_COL='tripStartDate', UB_SORT_DIR=1; // default oldest-first, so the stalest backlog surfaces first
+let UB_SORT_COL='tripStartDate', UB_SORT_DIR=1;
 function sortUnbilled(col){
   if(UB_SORT_COL===col) UB_SORT_DIR*=-1; else { UB_SORT_COL=col; UB_SORT_DIR=1; }
   renderUnbilled();
