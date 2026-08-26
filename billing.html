@@ -218,11 +218,28 @@ body.role-operations .owner-only{display:none!important}
         <tbody></tbody>
       </table></div>
     </div>
+    <div id="missedCutoffWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #ea580c;background:#fff7ed;border-radius:8px">
+      <div style="font-weight:700;color:#9a3412">🟠 <span id="missedCutoffCount"></span> trips have no cutoff but sit inside an already-billed period</div>
+      <div class="hint" style="margin:4px 0 8px">Other trips in this same BU + SBU + date range already have a billing entry, but these ones were never given a cutoff — worth checking whether they were left out of that submission by mistake.</div>
+      <div class="table-wrapper"><table id="missedCutoff-table">
+        <thead><tr><th>Date</th><th>Client</th><th>SBU</th><th>Code</th><th>Plate</th><th>Matching entry period</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div id="agingWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #dc2626;background:#fef2f2;border-radius:8px">
+      <div style="font-weight:700;color:#991b1b">🔴 <span id="agingCount"></span> trips are overdue (rough estimate: submit within ~2 weeks, pay within ~1 month of submission)</div>
+      <div class="hint" style="margin:4px 0 8px">These thresholds are rough estimates, not hard rules — use as a prompt to check, not a verdict.</div>
+      <div class="table-wrapper"><table id="aging-table">
+        <thead><tr><th>Date</th><th>Client</th><th>Code</th><th>Plate</th><th>Status</th><th>Days</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
     <div id="outlierWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #7c3aed;background:#f5f3ff;border-radius:8px">
       <div style="font-weight:700;color:#5b21b6">🟣 <span id="outlierCount"></span> entries break from their batch's period</div>
       <div class="hint" style="margin:4px 0 8px">These share a Trip End with several other entries of the same BU (same submission batch), but their Trip Start doesn't match the rest — could be a typo, or a legitimate disputed-trip resubmission billed separately. Needs a human call either way; nothing is changed automatically.</div>
       <div class="table-wrapper"><table id="outlier-table">
         <thead><tr><th>SI</th><th>BU</th><th>SBU</th><th>Type</th><th>This entry's period</th><th>Batch's period (× entries)</th><th class="num-cell">Net</th></tr></thead>
+
         <tbody></tbody>
       </table></div>
     </div>
@@ -1004,7 +1021,7 @@ function renderBatchOutlierCheck(){
     <td class="num-cell">₱${peso(r.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); renderCutoffMismatchCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); renderCutoffMismatchCheck(); renderMissedCutoffCheck(); renderAgingCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -1972,6 +1989,66 @@ function getCutoffMismatches(){
   // Only flag trips that HAVE a cutoff but fall outside any entry's period.
   // Trips with no cutoff that happen to sit inside a range are expected/normal, not an anomaly.
   return completed.filter(t=>isBilled(t) && !legacyIsBilled(t));
+}
+function getMissedCutoffs(){
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  // No cutoff yet, but another entry already covers this BU+SBU+date range — possibly left out.
+  return completed.filter(t=>!isBilled(t) && legacyIsBilled(t));
+}
+const AGING_SUBMIT_DAYS=14, AGING_PAY_DAYS=30;
+function getAgingFlags(){
+  const completed=TRIPS.filter(t=>String(t.status||'').toLowerCase()==='completed');
+  const today=todayISO();
+  const out=[];
+  completed.forEach(t=>{
+    const d=t.tripStartDate||t.dispatchedDate; if(!d) return;
+    if(!isBilled(t)){
+      const days=daysBetween(d,today);
+      if(days>AGING_SUBMIT_DAYS) out.push({t,label:'Not submitted (no cutoff)',days});
+      return;
+    }
+    const entry=legacyCoveringEntry(t);
+    if(entry && entry.status!=='paid'){
+      const since=entry.submitted||d;
+      const days=daysBetween(since,today);
+      if(days>AGING_PAY_DAYS) out.push({t,label:entry.status==='submitted'?'Submitted, unpaid':'Cutoff set, not submitted',days});
+    }
+  });
+  return out.sort((a,b)=>b.days-a.days);
+}
+function renderMissedCutoffCheck(){
+  const box=$('#missedCutoffWarn'); if(!box) return;
+  const rows=getMissedCutoffs();
+  if(!rows.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  $('#missedCutoffCount').textContent=rows.length;
+  const tb=$('#missedCutoff-table tbody');
+  if(tb) tb.innerHTML=rows.map(t=>{
+    const e=legacyCoveringEntry(t);
+    return `<tr>
+    <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.client||'')}</td>
+    <td class="mono">${esc(t.sbu||'')}</td>
+    <td class="mono">${esc(t.code||t.id||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td>
+    <td class="mono">${e?esc(e.tripStart+' → '+e.tripEnd):'—'}</td>
+  </tr>`;}).join('');
+}
+function renderAgingCheck(){
+  const box=$('#agingWarn'); if(!box) return;
+  const rows=getAgingFlags();
+  if(!rows.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  $('#agingCount').textContent=rows.length;
+  const tb=$('#aging-table tbody');
+  if(tb) tb.innerHTML=rows.map(({t,label,days})=>`<tr>
+    <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.client||'')}</td>
+    <td class="mono">${esc(t.code||t.id||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td>
+    <td>${esc(label)}</td>
+    <td class="num-cell">${days}d</td>
+  </tr>`).join('');
 }
 function renderCutoffMismatchCheck(){
   const box=$('#cutoffMismatchWarn'); if(!box) return;
