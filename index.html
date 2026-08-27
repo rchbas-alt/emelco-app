@@ -3213,7 +3213,7 @@ function renderSummary(){
     const area=t.area||'Unknown';areaMap[area]=(areaMap[area]||0)+c.income;
     const drv=t.driver||'Unknown';if(!drvMap[drv])drvMap[drv]={trips:0,income:0};drvMap[drv].trips++;drvMap[drv].income+=c.income;
     const wk=t.weekMon||'?';if(!wkMap[wk])wkMap[wk]={trips:0,income:0};wkMap[wk].trips++;wkMap[wk].income+=c.income;
-    const cl=t.client||'?';if(!clientMap[cl])clientMap[cl]={trips:0,income:0};clientMap[cl].trips++;clientMap[cl].income+=c.income;
+    const cl=t.client||'?';if(!clientMap[cl])clientMap[cl]={trips:0,income:0,rs:0};clientMap[cl].trips++;clientMap[cl].income+=c.income;clientMap[cl].rs+=c.rs;
     const pl=t.plate||'?';plateMap[pl]=(plateMap[pl]||0)+1;
     const dest=t.area||'Unspecified';
     const isSingle = !t.isMilkRun && !t.isFWD;
@@ -3383,7 +3383,10 @@ function renderSummary(){
     ['Avg % Profit',null,null,pctCnt>0?pct(pctSum/pctCnt):'—'],
   ];
   document.getElementById('summary-financial').innerHTML=fin.map(r=>`<div class="summary-row"><span class="summary-row-label">${r[0]}</span><span class="summary-row-value" style="color:${r[2]||'var(--text)'}">${r[3]!==undefined?r[3]:'₱'+fmt(r[1])}</span></div>`).join('');
-  document.getElementById('summary-breakdown').innerHTML=Object.entries(clientMap).sort((a,b)=>b[1].trips-a[1].trips).map(([cl,d])=>`<div class="summary-row"><span class="summary-row-label">${cl}</span><span class="summary-row-value">${d.trips} trips &nbsp;<span style="color:var(--green)">₱${fmtK(d.income)}</span></span></div>`).join('');
+  document.getElementById('summary-breakdown').innerHTML=Object.entries(clientMap).sort((a,b)=>b[1].trips-a[1].trips).map(([cl,d])=>{
+  const marginPct = d.rs>0 ? (d.income/d.rs*100) : 0;
+  return `<div class="summary-row"><span class="summary-row-label">${cl}</span><span class="summary-row-value">${d.trips} trips &nbsp;<span style="color:var(--blue)">₱${fmtK(d.rs)}</span> rev &nbsp;<span style="color:${d.income>=0?'var(--green)':'var(--red)'}">₱${fmtK(d.income)}</span> net &nbsp;<span style="color:var(--accent)">${marginPct.toFixed(1)}%</span></span></div>`;
+}).join('');
 
   // ---- Billing Cut-off Summary ----
   const billingMap={};
