@@ -441,13 +441,19 @@ body.role-operations .fin-only{display:none!important}
   <div class="table-wrapper">
     <table id="fuel-table">
       <thead><tr>
-        <th style="text-align:left">Plate</th><th>Trips</th><th>Total Liters</th><th>Total Paid</th><th>₱/Liter (avg)</th>
+        <th style="text-align:left">Plate</th><th>Trips</th><th>Total Liters</th><th>Avg L/Trip</th><th>Total Paid</th><th>₱/Liter (avg)</th>
       </tr></thead>
       <tbody id="fuel-tbody"></tbody>
     </table>
   </div>
   <div class="guide-section" style="margin-top:16px">
-    <h3>Avg Liters per Trip — by Plate</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <h3 style="margin:0">Avg per Trip — by Plate</h3>
+      <div style="display:flex;gap:6px" id="fuel-chart-metric-buttons">
+        <button class="btn btn-ghost btn-sm btn-primary" data-metric="liters" onclick="setFuelChartMetric('liters',this)">Liters</button>
+        <button class="btn btn-ghost btn-sm" data-metric="paid" onclick="setFuelChartMetric('paid',this)">₱ Spent</button>
+      </div>
+    </div>
     <div id="fuel-chart"></div>
   </div>
   <div style="font-size:11px;color:var(--text2);margin-top:10px">
@@ -2073,6 +2079,13 @@ function renderBudgetTab(){
 // ===== FUEL TAB =====
 let fuelType = 'single'; // 'single' | 'multi'
 let fuelDays = null; // null = All Time, else number of days back
+let fuelChartMetric = 'liters'; // 'liters' | 'paid'
+function setFuelChartMetric(m,btn){
+  fuelChartMetric=m;
+  document.querySelectorAll('#fuel-chart-metric-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  renderFuelTab();
+}
 function setFuelDays(days,btn){
   fuelDays=days;
   document.querySelectorAll('#fuel-range-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
@@ -2147,20 +2160,27 @@ const rangeLabel = fuelDays ? `in the last ${fuelDays} days` : '';
 
   tbody.innerHTML=rows.map(r=>{
     const perLiter = r.liters>0 ? r.paid/r.liters : null;
+    const avgPerTrip = r.trips>0 ? r.liters/r.trips : 0;
     return `<tr>
       <td style="text-align:left;font-weight:600">${r.plate}</td>
       <td>${r.trips}</td>
       <td>${r.liters.toFixed(1)} L</td>
+      <td style="font-weight:600;color:var(--accent)">${avgPerTrip.toFixed(1)} L</td>
       <td>₱${fmt(r.paid)}</td>
       <td>${perLiter!==null ? '₱'+fmt(perLiter) : '—'}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:20px">No data</td></tr>`;
+  }).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:20px">No data</td></tr>`;
 
   renderFuelChart(rows);
 }
 function renderFuelChart(rows){
   const el=document.getElementById('fuel-chart');
-  const items=rows.map(r=>({plate:r.plate, val: r.trips>0 ? r.liters/r.trips : 0})).sort((a,b)=>b.val-a.val);
+  const items=rows.map(r=>{
+    const val = fuelChartMetric==='paid'
+      ? (r.trips>0 ? r.paid/r.trips : 0)
+      : (r.trips>0 ? r.liters/r.trips : 0);
+    return {plate:r.plate, val};
+  }).sort((a,b)=>b.val-a.val);
   if(!items.length){ el.innerHTML=''; return; }
   const maxAbs=Math.max(1, ...items.map(i=>i.val));
   const barH=20, gap=8, topPad=4, leftW=110, barMaxW=360, rightPad=90;
@@ -2169,9 +2189,10 @@ function renderFuelChart(rows){
   const bars=items.map((it,i)=>{
     const y=topPad+i*(barH+gap);
     const w=Math.max(1, it.val/maxAbs*barMaxW);
+    const label = fuelChartMetric==='paid' ? '₱'+fmt(it.val) : it.val.toFixed(1)+' L';
     return `<text x="${leftW-8}" y="${y+barH*0.7}" text-anchor="end" font-size="11" fill="var(--text)">${it.plate}</text>
       <rect x="${leftW}" y="${y}" width="${w}" height="${barH}" rx="3" fill="var(--accent)"></rect>
-      <text x="${leftW+w+6}" y="${y+barH*0.7}" font-size="11" fill="var(--text2)">${it.val.toFixed(1)} L</text>`;
+      <text x="${leftW+w+6}" y="${y+barH*0.7}" font-size="11" fill="var(--text2)">${label}</text>`;
   }).join('');
   el.innerHTML=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" style="max-width:${svgW}px;height:${svgH}px">${bars}</svg>`;
 }
