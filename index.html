@@ -237,6 +237,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab fin-only" onclick="switchTab('summary')">📊 Summary</div>
   <div class="tab" onclick="switchTab('staff')">👤 Staff <span class="tab-badge" id="staff-badge">0</span></div>
   <div class="tab" onclick="switchTab('fleet')">🚛 Fleet</div>
+  <div class="tab" onclick="switchTab('fuel')">⛽ Fuel</div>
   <div class="tab" onclick="switchTab('import')">⬆ Data</div>
   <div class="tab" onclick="switchTab('payroll')">💰 Payroll</div>
   <div class="tab fin-only" onclick="switchTab('officepayroll')">🏢 Office Payroll</div>
@@ -412,6 +413,38 @@ body.role-operations .fin-only{display:none!important}
     <button class="btn btn-ghost" onclick="openAddTruck()">+ Add Truck</button>
   </div>
   <div class="fleet-grid" id="fleet-grid"></div>
+</div>
+
+<!-- ====== FUEL PAGE ====== -->
+<div class="page" id="page-fuel">
+  <div class="page-header">
+    <h2>⛽ Fuel Monitoring</h2>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    <select class="form-select" id="fuel-area-select" style="max-width:220px" onchange="renderFuelTab()">
+      <option value="">— Select Area —</option>
+    </select>
+    <div style="display:flex;gap:6px" id="fuel-type-buttons">
+      <button class="btn btn-ghost btn-sm btn-primary" data-type="single" onclick="setFuelType('single',this)">Single</button>
+      <button class="btn btn-ghost btn-sm" data-type="multi" onclick="setFuelType('multi',this)">MilkRun</button>
+    </div>
+  </div>
+  <div id="fuel-empty-note" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+  <div class="table-wrapper">
+    <table id="fuel-table">
+      <thead><tr>
+        <th style="text-align:left">Plate</th><th>Trips</th><th>Total Liters</th><th>Total Paid</th><th>₱/Liter (avg)</th>
+      </tr></thead>
+      <tbody id="fuel-tbody"></tbody>
+    </table>
+  </div>
+  <div class="guide-section" style="margin-top:16px">
+    <h3>Avg Liters per Trip — by Plate</h3>
+    <div id="fuel-chart"></div>
+  </div>
+  <div style="font-size:11px;color:var(--text2);margin-top:10px">
+    Note: fill-ups don't always fully deplete before the next trip, so per-trip diesel figures carry some noise — use this as a directional comparison, not an exact per-trip cost.
+  </div>
 </div>
 
 <!-- ====== DATA / IMPORT PAGE ====== -->
@@ -2027,6 +2060,86 @@ function renderBudgetTab(){
   }).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:20px">No trip data yet</td></tr>`;
 
   document.getElementById('budget-detail').innerHTML='';
+}
+
+// ===== FUEL TAB =====
+let fuelType = 'single'; // 'single' | 'multi'
+function tripDieselLiters(t){
+  const dieselEntries=Array.isArray(t.dieselEntries)?t.dieselEntries:[];
+  const litersFromEntries=dieselEntries.reduce((s,d)=>s+n(d.liters),0);
+  const litersSingle=n(t.dieselLiter);
+  return litersFromEntries||litersSingle;
+}
+function populateFuelAreaOptions(){
+  const areas=[...new Set(trips.map(t=>t.area).filter(Boolean))].sort();
+  const sel=document.getElementById('fuel-area-select');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— Select Area —</option>'+areas.map(a=>`<option ${a===cur?'selected':''}>${a}</option>`).join('');
+}
+function setFuelType(t,btn){
+  fuelType=t;
+  document.querySelectorAll('#fuel-type-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  renderFuelTab();
+}
+function renderFuelTab(){
+  const area=document.getElementById('fuel-area-select').value;
+  const tbody=document.getElementById('fuel-tbody');
+  const note=document.getElementById('fuel-empty-note');
+  const chartEl=document.getElementById('fuel-chart');
+  if(!area){
+    tbody.innerHTML='';
+    chartEl.innerHTML='';
+    note.textContent='Select an area to see fuel spending by truck.';
+    return;
+  }
+  const matched=trips.filter(t=>tripArea(t)===area && tripType(t)===fuelType);
+  if(!matched.length){
+    tbody.innerHTML='';
+    chartEl.innerHTML='';
+    note.textContent=`No ${fuelType==='multi'?'MilkRun':'Single'} trips recorded for ${area} yet.`;
+    return;
+  }
+  note.textContent='';
+  const byPlate={};
+  matched.forEach(t=>{
+    const plate=t.plate||'Unspecified';
+    if(!byPlate[plate]) byPlate[plate]={plate,trips:0,liters:0,paid:0};
+    byPlate[plate].trips++;
+    byPlate[plate].liters+=tripDieselLiters(t);
+    byPlate[plate].paid+=computeAll(t).diesel;
+  });
+  const rows=Object.values(byPlate).sort((a,b)=>b.paid-a.paid);
+
+  tbody.innerHTML=rows.map(r=>{
+    const perLiter = r.liters>0 ? r.paid/r.liters : null;
+    return `<tr>
+      <td style="text-align:left;font-weight:600">${r.plate}</td>
+      <td>${r.trips}</td>
+      <td>${r.liters.toFixed(1)} L</td>
+      <td>₱${fmt(r.paid)}</td>
+      <td>${perLiter!==null ? '₱'+fmt(perLiter) : '—'}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:20px">No data</td></tr>`;
+
+  renderFuelChart(rows);
+}
+function renderFuelChart(rows){
+  const el=document.getElementById('fuel-chart');
+  const items=rows.map(r=>({plate:r.plate, val: r.trips>0 ? r.liters/r.trips : 0})).sort((a,b)=>b.val-a.val);
+  if(!items.length){ el.innerHTML=''; return; }
+  const maxAbs=Math.max(1, ...items.map(i=>i.val));
+  const barH=20, gap=8, topPad=4, leftW=110, barMaxW=360, rightPad=90;
+  const svgW=leftW+barMaxW+rightPad;
+  const svgH=topPad*2+items.length*(barH+gap);
+  const bars=items.map((it,i)=>{
+    const y=topPad+i*(barH+gap);
+    const w=Math.max(1, it.val/maxAbs*barMaxW);
+    return `<text x="${leftW-8}" y="${y+barH*0.7}" text-anchor="end" font-size="11" fill="var(--text)">${it.plate}</text>
+      <rect x="${leftW}" y="${y}" width="${w}" height="${barH}" rx="3" fill="var(--accent)"></rect>
+      <text x="${leftW+w+6}" y="${y+barH*0.7}" font-size="11" fill="var(--text2)">${it.val.toFixed(1)} L</text>`;
+  }).join('');
+  el.innerHTML=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" style="max-width:${svgW}px;height:${svgH}px">${bars}</svg>`;
 }
 
 function toggleBudgetDetail(area,type){
@@ -3911,12 +4024,13 @@ function switchTab(name){
   if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
   if(name==='officepayroll' && currentRole==='operations'){ toast('Office Payroll is restricted to Owner access','error'); return; }
   if(name==='budget' && currentRole==='operations'){ toast('Budget is restricted to Owner access','error'); return; }
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','import','payroll','officepayroll','ledger','budget','guide'][i]===name));
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','fuel','import','payroll','officepayroll','ledger','budget','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(name==='summary')renderSummary();
   if(name==='staff')renderStaff();
   if(name==='fleet')renderFleet();
+  if(name==='fuel'){ populateFuelAreaOptions(); renderFuelTab(); }
   if(name==='import')renderStorageStatus();
   if(name==='payroll'){ populatePayrollWeeks(); renderPayroll(); renderPayrollTrend(); }
   if(name==='officepayroll'){ populateOfficePayrollDropdowns(); }
