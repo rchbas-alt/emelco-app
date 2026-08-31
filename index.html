@@ -428,6 +428,14 @@ body.role-operations .fin-only{display:none!important}
       <button class="btn btn-ghost btn-sm btn-primary" data-type="single" onclick="setFuelType('single',this)">Single</button>
       <button class="btn btn-ghost btn-sm" data-type="multi" onclick="setFuelType('multi',this)">MilkRun</button>
     </div>
+    <div style="display:flex;gap:6px;align-items:center" id="fuel-range-buttons">
+      <button class="btn btn-ghost btn-sm" data-days="7" onclick="setFuelDays(7,this)">Last 7</button>
+      <button class="btn btn-ghost btn-sm" data-days="30" onclick="setFuelDays(30,this)">Last 30</button>
+      <button class="btn btn-ghost btn-sm" data-days="90" onclick="setFuelDays(90,this)">Last 90</button>
+      <button class="btn btn-ghost btn-sm btn-primary" data-days="" onclick="setFuelDays(null,this)">All Time</button>
+      <span style="font-size:11px;color:var(--text2)">or</span>
+      <input type="number" min="1" class="form-input" id="fuel-custom-days" placeholder="Last N days" style="width:100px" onchange="setFuelCustomDays(this.value)">
+    </div>
   </div>
   <div id="fuel-empty-note" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
   <div class="table-wrapper">
@@ -2064,6 +2072,31 @@ function renderBudgetTab(){
 
 // ===== FUEL TAB =====
 let fuelType = 'single'; // 'single' | 'multi'
+let fuelDays = null; // null = All Time, else number of days back
+function setFuelDays(days,btn){
+  fuelDays=days;
+  document.querySelectorAll('#fuel-range-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  if(btn) btn.classList.add('btn-primary');
+  document.getElementById('fuel-custom-days').value='';
+  renderFuelTab();
+}
+function setFuelCustomDays(val){
+  const d=parseInt(val,10);
+  if(!d || d<1) return;
+  fuelDays=d;
+  document.querySelectorAll('#fuel-range-buttons .btn').forEach(b=>b.classList.remove('btn-primary'));
+  renderFuelTab();
+}
+function filterTripsByFuelDays(arr){
+  if(!fuelDays) return arr;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const cutoff=new Date(today); cutoff.setDate(cutoff.getDate()-fuelDays);
+  return arr.filter(t=>{
+    if(!t.tripStartDate) return false;
+    const d=new Date(t.tripStartDate+'T00:00:00');
+    return d>=cutoff && d<=today;
+  });
+}
 function tripDieselLiters(t){
   const dieselEntries=Array.isArray(t.dieselEntries)?t.dieselEntries:[];
   const litersFromEntries=dieselEntries.reduce((s,d)=>s+n(d.liters),0);
@@ -2093,11 +2126,12 @@ function renderFuelTab(){
     note.textContent='Select an area to see fuel spending by truck.';
     return;
   }
-  const matched=trips.filter(t=>tripArea(t)===area && tripType(t)===fuelType);
+const rangeLabel = fuelDays ? `in the last ${fuelDays} days` : '';
+  const matched=filterTripsByFuelDays(trips.filter(t=>tripArea(t)===area && tripType(t)===fuelType));
   if(!matched.length){
     tbody.innerHTML='';
     chartEl.innerHTML='';
-    note.textContent=`No ${fuelType==='multi'?'MilkRun':'Single'} trips recorded for ${area} yet.`;
+    note.textContent=`No ${fuelType==='multi'?'MilkRun':'Single'} trips recorded for ${area} ${rangeLabel||'yet'}.`;
     return;
   }
   note.textContent='';
