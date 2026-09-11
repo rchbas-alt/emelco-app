@@ -1283,7 +1283,8 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609112230'; // Office slip: print uses live typed values, wider modal, 'Fix dates' on history rows
+const APP_VERSION = '202609112300'; // Trips: TK badge hidden when TripKey=1 (shown only for 2nd+ trip same plate/date, or missing)
+// prev: '202609112230'; // Office slip: print uses live typed values, wider modal, 'Fix dates' on history rows
 // prev: '202609112100'; // Office Payroll redesign: payFrequency staff field, weekly/semi-monthly blocks, per-person 2026 history
 // prev: '202608280130'; // Phase 2: added Fleet nav link + read-only plate-dropdown fetch from fleet.html's Registry (fleetRegistryPlates, fetchFleetRegistry()), local fleet array kept as fallback and unchanged elsewhere
 // Header version badge — always visible, hover shows the decoded build date/time
@@ -2875,7 +2876,7 @@ function renderTable(){
       :'';
     return`<tr class="${trClass}">
       <td style="color:var(--text3)">${i+1}</td>
-      <td class="code-cell">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
+      <td class="code-cell">${t.code||'—'}${(String(t.tripKey||'').trim()==='1')?'':`<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — 2nd+ trip for this plate on this date (used for CSV import matching)">TK:${t.tripKey||'—'}</span>`}${dupeTag?'<br>'+dupeTag:''}</td>
       <td style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
       <td style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
       <td><span class="badge badge-submitted">${t.client||'—'}</span></td>
