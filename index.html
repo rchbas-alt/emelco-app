@@ -1076,7 +1076,7 @@ body.role-operations .fin-only{display:none!important}
 
 <!-- ====== OFFICE/ADMIN/TECH PAY SLIP MODAL ====== -->
 <div class="modal-overlay" id="office-slip-modal">
-<div class="modal" style="max-width:600px">
+<div class="modal" style="max-width:760px">
   <div class="modal-header">
     <div><div class="modal-title" id="office-slip-modal-title">Pay Slip</div><div class="modal-subtitle" id="office-slip-modal-subtitle"></div></div>
     <div class="modal-close" onclick="closeOfficeSlipModal()">✕</div>
@@ -1283,7 +1283,8 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609112100'; // Office Payroll redesign: payFrequency staff field, weekly/semi-monthly blocks, per-person 2026 history
+const APP_VERSION = '202609112230'; // Office slip: print uses live typed values, wider modal, 'Fix dates' on history rows
+// prev: '202609112100'; // Office Payroll redesign: payFrequency staff field, weekly/semi-monthly blocks, per-person 2026 history
 // prev: '202608280130'; // Phase 2: added Fleet nav link + read-only plate-dropdown fetch from fleet.html's Registry (fleetRegistryPlates, fetchFleetRegistry()), local fleet array kept as fallback and unchanged elsewhere
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -5535,13 +5536,36 @@ function renderOfficeHistory(s){
       <td class="num-cell">₱${fmt(t.gross)}</td>
       <td class="num-cell" style="color:var(--red);cursor:help" title="${t.tip}">₱${fmt(t.ded)}${t.ded>0?' <span style="font-size:10px;color:var(--text2)">ⓘ</span>':''}</td>
       <td class="num-cell" style="font-weight:600;color:var(--green)">₱${fmt(t.net)}</td>
-      <td style="font-size:11px;color:var(--text2)">${new Date(d.finalizedAt).toLocaleDateString()}</td></tr>`;
+      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${new Date(d.finalizedAt).toLocaleDateString()} <button class="btn btn-ghost btn-sm" style="margin-left:6px" title="Correct this slip's period dates (amounts and ledger untouched)" onclick="event.stopPropagation();fixOfficeSlipDates('${s.id}','${d.periodStart}','${d.periodEnd}')">✎ Dates</button></td></tr>`;
   }).join('');
   return `<div style="font-size:11px;color:var(--text2);margin:8px 0 4px">2026 payroll history — ${list.length} slip${list.length===1?'':'s'} · hover a deduction for the breakdown</div>
     <table class="data-table" style="width:100%;font-size:12px"><thead><tr><th>Period</th><th class="num-cell">Gross</th><th class="num-cell">Deductions</th><th class="num-cell">Net</th><th>Finalized</th></tr></thead>
     <tbody>${rows}
     <tr style="font-weight:700;border-top:2px solid var(--border)"><td>2026 total</td><td class="num-cell">₱${fmt(tg)}</td><td class="num-cell" style="color:var(--red)">₱${fmt(td)}</td><td class="num-cell" style="color:var(--green)">₱${fmt(tn)}</td><td></td></tr>
     </tbody></table>`;
+}
+
+// Re-label a finalized slip's period (typo fix). Only the key + period fields change — amounts and ledger postings are untouched.
+function fixOfficeSlipDates(staffRowId,oldStart,oldEnd){
+  const s=staff.find(x=>x.id===staffRowId); if(!s) return;
+  const ids=[s.staffId,...(s.previousIds||[])].filter(Boolean);
+  const oldKey=Object.keys(officeSlips).find(k=>{ const d=officeSlips[k]; return d&&ids.includes(d.staffId)&&d.periodStart===oldStart&&d.periodEnd===oldEnd; });
+  if(!oldKey){ toast('Slip not found','error'); return; }
+  const ok=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&!isNaN(new Date(v+'T00:00:00'));
+  const ns=prompt('New period START (YYYY-MM-DD) for '+s.name+':',oldStart); if(ns===null) return;
+  const ne=prompt('New period END (YYYY-MM-DD):',oldEnd); if(ne===null) return;
+  if(!ok(ns)||!ok(ne)||ns>ne){ toast('Invalid dates','error'); return; }
+  if(ns===oldStart&&ne===oldEnd) return;
+  const d=officeSlips[oldKey];
+  const newKey=officeSlipKey(d.staffId||s.staffId,ns,ne);
+  if(officeSlips[newKey]&&officeSlips[newKey].finalizedAt){ toast('A finalized slip already exists for '+fmtDate(ns)+' – '+fmtDate(ne),'error'); return; }
+  if(!confirm('Change '+s.name+"'s slip period\n"+fmtDate(oldStart)+' – '+fmtDate(oldEnd)+'  →  '+fmtDate(ns)+' – '+fmtDate(ne)+'\n\nAmounts and ledger are not changed. Continue?')) return;
+  delete officeSlips[oldKey];
+  d.periodStart=ns; d.periodEnd=ne; d.periodFixedFrom=oldStart+'_'+oldEnd;
+  officeSlips[newKey]=d;
+  saveOfficeSlips();
+  toast('Slip period updated ✓','success');
+  renderOfficePayroll();
 }
 
 let currentOfficeStaffId=null, currentOfficeStart=null, currentOfficeEnd=null;
@@ -5805,7 +5829,12 @@ function finalizeOfficeSlip(){
 
 function printOfficeSlip(){
   const s=staff.find(x=>x.id===currentOfficeStaffId)||{};
-  const bodyHtml=document.getElementById('office-slip-modal-body').innerHTML
+  const body=document.getElementById('office-slip-modal-body');
+  // Sync live typed values into the DOM attributes — innerHTML only carries the values from when the slip was opened
+  body.querySelectorAll('input').forEach(el=>el.setAttribute('value',el.value));
+  body.querySelectorAll('textarea').forEach(el=>{ el.textContent=el.value; });
+  const bodyHtml=body.innerHTML
+    .replace(/<input[^>]*id="os-[a-z]+-remark"[^>]*value="([^"]*)"[^>]*>/g, (m,val)=>`<div style="font-size:11px;color:#5a6175">${val||'—'}</div>`)
     .replace(/<input[^>]*id="os-([a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>/g, (m,id,val)=>`<span>${id==='days'?val:'₱'+fmt(n(val))}</span>`)
     .replace(/<textarea[^>]*>([^<]*)<\/textarea>/g, (m,val)=>`<div>${val||'—'}</div>`);
   const w=window.open('','_blank');
