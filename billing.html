@@ -620,7 +620,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202608161200';
+const APP_VERSION = '202609111500';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1157,12 +1157,119 @@ function buildPaymentsSummaryRows(){
   activeEntries().forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
     const key=e.paidDate+'|'+(e.chequeNo||'');
-    const g=byGroup[key]=byGroup[key]||{date:e.paidDate,chequeNo:e.chequeNo||'',chequeAmount:null,count:0,total:0,remark:''};
+    const g=byGroup[key]=byGroup[key]||{key,date:e.paidDate,chequeNo:e.chequeNo||'',chequeAmount:null,count:0,total:0,remark:'',entries:[]};
     g.count++; g.total+=entryCalc(e).due; // due = net + VAT - WHT — this is what an actual cheque amount reconciles against, not net
+    g.entries.push(e);
     if(e.chequeAmount!=null && g.chequeAmount==null) g.chequeAmount=e.chequeAmount;
     if(e.chequeRemark && !g.remark) g.remark=e.chequeRemark;
   });
   return Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date));
+}
+// --- Payment drill-down: link a cheque back to its entries and the trips behind them ---
+// Office staff type the trip cutoff as a label like "AUG.24-31,2026" / "SEPT.01-05,2026".
+// Verified against the full 2026 trip export: every non-blank value follows this shape.
+const CUTOFF_MONTHS={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,JULY:7,AUG:8,SEP:9,SEPT:9,OCT:10,NOV:11,DEC:12};
+function parseCutoff(raw){
+  const s=String(raw||'').trim().toUpperCase();
+  if(!s) return null;
+  const m=s.match(/^([A-Z]+)\.?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*,?\s*(\d{4})$/);
+  if(!m) return null;
+  const mo=CUTOFF_MONTHS[m[1]]; if(!mo) return null;
+  const p=n=>String(Number(n)).padStart(2,'0');
+  const start=`${m[4]}-${p(mo)}-${p(m[2])}`, end=`${m[4]}-${p(mo)}-${p(m[3])}`;
+  if(end<start) return null;
+  return {start,end,label:s};
+}
+// Distinct BU + period windows covered by one cheque group (several entries usually share a period).
+function payGroupPeriods(g){
+  const out=[];
+  (g.entries||[]).forEach(e=>{
+    if(!e.bu||!e.tripStart||!e.tripEnd) return;
+    const bu=String(e.bu).trim().toUpperCase();
+    const k=bu+'|'+e.tripStart+'|'+e.tripEnd;
+    if(!out.some(p=>p.k===k)) out.push({k,bu,start:e.tripStart,end:e.tripEnd});
+  });
+  return out;
+}
+// Trips behind a cheque. Primary match = trip's own cutoff field vs the entry period (same BU).
+// Trips with a blank/unreadable cutoff fall back to trip-date-inside-period and are marked inferred.
+// SBU can't be matched — trip records carry no SBU field — so this is period-level, not per-SI.
+function tripsForPayGroup(g){
+  const periods=payGroupPeriods(g);
+  const confirmed=[], inferred=[], seen=new Set();
+  if(!periods.length) return {confirmed,inferred,periods};
+  TRIPS.forEach((t,idx)=>{
+    const client=String(t.client||'').trim().toUpperCase();
+    // Identity is the row itself, not t.code — codes are date+plate+client+driver and
+    // genuinely collide when one truck runs two trips to different destinations same day.
+    const tid=idx;
+    if(seen.has(tid)) return;
+    const co=parseCutoff(t.cutoff);
+    const d=t.tripStartDate||t.dispatchedDate||'';
+    for(const p of periods){
+      if(client!==p.bu) continue;
+      if(co){
+        if(co.start<=p.end && co.end>=p.start){
+          seen.add(tid);
+          confirmed.push({t,cut:co.label,exact:(co.start===p.start&&co.end===p.end)});
+          return;
+        }
+      } else if(d && d>=p.start && d<=p.end){
+        seen.add(tid); inferred.push({t}); return;
+      }
+    }
+  });
+  const bydate=(a,b)=>String(a.t.tripStartDate||a.t.dispatchedDate||'').localeCompare(String(b.t.tripStartDate||b.t.dispatchedDate||''));
+  confirmed.sort(bydate); inferred.sort(bydate);
+  return {confirmed,inferred,periods};
+}
+const PAY_EXPANDED=new Set();
+function togglePayGroup(key){
+  if(PAY_EXPANDED.has(key)) PAY_EXPANDED.delete(key); else PAY_EXPANDED.add(key);
+  renderPaymentsSummary();
+}
+function payDetailHTML(g){
+  const ents=(g.entries||[]).slice().sort((a,b)=>String(a.si||'').localeCompare(String(b.si||'')));
+  const entRows=ents.map(e=>{
+    const c=entryCalc(e);
+    return `<tr>
+      <td class="mono">${esc(e.si||'—')}</td><td class="mono">${esc(e.bu||'')}</td>
+      <td>${esc(e.sbu||'')}</td><td class="mono">${esc(e.type||'')}</td>
+      <td class="mono">${esc(e.tripStart||'')} → ${esc(e.tripEnd||'')}</td>
+      <td class="num-cell">₱${peso(c.net)}</td><td class="num-cell">₱${peso(c.vat)}</td>
+      <td class="num-cell"><strong>₱${peso(c.due)}</strong></td></tr>`;
+  }).join('');
+  const {confirmed,inferred,periods}=tripsForPayGroup(g);
+  const tripRow=(x,inf)=>{
+    const t=x.t;
+    return `<tr>
+      <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+      <td class="mono">${esc(t.client||'')}</td>
+      <td class="mono">${esc(t.plate||'')}</td>
+      <td>${esc(t.driver||'')}</td>
+      <td class="muted">${esc(t.area||t.destination||'')}</td>
+      <td class="mono muted">${inf?'<span title="No cutoff on this trip — matched by trip date falling inside the period">inferred</span>':esc(x.cut||'')}${(!inf&&x.exact===false)?' <span title="Cutoff overlaps this billing period but is not identical to it" style="color:#b45309">≈</span>':''}</td>
+      <td class="num-cell">₱${peso(tripExpected(t))}</td></tr>`;
+  };
+  const tripHead=`<tr><th>Date</th><th>Client</th><th>Plate</th><th>Driver</th><th>Area / Destination</th><th>Cutoff</th><th class="num-cell">Rate+Surcharge</th></tr>`;
+  const cExp=confirmed.reduce((a,x)=>a+tripExpected(x.t),0);
+  const iExp=inferred.reduce((a,x)=>a+tripExpected(x.t),0);
+  const periodLabel=periods.length?periods.map(p=>`${esc(p.bu)} ${esc(p.start)}→${esc(p.end)}`).join(' · '):'—';
+  const tripsBlock = (!periods.length)
+    ? `<div class="hint">These entries have no BU/period set, so trips can't be matched.</div>`
+    : `<div class="hint" style="margin:10px 0 6px"><strong>Trips covered</strong> — matched on client + the trip's own cutoff field against ${periodLabel}. Period-level only: trips carry no SBU, so these cover the whole period, not one SI.</div>
+       ${confirmed.length?`<div class="table-wrapper"><table><thead>${tripHead}</thead><tbody>${confirmed.map(x=>tripRow(x,false)).join('')}</tbody>
+         <tfoot><tr class="grand"><td colspan="6">${confirmed.length} trips (cutoff matched)</td><td class="num-cell">₱${peso(cExp)}</td></tr></tfoot></table></div>`
+        :`<div class="hint">No trips with a matching cutoff found for this period.</div>`}
+       ${inferred.length?`<div class="hint" style="margin:10px 0 6px;color:#b45309">⚠ ${inferred.length} more trips fall inside this period by date but have <strong>no cutoff assigned</strong> — shown for reference only, not confirmed as billed under this cheque.</div>
+         <div class="table-wrapper"><table><thead>${tripHead}</thead><tbody>${inferred.map(x=>tripRow(x,true)).join('')}</tbody>
+         <tfoot><tr class="grand"><td colspan="6">${inferred.length} trips (inferred)</td><td class="num-cell">₱${peso(iExp)}</td></tr></tfoot></table></div>`:''}`;
+  return `<tr class="pay-detail"><td colspan="6" style="background:#f8fafc;padding:14px 18px">
+    <div class="hint" style="margin-bottom:6px"><strong>Invoices covered by this payment</strong></div>
+    <div class="table-wrapper"><table><thead><tr><th>SI #</th><th>BU</th><th>SBU</th><th>Type</th><th>Period</th><th class="num-cell">Net</th><th class="num-cell">VAT</th><th class="num-cell">Due</th></tr></thead>
+    <tbody>${entRows}</tbody></table></div>
+    ${tripsBlock}
+  </td></tr>`;
 }
 function exportPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
@@ -1179,12 +1286,13 @@ function renderPaymentsSummary(){
   tb.innerHTML=rows.map(g=>{
     const mismatch = g.chequeAmount!=null && Math.abs(g.chequeAmount-g.total)>=0.02;
     const mismatchBadge = mismatch ? ` <span title="Cheque amount differs from this group's Total (Due) by ₱${peso(Math.abs(g.chequeAmount-g.total))}" style="color:#b91c1c">⚠</span>` : '';
-    return `<tr>
-    <td class="mono">${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}</td>
+    const open=PAY_EXPANDED.has(g.key);
+    return `<tr class="pay-row" style="cursor:pointer" onclick="togglePayGroup('${esc(g.key).replace(/'/g,"\\'")}')" title="Click to see the invoices and trips behind this payment">
+    <td class="mono"><span class="muted" style="display:inline-block;width:14px">${open?'▾':'▸'}</span>${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}</td>
     <td class="num-cell">${g.chequeAmount!=null?'₱'+peso(g.chequeAmount):'—'}${mismatchBadge}</td>
     <td class="num-cell">${g.count}</td>
     <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
-    <td class="muted">${esc(g.remark||'')}</td></tr>`;
+    <td class="muted">${esc(g.remark||'')}</td></tr>`+(open?payDetailHTML(g):'');
   }).join('');
   const grand=rows.reduce((a,g)=>a+g.total,0);
   $('#pay-sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
