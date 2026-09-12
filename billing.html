@@ -56,6 +56,9 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .table-wrapper{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 300px)}
 table{width:100%;border-collapse:collapse;font-size:11px}
 thead{position:sticky;top:0;z-index:10}
+table.nested thead{position:static}
+table.nested{background:var(--card)}
+table.nested th{background:var(--bg2)}
 th{background:var(--bg3);border-bottom:1px solid var(--border2);padding:9px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);white-space:nowrap}
 td{padding:8px 8px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
 tr:hover td{background:rgba(0,0,0,.015)}
@@ -274,6 +277,18 @@ body.role-operations .owner-only{display:none!important}
   <!-- SUMMARY -->
   <div class="page" id="page-summary">
     <p class="hint">Same shape as the "2026 Billing Compilation by Trip Start / End Date" sheet — computed live from your billing entries instead of formulas, so it never drifts.</p>
+    <div id="tripBillWarn" style="display:none;margin-bottom:16px;padding:12px 16px;border:1px solid #7c3aed;background:#faf5ff;border-radius:8px">
+      <div style="font-weight:700;color:#5b21b6">🟣 <span id="tripBillCount"></span></div>
+      <div class="hint" style="margin:4px 0 8px">Compares each BU + billing period against the trips whose cutoff falls in it. <strong>Δ total</strong> is money in the wrong period or missing altogether — these usually come in pairs, one period short and its neighbour over by the same amount. <strong>Δ split</strong> is the amount sitting under the wrong type; when Δ split is large but Δ total is near zero, everything was billed, just typed as RECON instead of SURCHARGE/INCREMENTALS (or the reverse). Trip surcharge is compared against SURCHARGE + INCREMENTALS together. Advisory only — nothing is changed automatically.</div>
+      <div style="margin-bottom:8px"><label class="muted" style="font-size:12px;cursor:pointer"><input type="checkbox" id="tripBillAll" onchange="renderTripBillCheck()"> show every period, including those inside tolerance</label></div>
+      <div class="table-wrapper"><table id="tripBill-table">
+        <thead><tr><th>BU</th><th>Period</th><th class="num-cell">Trips</th>
+          <th class="num-cell">Trip rate</th><th class="num-cell">RECON</th>
+          <th class="num-cell">Trip surcharge</th><th class="num-cell">SUR+INCR</th>
+          <th class="num-cell">Δ split</th><th class="num-cell">Δ total</th><th>Likely</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
     <div class="toolbar">
       <span class="muted" id="sumCount"></span>
       <div class="spacer"></div>
@@ -621,7 +636,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609112300';
+const APP_VERSION = '202609121400';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -631,7 +646,11 @@ const VAT_RATE = 0.12, WHT_RATE = 0.02;
 // invoices drifts a few centavos every time — at a 1-centavo tolerance every large cheque
 // flagged, which trains you to ignore the flag. ₱1.00 lets rounding through and still
 // catches the things that matter (e.g. a ₱2,000 penalty deducted at source).
-const CHEQUE_TOLERANCE = 1.00;
+const CHEQUE_TOLERANCE = 10.00;
+// Trips vs billing: the trip sheet and the invoice are compiled separately, so small drift is
+// normal. Measured across 2026, rounding noise tops out around ₱65 and the next real
+// difference is ₱103 — ₱100 sits in that gap. (Set with Rhoda, 2026-09-12.)
+const TRIP_BILL_TOLERANCE = 100.00;
 const TYPES = ['RECON','SURCHARGE','INCREMENTALS'];
 
 // ---- proxy wiring: identical mechanism to index.html ----
@@ -1055,7 +1074,7 @@ function renderBatchOutlierCheck(){
     <td class="num-cell">₱${peso(r.net)}</td>
   </tr>`).join('');
 }
-function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderBatchOutlierCheck(); renderCutoffMismatchCheck(); renderMissedCutoffCheck(); renderAgingCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
+function renderAll(){ renderOverview(); renderMonthly(); renderSummary(); renderEntries(); renderPaidList(); renderSetup(); renderUnbilled(); populateBuFilter(); populateReconBuSelect(); renderDupeCheck(); renderTripBillCheck(); renderBatchOutlierCheck(); renderCutoffMismatchCheck(); renderMissedCutoffCheck(); renderAgingCheck(); const rl=$('#reconLogToggleLabel'); if(rl) rl.textContent=` (${(STATE.reconLog||[]).length})`; }
 
 const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTH_NAMES[parseInt(m,10)-1]+' '+y; }
@@ -1129,6 +1148,90 @@ function exportSummary(){
   const headers=['Trip Start','Trip End','Total Billed','Recon+Surcharge','Recon','Surcharge','Incrementals','CCAC Billed','CMIP Billed','Settled/Collected','In Client Processing','Past Due & Uncollected','Entries'];
   const data=rows.map(g=>[g.tripStart, g.tripEnd||'', g.total.toFixed(2), g.reconSurcharge.toFixed(2), g.recon.toFixed(2), g.surcharge.toFixed(2), g.incrementals.toFixed(2), g.ccac.toFixed(2), g.cmip.toFixed(2), g.settled.toFixed(2), g.processing.toFixed(2), g.pastDue.toFixed(2), g.sis.size||g.count]);
   downloadCSV('emelco_billing_summary_'+todayISO()+'.csv', headers, data);
+}
+
+// ---- Trips vs billing check (Summary tab) --------------------------------
+// Every BU + billing period, against the trips whose cutoff overlaps it most. Two separate
+// signals, because they mean different things: Δ total = money in the wrong period or absent;
+// Δ split = right period, wrong TYPE. A big Δ split with a near-zero Δ total is a typing
+// slip, not lost money — worth saying so rather than making the encoder work it out.
+function buildTripBillRows(){
+  const per={};
+  activeEntries().forEach(e=>{
+    if(!e.bu||!e.tripStart||!e.tripEnd) return;
+    const bu=String(e.bu).trim().toUpperCase(), k=bu+'|'+e.tripStart+'|'+e.tripEnd;
+    (per[k]=per[k]||{k,bu,start:e.tripStart,end:e.tripEnd,ents:[]}).ents.push(e);
+  });
+  const list=Object.values(per);
+  const byBu={}; list.forEach(p=>(byBu[p.bu]=byBu[p.bu]||[]).push(p));
+  list.forEach(p=>{ p.rate=0; p.sur=0; p.n=0; });
+  TRIPS.forEach(t=>{
+    const co=parseCutoff(t.cutoff); if(!co) return;
+    const bu=String(t.client||'').trim().toUpperCase();
+    let best=null,bestOv=0;
+    (byBu[bu]||[]).forEach(p=>{
+      const lo=co.start>p.start?co.start:p.start, hi=co.end<p.end?co.end:p.end;
+      if(lo>hi) return;
+      const ov=(Date.parse(hi)-Date.parse(lo))/86400000+1;
+      if(ov>bestOv){ bestOv=ov; best=p; }
+    });
+    if(best){ best.rate+=Number(t.rate)||0; best.sur+=Number(t.surcharge)||0; best.n++; }
+  });
+  list.forEach(p=>{
+    const es=entrySplit(p.ents);
+    p.recon=es.recon; p.surIncr=es.surIncr;
+    p.dSplit=p.rate-es.recon;
+    p.dTotal=(p.rate+p.sur)-es.total;
+    p.flag=Math.abs(p.dTotal)>TRIP_BILL_TOLERANCE || Math.abs(p.dSplit)>TRIP_BILL_TOLERANCE;
+  });
+  // Pair up opposite deltas — same BU adjacent period, or same period other BU. That pairing
+  // is what actually identifies the mis-tagged trip, so name it instead of leaving two rows.
+  list.forEach(p=>{
+    p.likely='';
+    const aT=Math.abs(p.dTotal), aS=Math.abs(p.dSplit);
+    if(!p.n){ p.likely='no trips carry a cutoff in this period'; return; }
+    if(aT<=TRIP_BILL_TOLERANCE && aS>TRIP_BILL_TOLERANCE){
+      p.likely='total is right — amounts under the wrong type'; return; }
+    if(aT<=TRIP_BILL_TOLERANCE) return;
+    // Only look for a partner when the gap is big enough that an equal-and-opposite match
+    // means something. Two small unrelated drifts will always "cancel" if you let them.
+    if(aT>1000){
+      const mate=list.find(q=>q!==p && Math.abs(q.dTotal)>1000 && Math.abs(q.dTotal+p.dTotal)<=aT*0.10
+        && (q.bu===p.bu || (q.start===p.start&&q.end===p.end)));
+      if(mate){ p.likely = (mate.bu===p.bu && mate.start!==p.start)
+        ? `offsets ${mate.start}→${mate.end} (same BU) — check cutoff labels`
+        : `offsets ${mate.bu} same period — check client tagging`; return; }
+    }
+    // A split much larger than the total gap means the bulk of it is a typing slip, with a
+    // smaller genuine difference on top — say both rather than just the leftover.
+    if(aS>TRIP_BILL_TOLERANCE && aS>aT*5){
+      p.likely=`mostly wrong type; total also off by ₱${peso(aT)}`; return; }
+    p.likely='no matching period found for the difference';
+  });
+  return list.sort((a,b)=>b.start.localeCompare(a.start)||a.bu.localeCompare(b.bu));
+}
+function renderTripBillCheck(){
+  const box=$('#tripBillWarn'); if(!box) return;
+  const all=buildTripBillRows();
+  const showAll=$('#tripBillAll') && $('#tripBillAll').checked;
+  const flagged=all.filter(p=>p.flag);
+  if(!flagged.length && !showAll){ box.style.display='none'; return; }
+  box.style.display='block';
+  $('#tripBillCount').textContent = flagged.length
+    ? `${flagged.length} period${flagged.length===1?'':'s'} where the trip list and the billing don't agree`
+    : `All ${all.length} periods agree within ₱${peso(TRIP_BILL_TOLERANCE)}`;
+  const rows=showAll?all:flagged;
+  const d=(v)=>{ const off=Math.abs(v)>TRIP_BILL_TOLERANCE;
+    return `<td class="num-cell"${off?' style="color:#b45309;font-weight:600"':''}>${v<0?'−':'+'}₱${peso(Math.abs(v))}</td>`; };
+  $('#tripBill-table tbody').innerHTML = rows.map(p=>`<tr>
+    <td class="mono">${esc(p.bu)}</td>
+    <td class="mono">${esc(p.start)} → ${esc(p.end)}</td>
+    <td class="num-cell">${p.n}</td>
+    <td class="num-cell">₱${peso(p.rate)}</td><td class="num-cell">₱${peso(p.recon)}</td>
+    <td class="num-cell">₱${peso(p.sur)}</td><td class="num-cell">₱${peso(p.surIncr)}</td>
+    ${d(p.dSplit)}${d(p.dTotal)}
+    <td class="muted">${esc(p.likely||'')}</td></tr>`).join('')
+    || `<tr><td colspan="10" class="muted">nothing to show</td></tr>`;
 }
 function renderSummary(){
   const rows=buildSummaryRows();
@@ -1227,22 +1330,36 @@ function tripsForPayGroup(g){
     if(seen.has(tid)) return;
     const co=parseCutoff(t.cutoff);
     const d=t.tripStartDate||t.dispatchedDate||'';
+    // A trip belongs to the period its cutoff overlaps MOST, not merely the first overlap.
+    // Cutoff labels and billing windows don't always share boundaries (JUL.26-31 vs
+    // 07-28→07-31), so first-match put trips in the wrong period.
+    let best=null,bestOv=0;
     for(const p of periods){
       if(client!==p.bu) continue;
-      if(co){
-        if(co.start<=p.end && co.end>=p.start){
-          seen.add(tid);
-          confirmed.push({t,cut:co.label,exact:(co.start===p.start&&co.end===p.end)});
-          return;
-        }
-      } else if(d && d>=p.start && d<=p.end){
-        seen.add(tid); inferred.push({t}); return;
-      }
+      if(!co) continue;
+      const lo=co.start>p.start?co.start:p.start, hi=co.end<p.end?co.end:p.end;
+      if(lo>hi) continue;
+      const ov=(Date.parse(hi)-Date.parse(lo))/86400000+1;
+      if(ov>bestOv){ bestOv=ov; best=p; }
+    }
+    if(best){ seen.add(tid); confirmed.push({t,cut:co.label,pk:best.k,exact:(co.start===best.start&&co.end===best.end)}); return; }
+    if(!co && d) for(const p of periods){
+      if(client===p.bu && d>=p.start && d<=p.end){ seen.add(tid); inferred.push({t,pk:p.k}); return; }
     }
   });
   const bydate=(a,b)=>String(a.t.tripStartDate||a.t.dispatchedDate||'').localeCompare(String(b.t.tripStartDate||b.t.dispatchedDate||''));
   confirmed.sort(bydate); inferred.sort(bydate);
   return {confirmed,inferred,periods};
+}
+// Rate+surcharge as the trip sheet records it. Billing splits the surcharge half across two
+// types (SURCHARGE and INCREMENTALS), so the trip Surcharge column must be compared against
+// the SUM of those two — against SURCHARGE alone it always looks short. (Confirmed by Rhoda.)
+function tripRS(t){ return {rate:Number(t.rate)||0, sur:Number(t.surcharge)||0}; }
+function entrySplit(list){
+  let recon=0, surIncr=0;
+  list.forEach(e=>{ const n=entryCalc(e).net, ty=String(e.type||'').toUpperCase();
+    if(ty==='RECON') recon+=n; else if(ty==='SURCHARGE'||ty==='INCREMENTALS') surIncr+=n; });
+  return {recon, surIncr, total:recon+surIncr};
 }
 const PAY_EXPANDED=new Set();
 function togglePayGroup(key){
@@ -1250,47 +1367,63 @@ function togglePayGroup(key){
   renderPaymentsSummary();
 }
 function payDetailHTML(g){
-  const ents=(g.entries||[]).slice().sort((a,b)=>String(a.si||'').localeCompare(String(b.si||'')));
-  const entRows=ents.map(e=>{
-    const c=entryCalc(e);
-    return `<tr>
-      <td class="mono">${esc(e.si||'—')}</td><td class="mono">${esc(e.bu||'')}</td>
-      <td>${esc(e.sbu||'')}</td><td class="mono">${esc(e.type||'')}</td>
-      <td class="mono">${esc(e.tripStart||'')} → ${esc(e.tripEnd||'')}</td>
-      <td class="num-cell">₱${peso(c.net)}</td><td class="num-cell">₱${peso(c.vat)}</td>
-      <td class="num-cell"><strong>₱${peso(c.due)}</strong></td></tr>`;
-  }).join('');
   const {confirmed,inferred,periods}=tripsForPayGroup(g);
-  const tripRow=(x,inf)=>{
-    const t=x.t;
-    return `<tr>
-      <td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
-      <td class="mono">${esc(t.client||'')}</td>
-      <td class="mono">${esc(t.plate||'')}</td>
-      <td>${esc(t.driver||'')}</td>
-      <td class="muted">${esc(t.area||t.destination||'')}</td>
-      <td class="mono muted">${inf?'<span title="No cutoff on this trip — matched by trip date falling inside the period">inferred</span>':esc(x.cut||'')}${(!inf&&x.exact===false)?' <span title="Cutoff overlaps this billing period but is not identical to it" style="color:#b45309">≈</span>':''}</td>
-      <td class="num-cell">₱${peso(tripExpected(t))}</td></tr>`;
-  };
-  const tripHead=`<tr><th>Date</th><th>Client</th><th>Plate</th><th>Driver</th><th>Area / Destination</th><th>Cutoff</th><th class="num-cell">Rate+Surcharge</th></tr>`;
-  const cExp=confirmed.reduce((a,x)=>a+tripExpected(x.t),0);
-  const iExp=inferred.reduce((a,x)=>a+tripExpected(x.t),0);
-  const periodLabel=periods.length?periods.map(p=>`${esc(p.bu)} ${esc(p.start)}→${esc(p.end)}`).join(' · '):'—';
-  const tripsBlock = (!periods.length)
-    ? `<div class="hint">These entries have no BU/period set, so trips can't be matched.</div>`
-    : `<div class="hint" style="margin:10px 0 6px"><strong>Trips covered</strong> — matched on client + the trip's own cutoff field against ${periodLabel}. Period-level only: trips carry no SBU, so these cover the whole period, not one SI.</div>
-       ${confirmed.length?`<div class="table-wrapper"><table><thead>${tripHead}</thead><tbody>${confirmed.map(x=>tripRow(x,false)).join('')}</tbody>
-         <tfoot><tr class="grand"><td colspan="6">${confirmed.length} trips (cutoff matched)</td><td class="num-cell">₱${peso(cExp)}</td></tr></tfoot></table></div>`
-        :`<div class="hint">No trips with a matching cutoff found for this period.</div>`}
-       ${inferred.length?`<div class="hint" style="margin:10px 0 6px;color:#b45309">⚠ ${inferred.length} more trips fall inside this period by date but have <strong>no cutoff assigned</strong> — shown for reference only, not confirmed as billed under this cheque.</div>
-         <div class="table-wrapper"><table><thead>${tripHead}</thead><tbody>${inferred.map(x=>tripRow(x,true)).join('')}</tbody>
-         <tfoot><tr class="grand"><td colspan="6">${inferred.length} trips (inferred)</td><td class="num-cell">₱${peso(iExp)}</td></tr></tfoot></table></div>`:''}`;
-  return `<tr class="pay-detail"><td colspan="7" style="background:#f8fafc;padding:14px 18px">
-    <div class="hint" style="margin-bottom:6px"><strong>Invoices covered by this payment</strong></div>
-    <div class="table-wrapper"><table><thead><tr><th>SI #</th><th>BU</th><th>SBU</th><th>Type</th><th>Period</th><th class="num-cell">Net</th><th class="num-cell">VAT</th><th class="num-cell">Due</th></tr></thead>
-    <tbody>${entRows}</tbody></table></div>
-    ${tripsBlock}
-  </td></tr>`;
+  if(!periods.length){
+    return `<tr class="pay-detail"><td colspan="7" style="background:#f8fafc;padding:14px 18px">
+      <div class="hint">These entries have no BU/period set, so nothing can be matched to them.</div></td></tr>`;
+  }
+  const money=v=>`₱${peso(v)}`;
+  let out='';
+  periods.forEach(p=>{
+    const ents=(g.entries||[]).filter(e=>String(e.bu||'').trim().toUpperCase()===p.bu && e.tripStart===p.start && e.tripEnd===p.end)
+                              .sort((x,y)=>String(x.si||'').localeCompare(String(y.si||'')));
+    const es=entrySplit(ents);
+    const ctr=confirmed.filter(x=>x.pk===p.k), itr=inferred.filter(x=>x.pk===p.k);
+    const ts=ctr.reduce((acc,x)=>{const v=tripRS(x.t); acc.rate+=v.rate; acc.sur+=v.sur; return acc;},{rate:0,sur:0});
+    ts.total=ts.rate+ts.sur;
+    const dRate=ts.rate-es.recon, dSur=ts.sur-es.surIncr, dTot=ts.total-es.total;
+    const bad=v=>Math.abs(v)>TRIP_BILL_TOLERANCE;
+    const cell=v=>`<td class="num-cell"${bad(v)?' style="color:#b45309;font-weight:600"':''}>${v>=0?'+':'−'}${peso(Math.abs(v))}</td>`;
+
+    out+=`<div style="margin:0 0 6px"><strong>${esc(p.bu)}</strong> <span class="mono">${esc(p.start)} → ${esc(p.end)}</span></div>`;
+    out+=`<div class="table-wrapper"><table class="nested"><thead><tr>
+      <th>SI #</th><th>SBU</th><th>Type</th><th class="num-cell">Net</th><th class="num-cell">VAT</th><th class="num-cell">Due</th></tr></thead><tbody>`
+      + (ents.length?ents.map(e=>{const c=entryCalc(e);
+          return `<tr><td class="mono">${esc(e.si||'—')}</td><td>${esc(e.sbu||'')}</td><td class="mono">${esc(e.type||'')}</td>
+            <td class="num-cell">${money(c.net)}</td><td class="num-cell">${money(c.vat)}</td><td class="num-cell"><strong>${money(c.due)}</strong></td></tr>`;
+        }).join(''):`<tr><td colspan="6" class="muted">no invoices</td></tr>`)
+      + `</tbody><tfoot>
+        <tr class="grand"><td colspan="3">Billed — RECON</td><td class="num-cell" colspan="3">${money(es.recon)}</td></tr>
+        <tr class="grand"><td colspan="3">Billed — SURCHARGE + INCREMENTALS</td><td class="num-cell" colspan="3">${money(es.surIncr)}</td></tr>
+        <tr class="grand"><td colspan="3"><strong>Billed total (net)</strong></td><td class="num-cell" colspan="3"><strong>${money(es.total)}</strong></td></tr>
+        </tfoot></table></div>`;
+
+    const trHead=`<tr><th>Date</th><th>Plate</th><th>Driver</th><th>Area / Destination</th><th>Cutoff</th><th class="num-cell">Rate</th><th class="num-cell">Surcharge</th></tr>`;
+    const trRow=(x,inf)=>{ const t=x.t, v=tripRS(t);
+      return `<tr><td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td><td class="mono">${esc(t.plate||'')}</td>
+        <td>${esc(t.driver||'')}</td><td class="muted">${esc(t.area||t.destination||'')}</td>
+        <td class="mono muted">${inf?'<span title="No cutoff on this trip — matched by trip date inside the period">inferred</span>':esc(x.cut||'')}</td>
+        <td class="num-cell">${money(v.rate)}</td><td class="num-cell">${money(v.sur)}</td></tr>`; };
+    out+=`<div class="table-wrapper" style="margin-top:8px"><table class="nested"><thead>${trHead}</thead><tbody>`
+      + (ctr.length?ctr.map(x=>trRow(x,false)).join(''):`<tr><td colspan="7" class="muted">no trips matched this period</td></tr>`)
+      + `</tbody><tfoot>
+        <tr class="grand"><td colspan="5">Trips — Rate (${ctr.length})</td><td class="num-cell">${money(ts.rate)}</td><td class="num-cell">${money(ts.sur)}</td></tr>
+        <tr class="grand"><td colspan="5"><strong>Trips total</strong></td><td class="num-cell" colspan="2"><strong>${money(ts.total)}</strong></td></tr>
+        </tfoot></table></div>`;
+
+    out+=`<div class="table-wrapper" style="margin-top:8px"><table class="nested"><thead><tr>
+        <th>Difference (trips − billed)</th><th class="num-cell">Rate vs RECON</th>
+        <th class="num-cell">Surcharge vs SUR+INCR</th><th class="num-cell">Total</th></tr></thead><tbody>
+        <tr><td class="muted">Anything past ₱${peso(TRIP_BILL_TOLERANCE)} is worth a second look — a total that lands near zero while the two halves don't means the amounts went in under the wrong type.</td>
+        ${cell(dRate)}${cell(dSur)}${cell(dTot)}</tr></tbody></table></div>`;
+
+    if(itr.length){
+      out+=`<div class="hint" style="margin:8px 0 0;color:#b45309">⚠ ${itr.length} further trip${itr.length===1?'':'s'} fall inside this period by date but carry <strong>no cutoff</strong>, so they're excluded from the totals above: `
+        + itr.map(x=>esc((x.t.tripStartDate||'')+' '+(x.t.plate||''))).join(', ')+`</div>`;
+    }
+    out+=`<div style="height:14px"></div>`;
+  });
+  return `<tr class="pay-detail"><td colspan="7" style="background:#f8fafc;padding:14px 18px">${out}</td></tr>`;
 }
 function exportPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
