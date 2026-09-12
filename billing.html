@@ -308,7 +308,7 @@ body.role-operations .owner-only{display:none!important}
     <div class="table-wrapper">
       <table id="pay-sum-table">
         <thead><tr>
-          <th>Date paid</th><th>Cheque #</th><th class="num-cell">Cheque amount</th>
+          <th>Date paid</th><th>Cheque #</th><th>BU</th><th class="num-cell">Cheque amount</th>
           <th class="num-cell">Invoices covered</th><th class="num-cell">Total (due)</th><th>Remark</th>
         </tr></thead><tbody></tbody>
         <tfoot></tfoot>
@@ -620,7 +620,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609111500';
+const APP_VERSION = '202609111700';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1156,14 +1156,18 @@ function buildPaymentsSummaryRows(){
   const byGroup={};
   activeEntries().forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
-    const key=e.paidDate+'|'+(e.chequeNo||'');
-    const g=byGroup[key]=byGroup[key]||{key,date:e.paidDate,chequeNo:e.chequeNo||'',chequeAmount:null,count:0,total:0,remark:'',entries:[]};
+    // BU is part of the key: CCAC/CMIP/CDI are separate companies that each issue their
+    // own cheque, so one payment row should never span two of them. Verified against the
+    // 2026 data — no cheque-numbered group was ever mixed; only blank-cheque rows were.
+    const bu=String(e.bu||'').trim().toUpperCase();
+    const key=e.paidDate+'|'+(e.chequeNo||'')+'|'+bu;
+    const g=byGroup[key]=byGroup[key]||{key,date:e.paidDate,chequeNo:e.chequeNo||'',bu,chequeAmount:null,count:0,total:0,remark:'',entries:[]};
     g.count++; g.total+=entryCalc(e).due; // due = net + VAT - WHT — this is what an actual cheque amount reconciles against, not net
     g.entries.push(e);
     if(e.chequeAmount!=null && g.chequeAmount==null) g.chequeAmount=e.chequeAmount;
     if(e.chequeRemark && !g.remark) g.remark=e.chequeRemark;
   });
-  return Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date));
+  return Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date)||a.bu.localeCompare(b.bu));
 }
 // --- Payment drill-down: link a cheque back to its entries and the trips behind them ---
 // Office staff type the trip cutoff as a label like "AUG.24-31,2026" / "SEPT.01-05,2026".
@@ -1264,7 +1268,7 @@ function payDetailHTML(g){
        ${inferred.length?`<div class="hint" style="margin:10px 0 6px;color:#b45309">⚠ ${inferred.length} more trips fall inside this period by date but have <strong>no cutoff assigned</strong> — shown for reference only, not confirmed as billed under this cheque.</div>
          <div class="table-wrapper"><table><thead>${tripHead}</thead><tbody>${inferred.map(x=>tripRow(x,true)).join('')}</tbody>
          <tfoot><tr class="grand"><td colspan="6">${inferred.length} trips (inferred)</td><td class="num-cell">₱${peso(iExp)}</td></tr></tfoot></table></div>`:''}`;
-  return `<tr class="pay-detail"><td colspan="6" style="background:#f8fafc;padding:14px 18px">
+  return `<tr class="pay-detail"><td colspan="7" style="background:#f8fafc;padding:14px 18px">
     <div class="hint" style="margin-bottom:6px"><strong>Invoices covered by this payment</strong></div>
     <div class="table-wrapper"><table><thead><tr><th>SI #</th><th>BU</th><th>SBU</th><th>Type</th><th>Period</th><th class="num-cell">Net</th><th class="num-cell">VAT</th><th class="num-cell">Due</th></tr></thead>
     <tbody>${entRows}</tbody></table></div>
@@ -1274,28 +1278,36 @@ function payDetailHTML(g){
 function exportPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Date Paid','Cheque #','Cheque Amount','Invoices Covered','Total (Due)','Remark'];
-  const data=rows.map(g=>[g.date, g.chequeNo||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
+  const headers=['Date Paid','Cheque #','BU','Cheque Amount','Invoices Covered','Total (Due)','Remark'];
+  const data=rows.map(g=>[g.date, g.chequeNo||'', g.bu||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
   downloadCSV('emelco_billing_payments_'+todayISO()+'.csv', headers, data);
 }
 function renderPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
   $('#paySumCount').textContent=rows.length?`${rows.length} payment groups`:'';
   const tb=$('#pay-sum-table tbody');
-  if(!rows.length){ tb.innerHTML=`<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
+  // A real cheque # should belong to exactly one BU. If the same number turns up under two,
+  // that's either a genuine cross-company payment or a mis-tagged BU — flag it, don't hide it.
+  const chequeBUs={};
+  rows.forEach(g=>{ if(g.chequeNo){ (chequeBUs[g.chequeNo]=chequeBUs[g.chequeNo]||new Set()).add(g.bu); } });
+  const crossBU=Object.keys(chequeBUs).filter(c=>chequeBUs[c].size>1);
   tb.innerHTML=rows.map(g=>{
     const mismatch = g.chequeAmount!=null && Math.abs(g.chequeAmount-g.total)>=0.02;
     const mismatchBadge = mismatch ? ` <span title="Cheque amount differs from this group's Total (Due) by ₱${peso(Math.abs(g.chequeAmount-g.total))}" style="color:#b91c1c">⚠</span>` : '';
+    const crossBadge = (g.chequeNo && chequeBUs[g.chequeNo] && chequeBUs[g.chequeNo].size>1)
+      ? ` <span title="This cheque # also appears under ${[...chequeBUs[g.chequeNo]].filter(b=>b!==g.bu).join(', ')} — a cheque should normally belong to one BU. Check whether a BU was tagged wrongly." style="color:#b45309">⚠BU</span>` : '';
     const open=PAY_EXPANDED.has(g.key);
     return `<tr class="pay-row" style="cursor:pointer" onclick="togglePayGroup('${esc(g.key).replace(/'/g,"\\'")}')" title="Click to see the invoices and trips behind this payment">
-    <td class="mono"><span class="muted" style="display:inline-block;width:14px">${open?'▾':'▸'}</span>${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}</td>
+    <td class="mono"><span class="muted" style="display:inline-block;width:14px">${open?'▾':'▸'}</span>${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}${crossBadge}</td>
+    <td class="mono">${esc(g.bu||'—')}</td>
     <td class="num-cell">${g.chequeAmount!=null?'₱'+peso(g.chequeAmount):'—'}${mismatchBadge}</td>
     <td class="num-cell">${g.count}</td>
     <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
     <td class="muted">${esc(g.remark||'')}</td></tr>`+(open?payDetailHTML(g):'');
   }).join('');
   const grand=rows.reduce((a,g)=>a+g.total,0);
-  $('#pay-sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
+  $('#pay-sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
 }
 
 function switchTab(name){
