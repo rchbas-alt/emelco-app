@@ -299,7 +299,7 @@ body.role-operations .owner-only{display:none!important}
       </table>
     </div>
     <div class="section-title" style="margin-top:24px">Payments Received — by date &amp; cheque</div>
-    <p class="hint">Groups paid entries by the date they were marked paid and their cheque #, so one cheque covering several invoices shows as one line. Entries marked paid with no cheque # are grouped per date under "—". Total is the Due amount (Net + VAT − 2% WHT) — this is what an actual cheque reconciles against, not raw Net. A ⚠ flags any group where the logged cheque amount doesn't match this total.</p>
+    <p class="hint">One line per payment. A payment is identified by its <strong>cheque #</strong>; where no cheque # was recorded yet, the logged <strong>cheque amount</strong> is used instead, since two separate cheques can be banked on the same day — those rows are marked <em>(by amount)</em> and switch to the cheque # automatically once it's filled in. Rows with neither are grouped by date alone and marked <em>(unidentified)</em>; they may cover more than one real payment. A payment can span more than one BU (⇄) — older CCAC/CMIP settlements were made on a single cheque. Total is the Due amount (Net + VAT − 2% WHT) — what an actual cheque reconciles against, not raw Net. A ⚠ flags a logged cheque amount that doesn't match this total. Click any row to see the invoices and trips behind it.</p>
     <div class="toolbar">
       <span class="muted" id="paySumCount"></span>
       <div class="spacer"></div>
@@ -620,7 +620,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609111700';
+const APP_VERSION = '202609111830';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1156,18 +1156,28 @@ function buildPaymentsSummaryRows(){
   const byGroup={};
   activeEntries().forEach(e=>{
     if(e.status!=='paid'||!e.paidDate) return;
-    // BU is part of the key: CCAC/CMIP/CDI are separate companies that each issue their
-    // own cheque, so one payment row should never span two of them. Verified against the
-    // 2026 data — no cheque-numbered group was ever mixed; only blank-cheque rows were.
+    // Identity of a payment: the cheque # when there is one. When there isn't, the logged
+    // cheque AMOUNT is the only thing that distinguishes two real cheques banked the same
+    // day — grouping by date alone merges them, and grouping by BU splits genuine cross-BU
+    // cheques in half. Confirmed against the 2026 data: 2026-08-17 holds two real payments
+    // (one CCAC-only, one spanning CCAC+CMIP), each reconciling to the centavo this way.
+    // Older payments do mix BUs; recent ones don't. Once a cheque # is filled in later,
+    // that group keys on the number automatically — no migration needed.
     const bu=String(e.bu||'').trim().toUpperCase();
-    const key=e.paidDate+'|'+(e.chequeNo||'')+'|'+bu;
-    const g=byGroup[key]=byGroup[key]||{key,date:e.paidDate,chequeNo:e.chequeNo||'',bu,chequeAmount:null,count:0,total:0,remark:'',entries:[]};
+    const chq=String(e.chequeNo||'').trim();
+    const ident = chq ? '#'+chq
+                : (e.chequeAmount!=null ? '@'+Number(e.chequeAmount).toFixed(2) : '?');
+    const key=e.paidDate+'|'+ident;
+    const g=byGroup[key]=byGroup[key]||{key,date:e.paidDate,chequeNo:chq,bus:new Set(),chequeAmount:null,count:0,total:0,remark:'',entries:[]};
+    if(bu) g.bus.add(bu);
     g.count++; g.total+=entryCalc(e).due; // due = net + VAT - WHT — this is what an actual cheque amount reconciles against, not net
     g.entries.push(e);
     if(e.chequeAmount!=null && g.chequeAmount==null) g.chequeAmount=e.chequeAmount;
     if(e.chequeRemark && !g.remark) g.remark=e.chequeRemark;
   });
-  return Object.values(byGroup).sort((a,b)=>b.date.localeCompare(a.date)||a.bu.localeCompare(b.bu));
+  const out=Object.values(byGroup);
+  out.forEach(g=>{ g.buLabel=[...g.bus].sort().join('+')||'—'; g.crossBU=g.bus.size>1; });
+  return out.sort((a,b)=>b.date.localeCompare(a.date)||a.buLabel.localeCompare(b.buLabel)||b.total-a.total);
 }
 // --- Payment drill-down: link a cheque back to its entries and the trips behind them ---
 // Office staff type the trip cutoff as a label like "AUG.24-31,2026" / "SEPT.01-05,2026".
@@ -1279,7 +1289,7 @@ function exportPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
   if(!rows.length){ toast('Nothing to export','error'); return; }
   const headers=['Date Paid','Cheque #','BU','Cheque Amount','Invoices Covered','Total (Due)','Remark'];
-  const data=rows.map(g=>[g.date, g.chequeNo||'', g.bu||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
+  const data=rows.map(g=>[g.date, g.chequeNo||'', g.buLabel||'', g.chequeAmount!=null?g.chequeAmount.toFixed(2):'', g.count, g.total.toFixed(2), g.remark||'']);
   downloadCSV('emelco_billing_payments_'+todayISO()+'.csv', headers, data);
 }
 function renderPaymentsSummary(){
@@ -1287,20 +1297,21 @@ function renderPaymentsSummary(){
   $('#paySumCount').textContent=rows.length?`${rows.length} payment groups`:'';
   const tb=$('#pay-sum-table tbody');
   if(!rows.length){ tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
-  // A real cheque # should belong to exactly one BU. If the same number turns up under two,
-  // that's either a genuine cross-company payment or a mis-tagged BU — flag it, don't hide it.
-  const chequeBUs={};
-  rows.forEach(g=>{ if(g.chequeNo){ (chequeBUs[g.chequeNo]=chequeBUs[g.chequeNo]||new Set()).add(g.bu); } });
-  const crossBU=Object.keys(chequeBUs).filter(c=>chequeBUs[c].size>1);
+  // Cross-BU payments are legitimate (historically CCAC and CMIP were settled on one
+  // cheque), so this is an informational marker, not a warning.
   tb.innerHTML=rows.map(g=>{
     const mismatch = g.chequeAmount!=null && Math.abs(g.chequeAmount-g.total)>=0.02;
     const mismatchBadge = mismatch ? ` <span title="Cheque amount differs from this group's Total (Due) by ₱${peso(Math.abs(g.chequeAmount-g.total))}" style="color:#b91c1c">⚠</span>` : '';
-    const crossBadge = (g.chequeNo && chequeBUs[g.chequeNo] && chequeBUs[g.chequeNo].size>1)
-      ? ` <span title="This cheque # also appears under ${[...chequeBUs[g.chequeNo]].filter(b=>b!==g.bu).join(', ')} — a cheque should normally belong to one BU. Check whether a BU was tagged wrongly." style="color:#b45309">⚠BU</span>` : '';
+    const noRef = !g.chequeNo && g.chequeAmount==null;
+    const idNote = !g.chequeNo
+      ? (noRef ? ' <span class="muted" title="No cheque # and no amount logged — these entries are grouped only by the date they were marked paid, so this row may cover more than one real payment.">(unidentified)</span>'
+               : ' <span class="muted" title="No cheque # yet — grouped by the logged cheque amount, which reconciles exactly. Adding the cheque # later will key this group on the number instead.">(by amount)</span>')
+      : '';
+    const crossNote = g.crossBU ? ` <span class="muted" title="This payment covers more than one BU on a single cheque — normal for older settlements.">⇄</span>` : '';
     const open=PAY_EXPANDED.has(g.key);
     return `<tr class="pay-row" style="cursor:pointer" onclick="togglePayGroup('${esc(g.key).replace(/'/g,"\\'")}')" title="Click to see the invoices and trips behind this payment">
-    <td class="mono"><span class="muted" style="display:inline-block;width:14px">${open?'▾':'▸'}</span>${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}${crossBadge}</td>
-    <td class="mono">${esc(g.bu||'—')}</td>
+    <td class="mono"><span class="muted" style="display:inline-block;width:14px">${open?'▾':'▸'}</span>${esc(g.date)}</td><td class="mono">${esc(g.chequeNo||'—')}${idNote}</td>
+    <td class="mono">${esc(g.buLabel||'—')}${crossNote}</td>
     <td class="num-cell">${g.chequeAmount!=null?'₱'+peso(g.chequeAmount):'—'}${mismatchBadge}</td>
     <td class="num-cell">${g.count}</td>
     <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
