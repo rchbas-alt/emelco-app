@@ -285,7 +285,7 @@ body.role-operations .owner-only{display:none!important}
         <thead><tr><th>BU</th><th>Period</th><th class="num-cell">Trips</th>
           <th class="num-cell">Trip rate</th><th class="num-cell">RECON</th>
           <th class="num-cell">Trip surcharge</th><th class="num-cell">SUR+INCR</th>
-          <th class="num-cell">Δ split</th><th class="num-cell">Δ total</th><th>Likely</th></tr></thead>
+          <th class="num-cell">Δ split</th><th class="num-cell">Δ total</th><th>Likely</th><th>Action</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -636,7 +636,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609121400';
+const APP_VERSION = '202609121600';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -971,29 +971,49 @@ function stat(cls,label,val,sub){ return `<div class="stat-card ${cls}"><div cla
    ============================================================ */
 function periodsOverlap(aS,aE,bS,bE){ return !!aS && !!aE && !!bS && !!bE && aS<=bE && bS<=aE; }
 function findDuplicateGroups(){
-  const byKey={};
-  activeEntries().forEach(e=>{
-    if(!e.tripStart||!e.tripEnd) return;
-    const key=e.bu+'|'+(e.sbu||'').trim().toUpperCase()+'|'+e.type;
-    (byKey[key]=byKey[key]||[]).push(e);
+  const list=activeEntries().filter(e=>e.tripStart&&e.tripEnd);
+  const flagged=[], seen=new Set();
+  const push=(reason,rows)=>{
+    const bu=rows[0].bu, sbu=(rows[0].sbu||''), type=rows[0].type;
+    const key=reason+'|'+bu+'|'+String(sbu).trim().toUpperCase()+'|'+type+'|'+
+      rows.map(r=>r.id||r.si).sort().join(',');
+    if(seen.has(key)) return; seen.add(key);
+    flagged.push({key,bu,sbu,type,reason,rows,
+      periods:[...new Set(rows.map(r=>r.tripStart+' → '+r.tripEnd))],
+      net:rows.reduce((a,r)=>a+entryCalc(r).net,0)});
+  };
+  // (1) The same SI# on more than one entry. An SI is issued once, so this is always wrong.
+  const bySi={};
+  list.forEach(e=>{ const si=String(e.si||'').trim(); if(si) (bySi[si]=bySi[si]||[]).push(e); });
+  Object.entries(bySi).forEach(([si,rows])=>{ if(rows.length>1) push('SI '+si+' used twice',rows); });
+  // (2) The same money twice: identical net, same BU+SBU+TYPE, overlapping periods. A real
+  // double-entry repeats the amount. Different SI numbers with different amounts under one
+  // BU/SBU/TYPE is ordinary split billing and is NOT flagged — that fired constantly and
+  // trained everyone to ignore the panel.
+  const byAmt={};
+  list.forEach(e=>{
+    const k=String(e.bu).trim().toUpperCase()+'|'+String(e.sbu||'').trim().toUpperCase()+'|'+
+      String(e.type||'').toUpperCase()+'|'+(Math.round((entryCalc(e).net)*100)/100);
+    (byAmt[k]=byAmt[k]||[]).push(e);
   });
-  const flagged=[];
-  Object.entries(byKey).forEach(([key,list])=>{
-    if(list.length<2) return;
-    const overlapping=new Set();
-    for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){
-      if(periodsOverlap(list[i].tripStart,list[i].tripEnd,list[j].tripStart,list[j].tripEnd)){
-        overlapping.add(list[i]); overlapping.add(list[j]);
-      }
+  Object.values(byAmt).forEach(rows=>{
+    if(rows.length<2) return;
+    const hit=new Set();
+    for(let i=0;i<rows.length;i++) for(let j=i+1;j<rows.length;j++){
+      if(periodsOverlap(rows[i].tripStart,rows[i].tripEnd,rows[j].tripStart,rows[j].tripEnd)){
+        hit.add(rows[i]); hit.add(rows[j]); }
     }
-    if(overlapping.size){
-      const [bu,sbu,type]=key.split('|');
-      const rows=[...overlapping];
-      flagged.push({key,bu,sbu,type,rows,periods:[...new Set(rows.map(r=>r.tripStart+' → '+r.tripEnd))],net:rows.reduce((a,r)=>a+entryCalc(r).net,0)});
-    }
+    if(hit.size) push('same amount billed twice',[...hit]);
   });
   return flagged;
 }
+function ackTripBill(key){
+  const remark=prompt('Optional remark (e.g. "checked against recon file - correct"):','')||'';
+  STATE.dupeAcks=(STATE.dupeAcks||[]).filter(a=>a.key!==key);
+  STATE.dupeAcks.push({key,remark,at:todayISO()});
+  renderAll(); saveBilling();
+}
+function unackTripBill(key){ STATE.dupeAcks=(STATE.dupeAcks||[]).filter(a=>a.key!==key); renderAll(); saveBilling(); }
 function isDupeAcked(key){ return (STATE.dupeAcks||[]).some(a=>a.key===key); }
 function getDupeAck(key){ return (STATE.dupeAcks||[]).find(a=>a.key===key); }
 function ackDupeGroup(key){
@@ -1021,7 +1041,7 @@ function renderDupeCheck(){
   if(!groups.length){ wrap.style.display='none'; return; }
   wrap.style.display='block';
   $('#dupe-table tbody').innerHTML=groups.map(g=>`<tr>
-    <td>${esc(g.bu)}</td><td>${esc(g.sbu)}</td><td>${esc(g.type)}</td>
+    <td>${esc(g.bu)}</td><td>${esc(g.sbu)}</td><td>${esc(g.type)}<div class="muted" style="font-size:11px">${esc(g.reason||'')}</div></td>
     <td>${g.periods.map(esc).join('<br>')}</td>
     <td class="num-cell">₱${peso(g.net)}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="ackDupeGroup('${g.key}')">✓ Mark OK</button></td>
@@ -1175,7 +1195,7 @@ function buildTripBillRows(){
       const ov=(Date.parse(hi)-Date.parse(lo))/86400000+1;
       if(ov>bestOv){ bestOv=ov; best=p; }
     });
-    if(best){ best.rate+=Number(t.rate)||0; best.sur+=Number(t.surcharge)||0; best.n++; }
+    if(best){ best.rate+=Number(t.rate)||0; best.sur+=Number(t.surcharge)||0; best.n++; (best.trips=best.trips||[]).push(t); }
   });
   list.forEach(p=>{
     const es=entrySplit(p.ents);
@@ -1210,11 +1230,43 @@ function buildTripBillRows(){
   });
   return list.sort((a,b)=>b.start.localeCompare(a.start)||a.bu.localeCompare(b.bu));
 }
+const TB_EXPANDED=new Set();
+function toggleTripBill(k){ if(TB_EXPANDED.has(k)) TB_EXPANDED.delete(k); else TB_EXPANDED.add(k); renderTripBillCheck(); }
+function tripBillDetail(p){
+  const money=v=>`₱${peso(v)}`;
+  const byType={};
+  p.ents.forEach(e=>{ const t=String(e.type||'').toUpperCase(); (byType[t]=byType[t]||[]).push(e); });
+  let ent='';
+  ['RECON','SURCHARGE','INCREMENTALS'].forEach(t=>{
+    const l=(byType[t]||[]).sort((a,b)=>String(a.si||'').localeCompare(String(b.si||'')));
+    if(!l.length) return;
+    ent+=l.map(e=>`<tr><td class="mono">${esc(e.si||'—')}</td><td>${esc(e.sbu||'')}</td>
+      <td class="mono">${esc(t)}</td><td class="num-cell">${money(entryCalc(e).net)}</td></tr>`).join('');
+    ent+=`<tr class="grand"><td colspan="3">${t} subtotal</td><td class="num-cell">${money(l.reduce((a,e)=>a+entryCalc(e).net,0))}</td></tr>`;
+  });
+  const es=entrySplit(p.ents);
+  const trips=(p.trips||[]).slice().sort((a,b)=>String(a.tripStartDate||'').localeCompare(String(b.tripStartDate||'')));
+  const trRows=trips.map(t=>`<tr><td class="mono">${esc(t.tripStartDate||t.dispatchedDate||'')}</td>
+    <td class="mono">${esc(t.plate||'')}</td><td>${esc(t.driver||'')}</td>
+    <td class="muted">${esc(t.area||t.destination||'')}</td><td class="mono muted">${esc(t.cutoff||'')}</td>
+    <td class="num-cell">${money(Number(t.rate)||0)}</td><td class="num-cell">${money(Number(t.surcharge)||0)}</td></tr>`).join('');
+  return `<tr><td colspan="11" style="background:#fdfcff;padding:12px 16px">
+    <div class="hint" style="margin-bottom:4px"><strong>Billed</strong> — ${p.ents.length} entries</div>
+    <div class="table-wrapper"><table class="nested"><thead><tr><th>SI #</th><th>SBU</th><th>Type</th><th class="num-cell">Net</th></tr></thead>
+      <tbody>${ent||'<tr><td colspan="4" class="muted">none</td></tr>'}</tbody>
+      <tfoot><tr class="grand"><td colspan="3">SURCHARGE + INCREMENTALS</td><td class="num-cell">${money(es.surIncr)}</td></tr>
+      <tr class="grand"><td colspan="3"><strong>Billed total</strong></td><td class="num-cell"><strong>${money(es.total)}</strong></td></tr></tfoot></table></div>
+    <div class="hint" style="margin:10px 0 4px"><strong>Trips</strong> — ${trips.length} with a cutoff landing in this period</div>
+    <div class="table-wrapper"><table class="nested"><thead><tr><th>Date</th><th>Plate</th><th>Driver</th><th>Area</th><th>Cutoff</th><th class="num-cell">Rate</th><th class="num-cell">Surcharge</th></tr></thead>
+      <tbody>${trRows||'<tr><td colspan="7" class="muted">none</td></tr>'}</tbody>
+      <tfoot><tr class="grand"><td colspan="5"><strong>Trips total</strong></td><td class="num-cell"><strong>${money(p.rate)}</strong></td><td class="num-cell"><strong>${money(p.sur)}</strong></td></tr></tfoot></table></div>
+  </td></tr>`;
+}
 function renderTripBillCheck(){
   const box=$('#tripBillWarn'); if(!box) return;
   const all=buildTripBillRows();
   const showAll=$('#tripBillAll') && $('#tripBillAll').checked;
-  const flagged=all.filter(p=>p.flag);
+  const flagged=all.filter(p=>p.flag && !isDupeAcked('tb|'+p.k));
   if(!flagged.length && !showAll){ box.style.display='none'; return; }
   box.style.display='block';
   $('#tripBillCount').textContent = flagged.length
@@ -1223,15 +1275,21 @@ function renderTripBillCheck(){
   const rows=showAll?all:flagged;
   const d=(v)=>{ const off=Math.abs(v)>TRIP_BILL_TOLERANCE;
     return `<td class="num-cell"${off?' style="color:#b45309;font-weight:600"':''}>${v<0?'−':'+'}₱${peso(Math.abs(v))}</td>`; };
-  $('#tripBill-table tbody').innerHTML = rows.map(p=>`<tr>
-    <td class="mono">${esc(p.bu)}</td>
+  $('#tripBill-table tbody').innerHTML = rows.map(p=>{
+    const ak='tb|'+p.k, acked=isDupeAcked(ak), open=TB_EXPANDED.has(p.k);
+    return `<tr style="cursor:pointer" onclick="toggleTripBill('${esc(p.k).replace(/'/g,"\\'")}')">
+    <td class="mono"><span class="muted" style="display:inline-block;width:12px">${open?'▾':'▸'}</span>${esc(p.bu)}</td>
     <td class="mono">${esc(p.start)} → ${esc(p.end)}</td>
     <td class="num-cell">${p.n}</td>
     <td class="num-cell">₱${peso(p.rate)}</td><td class="num-cell">₱${peso(p.recon)}</td>
     <td class="num-cell">₱${peso(p.sur)}</td><td class="num-cell">₱${peso(p.surIncr)}</td>
     ${d(p.dSplit)}${d(p.dTotal)}
-    <td class="muted">${esc(p.likely||'')}</td></tr>`).join('')
-    || `<tr><td colspan="10" class="muted">nothing to show</td></tr>`;
+    <td class="muted">${esc(p.likely||'')}</td>
+    <td onclick="event.stopPropagation()">${acked
+      ? `<span class="muted" style="font-size:11px">OK'd</span> <button class="btn btn-ghost btn-sm" onclick="unackTripBill('${ak}')">undo</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="ackTripBill('${ak}')">✓ Mark OK</button>`}</td></tr>`
+    + (open?tripBillDetail(p):'');
+  }).join('') || `<tr><td colspan="11" class="muted">nothing to show</td></tr>`;
 }
 function renderSummary(){
   const rows=buildSummaryRows();
