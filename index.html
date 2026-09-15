@@ -271,7 +271,7 @@ body.role-operations .fin-only{display:none!important}
     <button class="btn btn-ghost btn-sm" onclick="filterDupes()" id="dupe-filter-btn">Show Only Dupes</button>
   </div>
   <div class="toolbar">
-    <input class="search-box" type="text" id="search" placeholder="Search code, driver, plate, destination…" oninput="currentPage=1;renderTable()">
+    <input class="search-box" type="text" id="search" placeholder="Search code, driver, plate, destination, cut-off, remarks… (comma = or)" oninput="currentPage=1;renderTable()">
     <select class="filter-select" id="filter-client" onchange="currentPage=1;renderTable()">
       <option value="">All Clients</option>
     </select>
@@ -290,23 +290,35 @@ body.role-operations .fin-only{display:none!important}
       <option value="any">⚠️ All Duplicates</option>
     </select>
     <span class="record-info" id="record-info"></span>
+    <button class="btn btn-ghost btn-sm" onclick="toggleColPicker()" title="Choose which columns to show. Saved on this device only — it does not change anything for anyone else.">🧩 Columns</button>
+  </div>
+  <div id="col-picker" style="display:none;margin:0 0 10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+    <div style="font-weight:700;margin-bottom:2px">Show columns</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Affects only your own view on this device. Nothing is changed for other users and no data is touched.</div>
+    <div id="col-picker-list" style="display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="applyColPreset('default')">Default</button>
+      <button class="btn btn-ghost btn-sm" onclick="applyColPreset('billing')">Billing check</button>
+      <button class="btn btn-ghost btn-sm" onclick="applyColPreset('ops')">Operations</button>
+      <button class="btn btn-ghost btn-sm" onclick="applyColPreset('all')">Select all</button>
+    </div>
   </div>
   <div class="table-wrapper">
     <table id="trip-table">
       <thead><tr>
         <th>#</th>
-        <th class="sortable" onclick="sortBy('code')">Code</th>
-        <th class="sortable" onclick="sortBy('tripStartDate')">Trip Date</th>
-        <th>Cut-Off</th><th>Client</th><th>Area</th><th>Destination</th>
-        <th>Plate</th><th>Driver</th><th>H1</th>
-        <th class="num-cell">Rate</th>
-        <th class="num-cell">Surcharge</th>
-        <th class="num-cell">R+S+VAT</th>
-        <th class="num-cell">Expenses</th>
-        <th class="num-cell">Staff Pay</th>
-        <th class="num-cell fin-only">Income</th>
-        <th class="num-cell fin-only">% Profit</th>
-        <th>Remarks</th><th>Truck</th><th>Wk</th><th></th>
+        <th class="sortable col-code" onclick="sortBy('code')">Code</th>
+        <th class="sortable col-date" onclick="sortBy('tripStartDate')">Trip Date</th>
+        <th class="col-cutoff">Cut-Off</th><th class="col-client">Client</th><th class="col-area">Area</th><th class="col-dest">Destination</th>
+        <th class="col-plate">Plate</th><th class="col-driver">Driver</th><th class="col-h1">H1</th>
+        <th class="num-cell col-rate">Rate</th>
+        <th class="num-cell col-surcharge">Surcharge</th>
+        <th class="num-cell col-rsvat">R+S+VAT</th>
+        <th class="num-cell col-expenses">Expenses</th>
+        <th class="num-cell col-staffpay">Staff Pay</th>
+        <th class="num-cell fin-only col-income">Income</th>
+        <th class="num-cell fin-only col-pct">% Profit</th>
+        <th class="col-remarks">Remarks</th><th class="col-truck">Truck</th><th class="col-wk">Wk</th><th></th>
       </tr></thead>
       <tbody id="table-body"></tbody>
     </table>
@@ -542,7 +554,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, a JSON backup download of trips/staff/fleet for an extra offline copy, and a one-time <strong>🔗 Link Trip Groups</strong> tool for pairing up MilkRun and Convoy trips that don't have a group ID yet.</div></div></div>
       <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
       <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
-      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and Office Payroll are visible to the Owner account only. Office Payroll shows two blocks — <strong>Weekly (Mon–Sat)</strong> for Mechanics/Tech/Monitoring and <strong>Semi-monthly (1–15 / 16–end)</strong> for Office Admin — one row per person with Pending/Finalized status; set a person's <strong>Pay Frequency</strong> in the Staff tab edit form (blank = default for position). Click <strong>History</strong> on a row for their 2026 slips with gross, deductions (hover for breakdown), net and year total. If you don't see these tabs, that's by design — not a bug.</div></div></div>
+      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and office/admin bi-monthly payroll are visible to the Owner account only. If you don't see these tabs, that's by design — not a bug.</div></div></div>
     </div>
 
     <h3 style="margin-top:24px">🚀 Daily Essentials</h3>
@@ -800,12 +812,23 @@ body.role-operations .fin-only{display:none!important}
 <!-- ====== OFFICE / ADMIN / TECH PAYROLL PAGE ====== -->
 <div class="page" id="page-officepayroll">
   <div class="page-header">
-    <h2>🏢 Office / Admin / Tech Payroll</h2>
-    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="op-show-resigned" onchange="renderOfficePayroll()"> Show resigned</label>
+    <h2>🏢 Office / Admin / Tech Payroll (Bi-Monthly)</h2>
   </div>
-  <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Salary-based staff — no trips involved. Periods are set automatically from each person's pay frequency (edit it in the Staff tab). Use ‹ › to step periods; click <strong>History</strong> for a person's 2026 slips.</div>
-  <div id="op-weekly-block"></div>
-  <div id="op-semi-block"></div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Salary-based staff — no trips involved. Pick a staff member and a pay period (1st–15th or 16th–end of month), then open their slip.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select class="filter-select" id="op-staff-sel" style="min-width:240px">
+        <option value="">— Select Office / Admin / Tech staff —</option>
+      </select>
+      <input type="date" class="form-input" id="op-period-start" style="width:160px">
+      <span style="color:var(--text2);font-size:12px">to</span>
+      <input type="date" class="form-input" id="op-period-end" style="width:160px">
+      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(1)">1st–15th</button>
+      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(16)">16th–End</button>
+      <button class="btn btn-primary" onclick="openOfficeSlip()">🧾 Open Slip</button>
+    </div>
+  </div>
+  <div id="op-recent-list" style="font-size:12px;color:var(--text2)"></div>
 </div>
 
 <!-- ====== LEDGER PAGE ====== -->
@@ -1053,7 +1076,6 @@ body.role-operations .fin-only{display:none!important}
       <div class="form-group" id="sf-resigned-row" style="display:none"><label class="form-label">Resigned Date</label><input type="date" class="form-input" id="sf-resigned-date"></div>
       <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="YYYY-MM-DD, or leave blank for On Call"></div>
       <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" list="dl-duty" placeholder="Type or pick a role…" autocomplete="off"><datalist id="dl-duty"></datalist></div>
-      <div class="form-group" id="sf-payfreq-row" style="display:none"><label class="form-label">Pay Frequency <span style="font-size:11px;color:var(--text2)">— Office Payroll tab</span></label><select class="form-select" id="sf-payfreq"><option value="">Default for position</option><option value="weekly">Weekly (Mon–Sat)</option><option value="semi-monthly">Semi-monthly (1–15 / 16–end)</option></select></div>
       <div class="form-group" id="sf-license-row" style="grid-column:span 2;display:none;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Driver's license — optional, but flagged if missing</div>
         <div class="form-grid form-grid-2">
@@ -1076,7 +1098,7 @@ body.role-operations .fin-only{display:none!important}
 
 <!-- ====== OFFICE/ADMIN/TECH PAY SLIP MODAL ====== -->
 <div class="modal-overlay" id="office-slip-modal">
-<div class="modal" style="max-width:760px">
+<div class="modal" style="max-width:600px">
   <div class="modal-header">
     <div><div class="modal-title" id="office-slip-modal-title">Pay Slip</div><div class="modal-subtitle" id="office-slip-modal-subtitle"></div></div>
     <div class="modal-close" onclick="closeOfficeSlipModal()">✕</div>
@@ -1283,10 +1305,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609112300'; // Trips: TK badge hidden when TripKey=1 (shown only for 2nd+ trip same plate/date, or missing)
-// prev: '202609112230'; // Office slip: print uses live typed values, wider modal, 'Fix dates' on history rows
-// prev: '202609112100'; // Office Payroll redesign: payFrequency staff field, weekly/semi-monthly blocks, per-person 2026 history
-// prev: '202608280130'; // Phase 2: added Fleet nav link + read-only plate-dropdown fetch from fleet.html's Registry (fleetRegistryPlates, fetchFleetRegistry()), local fleet array kept as fallback and unchanged elsewhere
+const APP_VERSION = '202609121830'; // Trip table column picker (per-device localStorage view); search accepts comma-separated terms and now covers cut-off + remarks
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -2831,7 +2850,14 @@ function getFiltered(){
     if(dp==='exact'&&dupeMap[t.id]!=='exact')return false;
     if(dp==='soft'&&dupeMap[t.id]!=='soft')return false;
     if(dp==='any'&&!dupeMap[t.id])return false;
-    if(q){const hay=[t.code,t.driver,t.plate,t.client,t.destination,t.area,t.h1,t.h2,t.tripticket].join(' ').toLowerCase();if(!hay.includes(q))return false;}
+    if(q){
+      // Comma separates alternatives: "MAZ6896, CAS8037" matches either. Spaces stay inside a
+      // term so "metro manila, pampanga" is two destinations, not four words. The dropdown
+      // filters above already AND with this, so selecting a client and searching narrows.
+      const hay=[t.code,t.driver,t.plate,t.client,t.destination,t.area,t.h1,t.h2,t.tripticket,t.cutoff,t.genRemarks].join(' ').toLowerCase();
+      const terms=q.split(',').map(x=>x.trim()).filter(Boolean);
+      if(terms.length && !terms.some(term=>hay.includes(term))) return false;
+    }
     return true;
   }).sort((a,b)=>{
     // When showing dupes, group exact first then soft
@@ -2842,6 +2868,76 @@ function getFiltered(){
   });
 }
 
+
+// ---- Trip table column picker -------------------------------------------
+// Purely a per-device view preference: kept in localStorage, never written to
+// emelco_data.json, so one person hiding a column cannot affect anyone else's
+// screen or any stored record. The fin-only role restriction still applies on
+// top of this — unchecking is allowed, but a hidden-by-role column stays hidden.
+const TRIP_COLUMNS=[
+  {k:'code',      label:'Code'},
+  {k:'date',      label:'Trip Date'},
+  {k:'cutoff',    label:'Cut-Off'},
+  {k:'client',    label:'Client'},
+  {k:'area',      label:'Area'},
+  {k:'dest',      label:'Destination'},
+  {k:'plate',     label:'Plate'},
+  {k:'driver',    label:'Driver'},
+  {k:'h1',        label:'H1'},
+  {k:'rate',      label:'Rate'},
+  {k:'surcharge', label:'Surcharge'},
+  {k:'rsvat',     label:'R+S+VAT'},
+  {k:'expenses',  label:'Expenses'},
+  {k:'staffpay',  label:'Staff Pay'},
+  {k:'income',    label:'Income',   fin:true},
+  {k:'pct',       label:'% Profit', fin:true},
+  {k:'remarks',   label:'Remarks'},
+  {k:'truck',     label:'Truck'},
+  {k:'wk',        label:'Wk'}
+];
+const COL_PRESETS={
+  default:['code','date','cutoff','client','area','dest','plate','driver','rate','surcharge','income','pct','remarks'],
+  billing:['date','cutoff','client','area','dest','rate','surcharge','rsvat','remarks'],
+  ops:    ['date','client','area','dest','plate','driver','h1','truck','remarks'],
+  all:    TRIP_COLUMNS.map(c=>c.k)
+};
+const COL_STORE='emelco_trip_cols_v1';
+let VISIBLE_COLS=null;
+function loadColPrefs(){
+  try{ const raw=localStorage.getItem(COL_STORE);
+    if(raw){ const a=JSON.parse(raw); if(Array.isArray(a)&&a.length){ VISIBLE_COLS=a.filter(k=>TRIP_COLUMNS.some(c=>c.k===k)); return; } }
+  }catch(e){}
+  VISIBLE_COLS=COL_PRESETS.default.slice();
+}
+function saveColPrefs(){ try{ localStorage.setItem(COL_STORE,JSON.stringify(VISIBLE_COLS)); }catch(e){} }
+function applyColVisibility(){
+  if(!VISIBLE_COLS) loadColPrefs();
+  TRIP_COLUMNS.forEach(c=>{
+    const on=VISIBLE_COLS.includes(c.k);
+    document.querySelectorAll('.col-'+c.k).forEach(el=>{ el.style.display = on ? '' : 'none'; });
+  });
+}
+function renderColPicker(){
+  if(!VISIBLE_COLS) loadColPrefs();
+  const box=document.getElementById('col-picker-list'); if(!box) return;
+  box.innerHTML=TRIP_COLUMNS.map(c=>`<label class="${c.fin?'fin-only':''}" style="font-size:12px;cursor:pointer;white-space:nowrap">
+    <input type="checkbox" ${VISIBLE_COLS.includes(c.k)?'checked':''} onchange="toggleCol('${c.k}',this.checked)"> ${c.label}</label>`).join('');
+}
+function toggleCol(k,on){
+  if(!VISIBLE_COLS) loadColPrefs();
+  VISIBLE_COLS = on ? [...new Set([...VISIBLE_COLS,k])] : VISIBLE_COLS.filter(x=>x!==k);
+  saveColPrefs(); applyColVisibility();
+}
+function applyColPreset(name){
+  VISIBLE_COLS=(COL_PRESETS[name]||COL_PRESETS.default).slice();
+  saveColPrefs(); renderColPicker(); applyColVisibility();
+}
+function toggleColPicker(){
+  const p=document.getElementById('col-picker'); if(!p) return;
+  const show=p.style.display==='none';
+  p.style.display=show?'block':'none';
+  if(show) renderColPicker();
+}
 function renderTable(){
   buildDupeMap();
   updateDupeBanner();
@@ -2876,37 +2972,38 @@ function renderTable(){
       :'';
     return`<tr class="${trClass}">
       <td style="color:var(--text3)">${i+1}</td>
-      <td class="code-cell">${t.code||'—'}${(String(t.tripKey||'').trim()==='1')?'':`<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — 2nd+ trip for this plate on this date (used for CSV import matching)">TK:${t.tripKey||'—'}</span>`}${dupeTag?'<br>'+dupeTag:''}</td>
-      <td style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
-      <td style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
-      <td><span class="badge badge-submitted">${t.client||'—'}</span></td>
-      <td style="color:var(--text2)">${t.area||'—'}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${t.destination}">
+      <td class="code-cell col-code">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
+      <td class="col-date" style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
+      <td class="col-cutoff" style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
+      <td class="col-client"><span class="badge badge-submitted">${t.client||'—'}</span></td>
+      <td class="col-area" style="color:var(--text2)">${t.area||'—'}</td>
+      <td class="col-dest" style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${t.destination}">
         ${Array.isArray(t.drops)&&t.drops.length>1
           ? `<span style="display:inline-block;background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 4px;margin-right:3px;vertical-align:middle" title="${t.drops.map((d,i)=>`Drop ${i+1}: ${d.location}`).join('\n')}">×${t.drops.length}</span>`
           : ''}
         ${t.destination||'—'}
       </td>
-      <td class="mono" style="font-size:10px">${t.noDriverFlag&&!t.plate
+      <td class="mono col-plate" style="font-size:10px">${t.noDriverFlag&&!t.plate
           ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO PLATE</span>`
           :(t.plate||'—')}</td>
-      <td style="font-size:11px">${t.noDriverFlag&&!t.driver
+      <td class="col-driver" style="font-size:11px">${t.noDriverFlag&&!t.driver
           ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO DRIVER</span>`
           :(t.driver||'—')}</td>
-      <td style="color:var(--text2);font-size:10px">${t.h1||'—'}</td>
-      <td class="num-cell">₱${fmt(t.rate)}</td>
-      <td class="num-cell" style="color:var(--text2)">₱${fmt(t.surcharge)}</td>
-      <td class="num-cell accent-text">₱${fmt(c.rsvat)}</td>
-      <td class="num-cell" style="color:var(--red)">₱${fmt(c.expenses)}</td>
-      <td class="num-cell" style="color:var(--red)">₱${fmt(c.staffPay)}</td>
-      <td class="num-cell fin-only ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
-      <td class="num-cell fin-only ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
-      <td class="remarks-cell" title="${(t.genRemarks||'').replace(/"/g,'&quot;')}">${t.genRemarks||''}</td>
-      <td style="font-size:10px;color:var(--text2)">${t.truckType||'—'}</td>
-      <td class="num-cell" style="color:var(--text3)">W${t.weekMon||'?'}</td>
+      <td class="col-h1" style="color:var(--text2);font-size:10px">${t.h1||'—'}</td>
+      <td class="num-cell col-rate">₱${fmt(t.rate)}</td>
+      <td class="num-cell col-surcharge" style="color:var(--text2)">₱${fmt(t.surcharge)}</td>
+      <td class="num-cell accent-text col-rsvat">₱${fmt(c.rsvat)}</td>
+      <td class="num-cell col-expenses" style="color:var(--red)">₱${fmt(c.expenses)}</td>
+      <td class="num-cell col-staffpay" style="color:var(--red)">₱${fmt(c.staffPay)}</td>
+      <td class="num-cell fin-only col-income ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
+      <td class="num-cell fin-only col-pct ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
+      <td class="remarks-cell col-remarks" title="${(t.genRemarks||'').replace(/"/g,'&quot;')}">${t.genRemarks||''}</td>
+      <td class="col-truck" style="font-size:10px;color:var(--text2)">${t.truckType||'—'}</td>
+      <td class="num-cell col-wk" style="color:var(--text3)">W${t.weekMon||'?'}</td>
       <td><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}')">✏️</button><button class="btn btn-ghost btn-sm" title="Add Diesel Entry" onclick="addDieselEntry('${t.id}')">⛽</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${t.id}','trip')">🗑️</button></div></td>
     </tr>`;
   }).join('');
+  applyColVisibility();
   renderPaginationControls(filtered.length,totalPages);
 }
 
@@ -3016,7 +3113,6 @@ const DUTY_SUGGESTIONS={
 function onPositionChange(){
   const pos = document.getElementById('sf-position').value;
   document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
-  const pfRow=document.getElementById('sf-payfreq-row'); if(pfRow) pfRow.style.display = ['OFFICE','ADMIN','TECH'].includes(pos) ? '' : 'none';
 
   // Update duty suggestions datalist
   const dl=document.getElementById('dl-duty');
@@ -3072,7 +3168,6 @@ function openEditStaff(id){
   document.getElementById('sf-license-number').value=s.licenseNumber||'';
   document.getElementById('sf-license-expiry').value=s.licenseExpiry||'';
   document.getElementById('sf-resigned-date').value=s.resignedDate||'';
-  document.getElementById('sf-payfreq').value=s.payFrequency||'';
   onPositionChange();
   onStatusChange();
   document.getElementById('sf-previousids').value = (s.previousIds && s.previousIds.length) ? s.previousIds.join(', ') : '';
@@ -3087,7 +3182,6 @@ function clearStaffForm(){
   document.getElementById('sf-license-number').value='';
   document.getElementById('sf-license-expiry').value='';
   document.getElementById('sf-resigned-date').value='';
-  document.getElementById('sf-payfreq').value='';
   document.getElementById('sf-position').value='DRIVER';
   document.getElementById('sf-status').value='Active';
   document.getElementById('sf-previousids').value='';
@@ -3123,7 +3217,6 @@ function saveStaff(){
     licenseNumber:document.getElementById('sf-license-number').value.trim(),
     licenseExpiry:document.getElementById('sf-license-expiry').value,
     resignedDate:document.getElementById('sf-resigned-date').value,
-    payFrequency:document.getElementById('sf-payfreq').value||'',
   };
   if(editingStaffId){ const idx=staff.findIndex(x=>x.id===editingStaffId); if(idx!==-1)staff[idx]=s; toast('Staff updated ✓','success'); }
   else{ staff.push(s); toast('Staff added ✓','success'); }
@@ -5441,138 +5534,39 @@ function saveOfficeSlips(){
 }
 function officeSlipKey(staffId,start,end){ return staffId+'__'+start+'_'+end; }
 
-// Pay frequency: explicit staff.payFrequency wins; otherwise OFFICE → semi-monthly, ADMIN/TECH → weekly
-function getPayFrequency(s){
-  if(s.payFrequency==='weekly'||s.payFrequency==='semi-monthly') return s.payFrequency;
-  return s.position==='OFFICE' ? 'semi-monthly' : 'weekly';
-}
-function localISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-// Weekly period = Monday–Saturday of the week containing today, shifted by `offset` weeks
-function opWeeklyPeriod(offset){
-  const t=new Date(); t.setHours(0,0,0,0);
-  const dow=(t.getDay()+6)%7; // Mon=0 … Sun=6
-  const mon=new Date(t); mon.setDate(t.getDate()-dow+offset*7);
-  const sat=new Date(mon); sat.setDate(mon.getDate()+5);
-  return {start:localISO(mon), end:localISO(sat)};
-}
-// Semi-monthly period = 1–15 or 16–end of month, shifted by `offset` halves
-function opSemiPeriod(offset){
-  const t=new Date();
-  let idx=t.getFullYear()*24+t.getMonth()*2+(t.getDate()>=16?1:0)+offset;
-  const y=Math.floor(idx/24), rem=idx%24, m=Math.floor(rem/2), half=rem%2;
-  const start=half===0?new Date(y,m,1):new Date(y,m,16);
-  const end=half===0?new Date(y,m,15):new Date(y,m+1,0);
-  return {start:localISO(start), end:localISO(end)};
-}
-let opWeeklyOffset=0, opSemiOffset=0, opHistoryOpen={};
-function opStep(block,delta){ if(block==='weekly') opWeeklyOffset+=delta; else opSemiOffset+=delta; renderOfficePayroll(); }
-function opToday(block){ if(block==='weekly') opWeeklyOffset=0; else opSemiOffset=0; renderOfficePayroll(); }
-function opToggleHistory(id){ opHistoryOpen[id]=!opHistoryOpen[id]; renderOfficePayroll(); }
-
-function populateOfficePayrollDropdowns(){ loadOfficeSlips(); renderOfficePayroll(); }
-
-function officeSlipTotals(d){
-  const gross=n(d.standardPay)+n(d.holidayPay)+n(d.paidLeave)+n(d.bonus)+n(d.thirteenthMonth)+n(d.otherPay);
-  const parts=[['CA',d.cashAdvance],['SSS',d.sss],['PhilHealth',d.philhealth],['Pag-IBIG',d.pagibig],['Rent',d.rent],['Electric',d.electric],['Water',d.water],['Phone',d.phone],['Bond',d.bond],['Other',d.otherDeduction]];
-  const ded=parts.reduce((a,p)=>a+n(p[1]),0);
-  const tip=parts.filter(p=>n(p[1])>0).map(p=>p[0]+': ₱'+fmt(n(p[1]))).join('\n')||'No deductions';
-  return {gross, ded, net:gross-ded, tip};
-}
-// All finalized slips for one staff member (matches current staffId and any previous IDs)
-function officeSlipsFor(s){
-  const ids=[s.staffId,...(s.previousIds||[])].filter(Boolean);
-  return Object.values(officeSlips).filter(d=>d.finalizedAt && ids.includes(d.staffId)).sort((a,b)=>(b.periodStart||'').localeCompare(a.periodStart||''));
+function populateOfficePayrollDropdowns(){
+  const sel=document.getElementById('op-staff-sel');
+  if(!sel) return;
+  const eligible=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position)).sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="">— Select Office / Admin / Tech staff —</option>'+
+    eligible.map(s=>`<option value="${s.id}">${s.name} (${s.position}) — ${s.staffId||'—'}</option>`).join('');
+  loadOfficeSlips();
+  renderRecentOfficeSlips();
 }
 
-function renderOfficePayroll(){
-  const wEl=document.getElementById('op-weekly-block'), sEl=document.getElementById('op-semi-block');
-  if(!wEl||!sEl) return;
-  const showResigned=document.getElementById('op-show-resigned').checked;
-  const eligible=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position) && (showResigned || s.status!=='Resigned')).sort((a,b)=>a.name.localeCompare(b.name));
-  const build=(label,sub,people,period,block)=>{
-    const rows=people.map(s=>{
-      const key=officeSlipKey(s.staffId||s.id, period.start, period.end);
-      const slip=officeSlips[key];
-      const done=slip&&slip.finalizedAt;
-      const status=done?`<span style="color:var(--green);font-weight:600">✅ Finalized</span> <span style="color:var(--text2);font-size:11px">${new Date(slip.finalizedAt).toLocaleDateString()}</span>`
-                       :`<span style="color:var(--accent);font-weight:600">⏳ Pending</span>`;
-      const resigned=s.status==='Resigned'?`<span class="badge badge-unpaid" style="margin-left:6px;font-size:10px">Resigned</span>`:'';
-      const hist=opHistoryOpen[s.id]?renderOfficeHistory(s):'';
-      return `<tr>
-        <td><strong>${s.name}</strong>${resigned}<div style="font-size:11px;color:var(--text2)">${s.duty||s.position} · ${s.staffId||'—'}</div></td>
-        <td>${fmtDate(period.start)} – ${fmtDate(period.end)}</td>
-        <td>${status}</td>
-        <td class="num-cell">${done?'₱'+fmt(officeSlipTotals(slip).net):'—'}</td>
-        <td style="white-space:nowrap;text-align:right">
-          <button class="btn btn-ghost btn-sm" onclick="opToggleHistory('${s.id}')">${opHistoryOpen[s.id]?'▾':'▸'} History</button>
-          <button class="btn ${done?'btn-ghost':'btn-primary'} btn-sm" onclick="openOfficeSlipFor('${s.id}','${period.start}','${period.end}')">${done?'👁 View':'🧾 Open Slip'}</button>
-        </td></tr>${hist?`<tr><td colspan="5" style="padding:0 0 10px 18px;background:var(--bg)">${hist}</td></tr>`:''}`;
-    }).join('');
-    return `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div><div style="font-weight:700;font-size:14px">${label}</div><div style="font-size:11px;color:var(--text2)">${sub}</div></div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="opStep('${block}',-1)">‹</button>
-          <span style="font-size:13px;font-weight:600;min-width:120px;text-align:center">${fmtDate(period.start)} – ${fmtDate(period.end)}</span>
-          <button class="btn btn-ghost btn-sm" onclick="opStep('${block}',1)">›</button>
-          <button class="btn btn-ghost btn-sm" onclick="opToday('${block}')">Today</button>
-        </div>
-      </div>
-      ${people.length?`<table class="data-table" style="width:100%"><thead><tr><th>Name</th><th>Period</th><th>Status</th><th class="num-cell">Net Pay</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-        :`<div style="font-size:12px;color:var(--text2)">No staff on this schedule.</div>`}
-    </div>`;
-  };
-  wEl.innerHTML=build('📅 Weekly — Mechanics / Tech / Monitoring','Mon–Sat pay week', eligible.filter(s=>getPayFrequency(s)==='weekly'), opWeeklyPeriod(opWeeklyOffset),'weekly');
-  sEl.innerHTML=build('🗓 Semi-monthly — Office Admin','1st–15th and 16th–end of month', eligible.filter(s=>getPayFrequency(s)==='semi-monthly'), opSemiPeriod(opSemiOffset),'semi');
-}
-
-function renderOfficeHistory(s){
-  const list=officeSlipsFor(s);
-  if(!list.length) return `<div style="font-size:12px;color:var(--text2);padding:6px 0">No finalized slips yet for 2026.</div>`;
-  let tg=0,td=0,tn=0;
-  const rows=list.map(d=>{
-    const t=officeSlipTotals(d); tg+=t.gross; td+=t.ded; tn+=t.net;
-    return `<tr style="cursor:pointer" onclick="openOfficeSlipFor('${s.id}','${d.periodStart}','${d.periodEnd}')" title="Click to open this slip">
-      <td>${fmtDate(d.periodStart)} – ${fmtDate(d.periodEnd)}</td>
-      <td class="num-cell">₱${fmt(t.gross)}</td>
-      <td class="num-cell" style="color:var(--red);cursor:help" title="${t.tip}">₱${fmt(t.ded)}${t.ded>0?' <span style="font-size:10px;color:var(--text2)">ⓘ</span>':''}</td>
-      <td class="num-cell" style="font-weight:600;color:var(--green)">₱${fmt(t.net)}</td>
-      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${new Date(d.finalizedAt).toLocaleDateString()} <button class="btn btn-ghost btn-sm" style="margin-left:6px" title="Correct this slip's period dates (amounts and ledger untouched)" onclick="event.stopPropagation();fixOfficeSlipDates('${s.id}','${d.periodStart}','${d.periodEnd}')">✎ Dates</button></td></tr>`;
-  }).join('');
-  return `<div style="font-size:11px;color:var(--text2);margin:8px 0 4px">2026 payroll history — ${list.length} slip${list.length===1?'':'s'} · hover a deduction for the breakdown</div>
-    <table class="data-table" style="width:100%;font-size:12px"><thead><tr><th>Period</th><th class="num-cell">Gross</th><th class="num-cell">Deductions</th><th class="num-cell">Net</th><th>Finalized</th></tr></thead>
-    <tbody>${rows}
-    <tr style="font-weight:700;border-top:2px solid var(--border)"><td>2026 total</td><td class="num-cell">₱${fmt(tg)}</td><td class="num-cell" style="color:var(--red)">₱${fmt(td)}</td><td class="num-cell" style="color:var(--green)">₱${fmt(tn)}</td><td></td></tr>
-    </tbody></table>`;
-}
-
-// Re-label a finalized slip's period (typo fix). Only the key + period fields change — amounts and ledger postings are untouched.
-function fixOfficeSlipDates(staffRowId,oldStart,oldEnd){
-  const s=staff.find(x=>x.id===staffRowId); if(!s) return;
-  const ids=[s.staffId,...(s.previousIds||[])].filter(Boolean);
-  const oldKey=Object.keys(officeSlips).find(k=>{ const d=officeSlips[k]; return d&&ids.includes(d.staffId)&&d.periodStart===oldStart&&d.periodEnd===oldEnd; });
-  if(!oldKey){ toast('Slip not found','error'); return; }
-  const ok=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')&&!isNaN(new Date(v+'T00:00:00'));
-  const ns=prompt('New period START (YYYY-MM-DD) for '+s.name+':',oldStart); if(ns===null) return;
-  const ne=prompt('New period END (YYYY-MM-DD):',oldEnd); if(ne===null) return;
-  if(!ok(ns)||!ok(ne)||ns>ne){ toast('Invalid dates','error'); return; }
-  if(ns===oldStart&&ne===oldEnd) return;
-  const d=officeSlips[oldKey];
-  const newKey=officeSlipKey(d.staffId||s.staffId,ns,ne);
-  if(officeSlips[newKey]&&officeSlips[newKey].finalizedAt){ toast('A finalized slip already exists for '+fmtDate(ns)+' – '+fmtDate(ne),'error'); return; }
-  if(!confirm('Change '+s.name+"'s slip period\n"+fmtDate(oldStart)+' – '+fmtDate(oldEnd)+'  →  '+fmtDate(ns)+' – '+fmtDate(ne)+'\n\nAmounts and ledger are not changed. Continue?')) return;
-  delete officeSlips[oldKey];
-  d.periodStart=ns; d.periodEnd=ne; d.periodFixedFrom=oldStart+'_'+oldEnd;
-  officeSlips[newKey]=d;
-  saveOfficeSlips();
-  toast('Slip period updated ✓','success');
-  renderOfficePayroll();
+function setOfficePeriodPreset(startDay){
+  const today=new Date();
+  const y=today.getFullYear(), m=today.getMonth();
+  let start,end;
+  if(startDay===1){
+    start=new Date(y,m,1); end=new Date(y,m,15);
+  } else {
+    start=new Date(y,m,16);
+    end=new Date(y,m+1,0); // last day of month
+  }
+  const fmtISO=d=>d.toISOString().slice(0,10);
+  document.getElementById('op-period-start').value=fmtISO(start);
+  document.getElementById('op-period-end').value=fmtISO(end);
 }
 
 let currentOfficeStaffId=null, currentOfficeStart=null, currentOfficeEnd=null;
 
-function openOfficeSlipFor(staffId,start,end){
-  if(!staffId||!start||!end) return;
+function openOfficeSlip(){
+  const staffId=document.getElementById('op-staff-sel').value;
+  const start=document.getElementById('op-period-start').value;
+  const end=document.getElementById('op-period-end').value;
+  if(!staffId){ toast('Select a staff member first','error'); return; }
+  if(!start||!end){ toast('Set the pay period dates first','error'); return; }
   currentOfficeStaffId=staffId; currentOfficeStart=start; currentOfficeEnd=end;
   const s=staff.find(x=>x.id===staffId);
   document.getElementById('office-slip-modal-title').textContent='Pay Slip — '+(s?s.name:'');
@@ -5825,17 +5819,21 @@ function finalizeOfficeSlip(){
 
   toast('Office pay slip finalized and saved ✓','success');
   renderOfficeSlip();
-  renderOfficePayroll();
+  renderRecentOfficeSlips();
+}
+
+function renderRecentOfficeSlips(){
+  const el=document.getElementById('op-recent-list');
+  if(!el) return;
+  const entries=Object.values(officeSlips).filter(x=>x.finalizedAt).sort((a,b)=>(b.finalizedAt||'').localeCompare(a.finalizedAt||'')).slice(0,8);
+  if(!entries.length){ el.innerHTML=''; return; }
+  el.innerHTML='<div style="font-weight:700;margin-bottom:6px;color:var(--text)">Recently finalized:</div>'+
+    entries.map(e=>`<div style="padding:2px 0">${e.name} — ${fmtDate(e.periodStart)} to ${fmtDate(e.periodEnd)} — finalized ${new Date(e.finalizedAt).toLocaleDateString()}</div>`).join('');
 }
 
 function printOfficeSlip(){
   const s=staff.find(x=>x.id===currentOfficeStaffId)||{};
-  const body=document.getElementById('office-slip-modal-body');
-  // Sync live typed values into the DOM attributes — innerHTML only carries the values from when the slip was opened
-  body.querySelectorAll('input').forEach(el=>el.setAttribute('value',el.value));
-  body.querySelectorAll('textarea').forEach(el=>{ el.textContent=el.value; });
-  const bodyHtml=body.innerHTML
-    .replace(/<input[^>]*id="os-[a-z]+-remark"[^>]*value="([^"]*)"[^>]*>/g, (m,val)=>`<div style="font-size:11px;color:#5a6175">${val||'—'}</div>`)
+  const bodyHtml=document.getElementById('office-slip-modal-body').innerHTML
     .replace(/<input[^>]*id="os-([a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>/g, (m,id,val)=>`<span>${id==='days'?val:'₱'+fmt(n(val))}</span>`)
     .replace(/<textarea[^>]*>([^<]*)<\/textarea>/g, (m,val)=>`<div>${val||'—'}</div>`);
   const w=window.open('','_blank');
