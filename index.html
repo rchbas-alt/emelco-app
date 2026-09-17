@@ -271,7 +271,7 @@ body.role-operations .fin-only{display:none!important}
     <button class="btn btn-ghost btn-sm" onclick="filterDupes()" id="dupe-filter-btn">Show Only Dupes</button>
   </div>
   <div class="toolbar">
-    <input class="search-box" type="text" id="search" placeholder="Search code, driver, plate, destination, cut-off, remarks… (comma = or)" oninput="currentPage=1;renderTable()">
+    <input class="search-box" type="text" id="search" placeholder="Search code, trip ticket, DR #, driver, plate, destination, cut-off, remarks… (comma = or)" oninput="currentPage=1;renderTable()">
     <select class="filter-select" id="filter-client" onchange="currentPage=1;renderTable()">
       <option value="">All Clients</option>
     </select>
@@ -309,7 +309,7 @@ body.role-operations .fin-only{display:none!important}
         <th>#</th>
         <th class="sortable col-code" onclick="sortBy('code')">Code</th>
         <th class="sortable col-date" onclick="sortBy('tripStartDate')">Trip Date</th>
-        <th class="col-cutoff">Cut-Off</th><th class="col-client">Client</th><th class="col-area">Area</th><th class="col-dest">Destination</th>
+        <th class="col-cutoff">Cut-Off</th><th class="col-client">Client</th><th class="col-area">Area</th><th class="col-dest">Destination</th><th class="col-dr">DR #</th><th class="col-tripticket">Trip Ticket</th>
         <th class="col-plate">Plate</th><th class="col-driver">Driver</th><th class="col-h1">H1</th>
         <th class="num-cell col-rate">Rate</th>
         <th class="num-cell col-surcharge">Surcharge</th>
@@ -1305,7 +1305,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609121830'; // Trip table column picker (per-device localStorage view); search accepts comma-separated terms and now covers cut-off + remarks
+const APP_VERSION = '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -2854,7 +2854,7 @@ function getFiltered(){
       // Comma separates alternatives: "MAZ6896, CAS8037" matches either. Spaces stay inside a
       // term so "metro manila, pampanga" is two destinations, not four words. The dropdown
       // filters above already AND with this, so selecting a client and searching narrows.
-      const hay=[t.code,t.driver,t.plate,t.client,t.destination,t.area,t.h1,t.h2,t.tripticket,t.cutoff,t.genRemarks].join(' ').toLowerCase();
+      const hay=[t.code,t.driver,t.plate,t.client,t.destination,t.area,t.h1,t.h2,t.tripticket,t.dr,t.cutoff,t.genRemarks].join(' ').toLowerCase();
       const terms=q.split(',').map(x=>x.trim()).filter(Boolean);
       if(terms.length && !terms.some(term=>hay.includes(term))) return false;
     }
@@ -2881,6 +2881,8 @@ const TRIP_COLUMNS=[
   {k:'client',    label:'Client'},
   {k:'area',      label:'Area'},
   {k:'dest',      label:'Destination'},
+  {k:'dr',        label:'DR #'},
+  {k:'tripticket',label:'Trip Ticket'},
   {k:'plate',     label:'Plate'},
   {k:'driver',    label:'Driver'},
   {k:'h1',        label:'H1'},
@@ -2897,8 +2899,8 @@ const TRIP_COLUMNS=[
 ];
 const COL_PRESETS={
   default:['code','date','cutoff','client','area','dest','plate','driver','rate','surcharge','income','pct','remarks'],
-  billing:['date','cutoff','client','area','dest','rate','surcharge','rsvat','remarks'],
-  ops:    ['date','client','area','dest','plate','driver','h1','truck','remarks'],
+  billing:['date','cutoff','client','area','dest','dr','tripticket','rate','surcharge','rsvat','remarks'],
+  ops:    ['date','client','area','dest','dr','tripticket','plate','driver','h1','truck','remarks'],
   all:    TRIP_COLUMNS.map(c=>c.k)
 };
 const COL_STORE='emelco_trip_cols_v1';
@@ -2956,7 +2958,7 @@ function renderTable(){
 
   document.getElementById('record-info').innerHTML=`${filtered.length} of ${trips.length} trips${dupeInfo}`;
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="21"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="23"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
     renderPaginationControls(0,1);
     return;
   }
@@ -2983,6 +2985,8 @@ function renderTable(){
           : ''}
         ${t.destination||'—'}
       </td>
+      <td class="mono col-dr" style="font-size:10px">${t.dr||'—'}</td>
+      <td class="mono col-tripticket" style="font-size:10px">${t.tripticket||'—'}</td>
       <td class="mono col-plate" style="font-size:10px">${t.noDriverFlag&&!t.plate
           ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO PLATE</span>`
           :(t.plate||'—')}</td>
