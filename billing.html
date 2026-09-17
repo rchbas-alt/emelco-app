@@ -305,6 +305,7 @@ body.role-operations .owner-only{display:none!important}
           <th class="num-cell">Incrementals</th>
           <th class="num-cell fin-only">CCAC Billed</th>
           <th class="num-cell fin-only">CMIP Billed</th>
+          <th class="num-cell fin-only">Other BU Billed</th>
           <th class="num-cell">Settled / Collected</th>
           <th class="num-cell">In Client Processing</th>
           <th class="num-cell">Past Due &amp; Uncollected</th>
@@ -636,7 +637,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609121600';
+const APP_VERSION = '202609171700';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1148,14 +1149,14 @@ function buildSummaryRows(){
   activeEntries().forEach(e=>{
     if(!e.tripStart) return; // period rows need a start date to group on
     const key=e.tripStart+'|'+(e.tripEnd||'');
-    const g=byPeriod[key]=byPeriod[key]||{tripStart:e.tripStart,tripEnd:e.tripEnd,total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,settled:0,processing:0,pastDue:0,count:0,sis:new Set()};
+    const g=byPeriod[key]=byPeriod[key]||{tripStart:e.tripStart,tripEnd:e.tripEnd,total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,other:0,settled:0,processing:0,pastDue:0,count:0,sis:new Set()};
     const net=entryCalc(e).net, s=entryStatusInfo(e).cls;
     g.total+=net; g.count++;
     if(e.si) g.sis.add(e.si);
     if(e.type==='RECON'){ g.recon+=net; g.reconSurcharge+=net; }
     else if(e.type==='SURCHARGE'){ g.surcharge+=net; g.reconSurcharge+=net; }
     else if(e.type==='INCREMENTALS'){ g.incrementals+=net; }
-    if(e.bu==='CCAC') g.ccac+=net; else if(e.bu==='CMIP') g.cmip+=net;
+    if(e.bu==='CCAC') g.ccac+=net; else if(e.bu==='CMIP') g.cmip+=net; else g.other+=net; // CDI, JRZ, or any other BU — keeps Total = CCAC+CMIP+Other reconciling
     if(s==='paid') g.settled+=net;
     else if(s==='submitted') g.processing+=net;
     else g.pastDue+=net; // not yet submitted, whether due or overdue — "not settled" bucket
@@ -1165,8 +1166,8 @@ function buildSummaryRows(){
 function exportSummary(){
   const rows=buildSummaryRows();
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Trip Start','Trip End','Total Billed','Recon+Surcharge','Recon','Surcharge','Incrementals','CCAC Billed','CMIP Billed','Settled/Collected','In Client Processing','Past Due & Uncollected','Entries'];
-  const data=rows.map(g=>[g.tripStart, g.tripEnd||'', g.total.toFixed(2), g.reconSurcharge.toFixed(2), g.recon.toFixed(2), g.surcharge.toFixed(2), g.incrementals.toFixed(2), g.ccac.toFixed(2), g.cmip.toFixed(2), g.settled.toFixed(2), g.processing.toFixed(2), g.pastDue.toFixed(2), g.sis.size||g.count]);
+  const headers=['Trip Start','Trip End','Total Billed','Recon+Surcharge','Recon','Surcharge','Incrementals','CCAC Billed','CMIP Billed','Other BU Billed','Settled/Collected','In Client Processing','Past Due & Uncollected','Entries'];
+  const data=rows.map(g=>[g.tripStart, g.tripEnd||'', g.total.toFixed(2), g.reconSurcharge.toFixed(2), g.recon.toFixed(2), g.surcharge.toFixed(2), g.incrementals.toFixed(2), g.ccac.toFixed(2), g.cmip.toFixed(2), g.other.toFixed(2), g.settled.toFixed(2), g.processing.toFixed(2), g.pastDue.toFixed(2), g.sis.size||g.count]);
   downloadCSV('emelco_billing_summary_'+todayISO()+'.csv', headers, data);
 }
 
@@ -1295,7 +1296,7 @@ function renderSummary(){
   const rows=buildSummaryRows();
   $('#sumCount').textContent=rows.length?`${rows.length} billing periods`:'';
   const tb=$('#sum-table tbody');
-  if(!rows.length){ tb.innerHTML=`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No entries yet</div>Add entries, or import a recon file / 2026 history, to populate this compilation.</div></td></tr>`; $('#sum-table tfoot').innerHTML=''; return; }
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="14"><div class="empty-state"><div class="empty-icon">📈</div><div class="empty-title">No entries yet</div>Add entries, or import a recon file / 2026 history, to populate this compilation.</div></td></tr>`; $('#sum-table tfoot').innerHTML=''; return; }
   tb.innerHTML=rows.map(g=>`<tr>
     <td class="mono">${esc(g.tripStart)}</td><td class="mono">${esc(g.tripEnd||'—')}</td>
     <td class="num-cell"><strong>₱${peso(g.total)}</strong></td>
@@ -1305,17 +1306,19 @@ function renderSummary(){
     <td class="num-cell">₱${peso(g.incrementals)}</td>
     <td class="num-cell fin-only">₱${peso(g.ccac)}</td>
     <td class="num-cell fin-only">₱${peso(g.cmip)}</td>
+    <td class="num-cell fin-only">₱${peso(g.other)}</td>
     <td class="num-cell">₱${peso(g.settled)}</td>
     <td class="num-cell">₱${peso(g.processing)}</td>
     <td class="num-cell">₱${peso(g.pastDue)}</td>
     <td class="num-cell">${g.sis.size||g.count}</td></tr>`).join('');
-  const t=rows.reduce((a,g)=>{ for(const k of ['total','reconSurcharge','recon','surcharge','incrementals','ccac','cmip','settled','processing','pastDue']) a[k]+=g[k]; a.count+=g.count; return a; },
-    {total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,settled:0,processing:0,pastDue:0,count:0});
+  const t=rows.reduce((a,g)=>{ for(const k of ['total','reconSurcharge','recon','surcharge','incrementals','ccac','cmip','other','settled','processing','pastDue']) a[k]+=g[k]; a.count+=g.count; return a; },
+    {total:0,reconSurcharge:0,recon:0,surcharge:0,incrementals:0,ccac:0,cmip:0,other:0,settled:0,processing:0,pastDue:0,count:0});
   $('#sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td>
     <td class="num-cell">₱${peso(t.total)}</td><td class="num-cell">₱${peso(t.reconSurcharge)}</td>
     <td class="num-cell">₱${peso(t.recon)}</td><td class="num-cell">₱${peso(t.surcharge)}</td>
     <td class="num-cell">₱${peso(t.incrementals)}</td>
     <td class="num-cell fin-only">₱${peso(t.ccac)}</td><td class="num-cell fin-only">₱${peso(t.cmip)}</td>
+    <td class="num-cell fin-only">₱${peso(t.other)}</td>
     <td class="num-cell">₱${peso(t.settled)}</td><td class="num-cell">₱${peso(t.processing)}</td>
     <td class="num-cell">₱${peso(t.pastDue)}</td><td class="num-cell">${t.count}</td></tr>`;
   renderPaymentsSummary();
