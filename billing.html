@@ -637,7 +637,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609171700';
+const APP_VERSION = '202609171730';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1808,7 +1808,8 @@ function onEntryStatusChange(){ $('#ePaidWrap').style.display=($('#eStatus').val
 function renderEntryCalc(){ const c=entryCalc({net:$('#eNet').value,penalty:$('#ePenalty').value}); $('#eVat').value=peso(c.vat); $('#eDue').value=peso(c.due); }
 function saveEntry(){
   const bu=$('#eBu').value, sbu=$('#eSbu').value;
-  if(!bu||!sbu){ toast('Pick a BU and SBU','error'); return; }
+  const buSbus=(STATE.bus.find(b=>b.name===bu)||{}).sbus||[];
+  if(!bu || (buSbus.length && !sbu)){ toast(buSbus.length ? 'Pick a BU and SBU' : 'Pick a BU','error'); return; }
   const si=$('#eSi').value.trim();
   const conflict=findSiConflict(si, editingId);
   if(conflict){ toast(conflict.voided ? `SI# ${si} was voided (${conflict.voidReason||'no reason given'}) — pick a different SI#` : `SI# ${si} already used on an existing entry (${conflict.bu}/${conflict.sbu}/${conflict.type}) — edit that one instead`,'error'); return; }
