@@ -554,7 +554,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, a JSON backup download of trips/staff/fleet for an extra offline copy, and a one-time <strong>🔗 Link Trip Groups</strong> tool for pairing up MilkRun and Convoy trips that don't have a group ID yet.</div></div></div>
       <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
       <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
-      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and office/admin bi-monthly payroll are visible to the Owner account only. If you don't see these tabs, that's by design — not a bug.</div></div></div>
+      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and Office Payroll are visible to the Owner account only. Office Payroll shows two blocks — <strong>Weekly (Mon–Sat)</strong> for Mechanics/Tech/Monitoring and <strong>Semi-monthly (1–15 / 16–end)</strong> for Office Admin — one row per person with Pending/Finalized status; set a person's <strong>Pay Frequency</strong> in the Staff tab edit form (blank = default for position). Click <strong>History</strong> on a row for their 2026 slips with gross, deductions (hover for breakdown), net and year total. If you don't see these tabs, that's by design — not a bug.</div></div></div>
     </div>
 
     <h3 style="margin-top:24px">🚀 Daily Essentials</h3>
@@ -812,23 +812,12 @@ body.role-operations .fin-only{display:none!important}
 <!-- ====== OFFICE / ADMIN / TECH PAYROLL PAGE ====== -->
 <div class="page" id="page-officepayroll">
   <div class="page-header">
-    <h2>🏢 Office / Admin / Tech Payroll (Bi-Monthly)</h2>
+    <h2>🏢 Office / Admin / Tech Payroll</h2>
+    <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="op-show-resigned" onchange="renderOfficePayroll()"> Show resigned</label>
   </div>
-  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
-    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Salary-based staff — no trips involved. Pick a staff member and a pay period (1st–15th or 16th–end of month), then open their slip.</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select class="filter-select" id="op-staff-sel" style="min-width:240px">
-        <option value="">— Select Office / Admin / Tech staff —</option>
-      </select>
-      <input type="date" class="form-input" id="op-period-start" style="width:160px">
-      <span style="color:var(--text2);font-size:12px">to</span>
-      <input type="date" class="form-input" id="op-period-end" style="width:160px">
-      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(1)">1st–15th</button>
-      <button class="btn btn-ghost" onclick="setOfficePeriodPreset(16)">16th–End</button>
-      <button class="btn btn-primary" onclick="openOfficeSlip()">🧾 Open Slip</button>
-    </div>
-  </div>
-  <div id="op-recent-list" style="font-size:12px;color:var(--text2)"></div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Salary-based staff — no trips involved. Periods are set automatically from each person's pay frequency (edit it in the Staff tab). Use ‹ › to step periods; click <strong>History</strong> for a person's 2026 slips.</div>
+  <div id="op-weekly-block"></div>
+  <div id="op-semi-block"></div>
 </div>
 
 <!-- ====== LEDGER PAGE ====== -->
@@ -1076,6 +1065,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="form-group" id="sf-resigned-row" style="display:none"><label class="form-label">Resigned Date</label><input type="date" class="form-input" id="sf-resigned-date"></div>
       <div class="form-group"><label class="form-label">Start Date</label><input type="text" class="form-input" id="sf-startdate" placeholder="YYYY-MM-DD, or leave blank for On Call"></div>
       <div class="form-group"><label class="form-label">Duty / Role</label><input type="text" class="form-input" id="sf-duty" list="dl-duty" placeholder="Type or pick a role…" autocomplete="off"><datalist id="dl-duty"></datalist></div>
+      <div class="form-group" id="sf-payfreq-row" style="display:none"><label class="form-label">Pay Frequency <span style="font-size:11px;color:var(--text2)">— Office Payroll tab</span></label><select class="form-select" id="sf-payfreq"><option value="">Default for position</option><option value="weekly">Weekly (Mon–Sat)</option><option value="semi-monthly">Semi-monthly (1–15 / 16–end)</option></select></div>
       <div class="form-group" id="sf-license-row" style="grid-column:span 2;display:none;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Driver's license — optional, but flagged if missing</div>
         <div class="form-grid form-grid-2">
@@ -1305,7 +1295,8 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
+const APP_VERSION = '202609182100'; // Restored Office Payroll redesign (payFrequency, weekly/semi-monthly blocks, per-person history) lost between Sep 11 and Sep 15 uploads; reapplied on top of all later work
+// prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
   const vb=document.getElementById('version-badge');
@@ -3117,6 +3108,7 @@ const DUTY_SUGGESTIONS={
 function onPositionChange(){
   const pos = document.getElementById('sf-position').value;
   document.getElementById('sf-license-row').style.display = (pos==='DRIVER') ? '' : 'none';
+  const pfRow=document.getElementById('sf-payfreq-row'); if(pfRow) pfRow.style.display = ['OFFICE','ADMIN','TECH'].includes(pos) ? '' : 'none';
 
   // Update duty suggestions datalist
   const dl=document.getElementById('dl-duty');
@@ -3172,6 +3164,7 @@ function openEditStaff(id){
   document.getElementById('sf-license-number').value=s.licenseNumber||'';
   document.getElementById('sf-license-expiry').value=s.licenseExpiry||'';
   document.getElementById('sf-resigned-date').value=s.resignedDate||'';
+  document.getElementById('sf-payfreq').value=s.payFrequency||'';
   onPositionChange();
   onStatusChange();
   document.getElementById('sf-previousids').value = (s.previousIds && s.previousIds.length) ? s.previousIds.join(', ') : '';
@@ -3186,6 +3179,7 @@ function clearStaffForm(){
   document.getElementById('sf-license-number').value='';
   document.getElementById('sf-license-expiry').value='';
   document.getElementById('sf-resigned-date').value='';
+  document.getElementById('sf-payfreq').value='';
   document.getElementById('sf-position').value='DRIVER';
   document.getElementById('sf-status').value='Active';
   document.getElementById('sf-previousids').value='';
@@ -3221,6 +3215,7 @@ function saveStaff(){
     licenseNumber:document.getElementById('sf-license-number').value.trim(),
     licenseExpiry:document.getElementById('sf-license-expiry').value,
     resignedDate:document.getElementById('sf-resigned-date').value,
+    payFrequency:document.getElementById('sf-payfreq').value||'',
   };
   if(editingStaffId){ const idx=staff.findIndex(x=>x.id===editingStaffId); if(idx!==-1)staff[idx]=s; toast('Staff updated ✓','success'); }
   else{ staff.push(s); toast('Staff added ✓','success'); }
@@ -5538,39 +5533,112 @@ function saveOfficeSlips(){
 }
 function officeSlipKey(staffId,start,end){ return staffId+'__'+start+'_'+end; }
 
-function populateOfficePayrollDropdowns(){
-  const sel=document.getElementById('op-staff-sel');
-  if(!sel) return;
-  const eligible=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position)).sort((a,b)=>a.name.localeCompare(b.name));
-  sel.innerHTML='<option value="">— Select Office / Admin / Tech staff —</option>'+
-    eligible.map(s=>`<option value="${s.id}">${s.name} (${s.position}) — ${s.staffId||'—'}</option>`).join('');
-  loadOfficeSlips();
-  renderRecentOfficeSlips();
+// Pay frequency: explicit staff.payFrequency wins; otherwise OFFICE → semi-monthly, ADMIN/TECH → weekly
+function getPayFrequency(s){
+  if(s.payFrequency==='weekly'||s.payFrequency==='semi-monthly') return s.payFrequency;
+  return s.position==='OFFICE' ? 'semi-monthly' : 'weekly';
+}
+function localISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function opWeeklyPeriod(offset){
+  const t=new Date(); t.setHours(0,0,0,0);
+  const dow=(t.getDay()+6)%7;
+  const mon=new Date(t); mon.setDate(t.getDate()-dow+offset*7);
+  const sat=new Date(mon); sat.setDate(mon.getDate()+5);
+  return {start:localISO(mon), end:localISO(sat)};
+}
+function opSemiPeriod(offset){
+  const t=new Date();
+  let idx=t.getFullYear()*24+t.getMonth()*2+(t.getDate()>=16?1:0)+offset;
+  const y=Math.floor(idx/24), rem=idx%24, m=Math.floor(rem/2), half=rem%2;
+  const start=half===0?new Date(y,m,1):new Date(y,m,16);
+  const end=half===0?new Date(y,m,15):new Date(y,m+1,0);
+  return {start:localISO(start), end:localISO(end)};
+}
+let opWeeklyOffset=0, opSemiOffset=0, opHistoryOpen={};
+function opStep(block,delta){ if(block==='weekly') opWeeklyOffset+=delta; else opSemiOffset+=delta; renderOfficePayroll(); }
+function opToday(block){ if(block==='weekly') opWeeklyOffset=0; else opSemiOffset=0; renderOfficePayroll(); }
+function opToggleHistory(id){ opHistoryOpen[id]=!opHistoryOpen[id]; renderOfficePayroll(); }
+
+function populateOfficePayrollDropdowns(){ loadOfficeSlips(); renderOfficePayroll(); }
+
+function officeSlipTotals(d){
+  const gross=n(d.standardPay)+n(d.holidayPay)+n(d.paidLeave)+n(d.bonus)+n(d.thirteenthMonth)+n(d.otherPay);
+  const parts=[['CA',d.cashAdvance],['SSS',d.sss],['PhilHealth',d.philhealth],['Pag-IBIG',d.pagibig],['Rent',d.rent],['Electric',d.electric],['Water',d.water],['Phone',d.phone],['Bond',d.bond],['Other',d.otherDeduction]];
+  const ded=parts.reduce((a,p)=>a+n(p[1]),0);
+  const tip=parts.filter(p=>n(p[1])>0).map(p=>p[0]+': ₱'+fmt(n(p[1]))).join('\n')||'No deductions';
+  return {gross, ded, net:gross-ded, tip};
+}
+function officeSlipsFor(s){
+  const ids=[s.staffId,...(s.previousIds||[])].filter(Boolean);
+  return Object.values(officeSlips).filter(d=>d.finalizedAt && ids.includes(d.staffId)).sort((a,b)=>(b.periodStart||'').localeCompare(a.periodStart||''));
 }
 
-function setOfficePeriodPreset(startDay){
-  const today=new Date();
-  const y=today.getFullYear(), m=today.getMonth();
-  let start,end;
-  if(startDay===1){
-    start=new Date(y,m,1); end=new Date(y,m,15);
-  } else {
-    start=new Date(y,m,16);
-    end=new Date(y,m+1,0); // last day of month
-  }
-  const fmtISO=d=>d.toISOString().slice(0,10);
-  document.getElementById('op-period-start').value=fmtISO(start);
-  document.getElementById('op-period-end').value=fmtISO(end);
+function renderOfficePayroll(){
+  const wEl=document.getElementById('op-weekly-block'), sEl=document.getElementById('op-semi-block');
+  if(!wEl||!sEl) return;
+  const showResigned=document.getElementById('op-show-resigned').checked;
+  const eligible=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position) && (showResigned || s.status!=='Resigned')).sort((a,b)=>a.name.localeCompare(b.name));
+  const build=(label,sub,people,period,block)=>{
+    const rows=people.map(s=>{
+      const key=officeSlipKey(s.staffId||s.id, period.start, period.end);
+      const slip=officeSlips[key];
+      const done=slip&&slip.finalizedAt;
+      const status=done?`<span style="color:var(--green);font-weight:600">✅ Finalized</span> <span style="color:var(--text2);font-size:11px">${new Date(slip.finalizedAt).toLocaleDateString()}</span>`
+                       :`<span style="color:var(--accent);font-weight:600">⏳ Pending</span>`;
+      const resigned=s.status==='Resigned'?`<span class="badge badge-unpaid" style="margin-left:6px;font-size:10px">Resigned</span>`:'';
+      const hist=opHistoryOpen[s.id]?renderOfficeHistory(s):'';
+      return `<tr>
+        <td><strong>${s.name}</strong>${resigned}<div style="font-size:11px;color:var(--text2)">${s.duty||s.position} · ${s.staffId||'—'}</div></td>
+        <td>${fmtDate(period.start)} – ${fmtDate(period.end)}</td>
+        <td>${status}</td>
+        <td class="num-cell">${done?'₱'+fmt(officeSlipTotals(slip).net):'—'}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-ghost btn-sm" onclick="opToggleHistory('${s.id}')">${opHistoryOpen[s.id]?'▾':'▸'} History</button>
+          <button class="btn ${done?'btn-ghost':'btn-primary'} btn-sm" onclick="openOfficeSlipFor('${s.id}','${period.start}','${period.end}')">${done?'👁 View':'🧾 Open Slip'}</button>
+        </td></tr>${hist?`<tr><td colspan="5" style="padding:0 0 10px 18px;background:var(--bg)">${hist}</td></tr>`:''}`;
+    }).join('');
+    return `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div><div style="font-weight:700;font-size:14px">${label}</div><div style="font-size:11px;color:var(--text2)">${sub}</div></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="opStep('${block}',-1)">‹</button>
+          <span style="font-size:13px;font-weight:600;min-width:120px;text-align:center">${fmtDate(period.start)} – ${fmtDate(period.end)}</span>
+          <button class="btn btn-ghost btn-sm" onclick="opStep('${block}',1)">›</button>
+          <button class="btn btn-ghost btn-sm" onclick="opToday('${block}')">Today</button>
+        </div>
+      </div>
+      ${people.length?`<table class="data-table" style="width:100%"><thead><tr><th>Name</th><th>Period</th><th>Status</th><th class="num-cell">Net Pay</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+        :`<div style="font-size:12px;color:var(--text2)">No staff on this schedule.</div>`}
+    </div>`;
+  };
+  wEl.innerHTML=build('📅 Weekly — Mechanics / Tech / Monitoring','Mon–Sat pay week', eligible.filter(s=>getPayFrequency(s)==='weekly'), opWeeklyPeriod(opWeeklyOffset),'weekly');
+  sEl.innerHTML=build('🗓 Semi-monthly — Office Admin','1st–15th and 16th–end of month', eligible.filter(s=>getPayFrequency(s)==='semi-monthly'), opSemiPeriod(opSemiOffset),'semi');
+}
+
+function renderOfficeHistory(s){
+  const list=officeSlipsFor(s);
+  if(!list.length) return `<div style="font-size:12px;color:var(--text2);padding:6px 0">No finalized slips yet for 2026.</div>`;
+  let tg=0,td=0,tn=0;
+  const rows=list.map(d=>{
+    const t=officeSlipTotals(d); tg+=t.gross; td+=t.ded; tn+=t.net;
+    return `<tr style="cursor:pointer" onclick="openOfficeSlipFor('${s.id}','${d.periodStart}','${d.periodEnd}')" title="Click to open this slip">
+      <td>${fmtDate(d.periodStart)} – ${fmtDate(d.periodEnd)}</td>
+      <td class="num-cell">₱${fmt(t.gross)}</td>
+      <td class="num-cell" style="color:var(--red);cursor:help" title="${t.tip}">₱${fmt(t.ded)}${t.ded>0?' <span style="font-size:10px;color:var(--text2)">ⓘ</span>':''}</td>
+      <td class="num-cell" style="font-weight:600;color:var(--green)">₱${fmt(t.net)}</td>
+      <td style="font-size:11px;color:var(--text2)">${new Date(d.finalizedAt).toLocaleDateString()}</td></tr>`;
+  }).join('');
+  return `<div style="font-size:11px;color:var(--text2);margin:8px 0 4px">2026 payroll history — ${list.length} slip${list.length===1?'':'s'} · hover a deduction for the breakdown</div>
+    <table class="data-table" style="width:100%;font-size:12px"><thead><tr><th>Period</th><th class="num-cell">Gross</th><th class="num-cell">Deductions</th><th class="num-cell">Net</th><th>Finalized</th></tr></thead>
+    <tbody>${rows}
+    <tr style="font-weight:700;border-top:2px solid var(--border)"><td>2026 total</td><td class="num-cell">₱${fmt(tg)}</td><td class="num-cell" style="color:var(--red)">₱${fmt(td)}</td><td class="num-cell" style="color:var(--green)">₱${fmt(tn)}</td><td></td></tr>
+    </tbody></table>`;
 }
 
 let currentOfficeStaffId=null, currentOfficeStart=null, currentOfficeEnd=null;
 
-function openOfficeSlip(){
-  const staffId=document.getElementById('op-staff-sel').value;
-  const start=document.getElementById('op-period-start').value;
-  const end=document.getElementById('op-period-end').value;
-  if(!staffId){ toast('Select a staff member first','error'); return; }
-  if(!start||!end){ toast('Set the pay period dates first','error'); return; }
+function openOfficeSlipFor(staffId,start,end){
+  if(!staffId||!start||!end) return;
   currentOfficeStaffId=staffId; currentOfficeStart=start; currentOfficeEnd=end;
   const s=staff.find(x=>x.id===staffId);
   document.getElementById('office-slip-modal-title').textContent='Pay Slip — '+(s?s.name:'');
@@ -5823,16 +5891,7 @@ function finalizeOfficeSlip(){
 
   toast('Office pay slip finalized and saved ✓','success');
   renderOfficeSlip();
-  renderRecentOfficeSlips();
-}
-
-function renderRecentOfficeSlips(){
-  const el=document.getElementById('op-recent-list');
-  if(!el) return;
-  const entries=Object.values(officeSlips).filter(x=>x.finalizedAt).sort((a,b)=>(b.finalizedAt||'').localeCompare(a.finalizedAt||'')).slice(0,8);
-  if(!entries.length){ el.innerHTML=''; return; }
-  el.innerHTML='<div style="font-weight:700;margin-bottom:6px;color:var(--text)">Recently finalized:</div>'+
-    entries.map(e=>`<div style="padding:2px 0">${e.name} — ${fmtDate(e.periodStart)} to ${fmtDate(e.periodEnd)} — finalized ${new Date(e.finalizedAt).toLocaleDateString()}</div>`).join('');
+  renderOfficePayroll();
 }
 
 function printOfficeSlip(){
