@@ -637,7 +637,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609171730';
+const APP_VERSION = '202609191200';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1061,7 +1061,12 @@ function findBatchOutliers(){
   const byEnd={};
   activeEntries().forEach(e=>{
     if(!e.tripStart||!e.tripEnd) return;
-    (byEnd[e.tripEnd]=byEnd[e.tripEnd]||[]).push(e);
+    // Group by BU *and* Trip End. Grouping on Trip End alone compared one BU's batch against
+    // another's: CCAC bills 24-31 while CMIP bills 23-31 for the same week, so every period
+    // flagged CCAC's entries as outliers against CMIP's larger batch. Each BU sets its own
+    // cutoff dates, so a batch only means anything within one BU.
+    const k=String(e.bu||'').trim().toUpperCase()+'|'+e.tripEnd;
+    (byEnd[k]=byEnd[k]||[]).push(e);
   });
   const flagged=[];
   Object.values(byEnd).forEach(list=>{
