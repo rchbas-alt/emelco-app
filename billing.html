@@ -74,6 +74,13 @@ tr:last-child td{border-bottom:none}
 .badge-void{background:rgba(107,114,128,.18);color:#4b5563}
 tr.row-voided td{opacity:.55;text-decoration:line-through;text-decoration-color:#9ca3af}
 tr.row-voided td:last-child{text-decoration:none}
+.en-section td{background:var(--bg3);padding:10px 12px;font-size:12px;border-top:1px solid var(--border2);border-bottom:1px solid var(--border2);user-select:none}
+tr.en-section.clickable td{cursor:pointer}
+tr.en-section:hover td{background:var(--bg3)}
+tr.en-section.clickable:hover td{background:#eceef3}
+.en-caret{display:inline-block;width:14px;color:var(--text2);font-size:10px}
+.en-sec-overdue{color:var(--red);font-weight:700}
+.en-sec-total{color:var(--text2);font-family:'DM Mono',monospace}
 .badge-default{background:var(--bg3);color:var(--text2)}
 .grand td{font-weight:700;background:var(--bg3)}
 .chip{display:inline-block;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;margin:1px 2px}
@@ -637,7 +644,7 @@ body.role-operations .owner-only{display:none!important}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202609191200';
+const APP_VERSION = '202609191400';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1680,10 +1687,14 @@ function clearAllEntries(){
   renderAll(); saveBilling();
   toast('All entries cleared');
 }
-function renderEntries(){
-  const rows=getFilteredEntries();
-  const dupeAckMap=getAckedDupeInfoByEntryId();
-  $('#en-table tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e),s=entryStatusInfo(e);
+/* Billing Entries list is grouped into collapsible status sections:
+   Not yet submitted (only if any exist) / Submitted (oldest submitted first) /
+   Paid (latest paid first) / Voided (only if any exist, kept at the bottom).
+   Overdue stays a flag inside Submitted — shown in that section's header. */
+const EN_COLLAPSED={not_submitted:false,submitted:false,paid:true,voided:true};
+function toggleEnSection(k){ EN_COLLAPSED[k]=!EN_COLLAPSED[k]; renderEntries(); }
+function enRowHtml(e,dupeAckMap){
+  const t=entryCalc(e),s=entryStatusInfo(e);
     const chequeCell = e.chequeNo ? `<span class="mono" title="${esc(e.chequeRemark||'')}">${esc(e.chequeNo)}</span>` : (e.chequeRemark ? `<span class="muted" title="${esc(e.chequeRemark)}">—*</span>` : '<span class="muted">—</span>');
     const noSi=!e.si;
     const lockBadge = e.locked ? ` <span title="Locked — paid & cheque-matched" style="cursor:default">🔒</span>` : '';
@@ -1702,7 +1713,56 @@ function renderEntries(){
       <td>${chequeCell}</td>
       <td class="muted">${esc(e.source||'manual')}</td>
       <td style="white-space:nowrap">${actionBtns}</td></tr>`;
-  }).join(''):`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click "+ New entry", import a recon file, or import 2026 history.</div></td></tr>`;
+}
+function renderEntries(){
+  const rows=getFilteredEntries();
+  const dupeAckMap=getAckedDupeInfoByEntryId();
+  const q=($('#enSearch').value||'').trim(), statusF=$('#enStatusFilter').value;
+  // While searching or filtering by status, every section with matches stays open
+  // so a hit is never hidden inside a collapsed section.
+  const forceOpen=!!q||!!statusF;
+  const groups={not_submitted:[],submitted:[],paid:[],voided:[]};
+  rows.forEach(e=>{
+    if(e.voided) groups.voided.push(e);
+    else if(e.status==='paid') groups.paid.push(e);
+    else if(e.status==='submitted') groups.submitted.push(e);
+    else groups.not_submitted.push(e);
+  });
+  const byTrip=(a,b)=>String(a.tripStart||'').localeCompare(String(b.tripStart||''));
+  const bySi=(a,b)=>String(a.si||'').localeCompare(String(b.si||''),undefined,{numeric:true});
+  groups.not_submitted.sort(byTrip);
+  groups.submitted.sort((a,b)=>{
+    const as=a.submitted||'', bs=b.submitted||'';
+    if(!as && !bs) return byTrip(a,b);
+    if(!as) return 1;
+    if(!bs) return -1;
+    return as.localeCompare(bs)||byTrip(a,b);
+  });
+  groups.paid.sort((a,b)=>{
+    const ap=a.paidDate||'', bp=b.paidDate||'';
+    if(!ap && !bp) return bySi(a,b);
+    if(!ap) return 1;
+    if(!bp) return -1;
+    return bp.localeCompare(ap)||bySi(a,b);
+  });
+  const defs=[['not_submitted','Not yet submitted'],['submitted','Submitted'],['paid','Paid'],['voided','Voided']];
+  let html='';
+  defs.forEach(([k,label])=>{
+    const list=groups[k]; if(!list.length) return;
+    const open=forceOpen||!EN_COLLAPSED[k];
+    let hdr=`<span class="en-caret">${open?'▼':'▶'}</span><strong>${label}</strong> <span class="muted">(${list.length})</span>`;
+    if(k!=='voided'){
+      const total=list.reduce((s,e)=>s+entryCalc(e).due,0);
+      if(k!=='paid'){
+        const od=list.filter(e=>entryStatusInfo(e).cls==='unpaid');
+        if(od.length){ const odAmt=od.reduce((s,e)=>s+entryCalc(e).due,0); hdr+=` <span class="muted">·</span> <span class="en-sec-overdue">${od.length} overdue (₱${peso(odAmt)})</span>`; }
+      }
+      hdr+=` <span class="muted">·</span> <span class="en-sec-total">₱${peso(total)} due</span>`;
+    }
+    html+=`<tr class="en-section${forceOpen?'':' clickable'}"${forceOpen?'':` onclick="toggleEnSection('${k}')"`}><td colspan="13">${hdr}</td></tr>`;
+    if(open) html+=list.map(e=>enRowHtml(e,dupeAckMap)).join('');
+  });
+  $('#en-table tbody').innerHTML=html||`<tr><td colspan="13"><div class="empty-state"><div class="empty-icon">🧾</div><div class="empty-title">No entries</div>Click "+ New entry", import a recon file, or import 2026 history.</div></td></tr>`;
   updateBulkBar();
 }
 
