@@ -1339,7 +1339,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609191700'; // Fleet tab now lists the Fleet Registry's trucks (falls back to own list if unreachable); Net income hidden from Operations; Registry re-renders Fleet tab + plate dropdown once loaded
+const APP_VERSION = '202609191800'; // Trip form: truck type now looked up from the Fleet Registry first; editing a trip keeps its own plate in the dropdown even if that truck is now Retired/Sold
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -2308,7 +2308,8 @@ function generateCode(){
 }
 function lookupTruckType(){
   const plate=document.getElementById('f-plate').value;
-  const tk=fleet.find(t=>t.plate===plate);
+  // Registry first (it has trucks the old local list may not), then the local list as fallback.
+  const tk=(fleetRegistryPlates||[]).find(t=>t.plate===plate)||fleet.find(t=>t.plate===plate);
   document.getElementById('f-truck-type').value=tk?tk.type:'';
 }
 function computeWeek(){
@@ -2399,7 +2400,17 @@ function populatePlateDropdown(){
     const type = t.type ? ` — ${t.type}` : '';
     return `<option value="${t.plate}" ${t.plate===cur?'selected':''}>${t.plate}${type}${label}</option>`;
   }).join('');
+  ensurePlateOption(cur);
   if(cur) el.value=cur;
+}
+// A plate already on a trip must stay selectable even if that truck is now Retired/Sold (or not in the list),
+// otherwise the dropdown shows blank and the plate is lost on save.
+function ensurePlateOption(plate){
+  const el=document.getElementById('f-plate');
+  if(!el||!plate) return;
+  if(Array.from(el.options).some(o=>o.value===plate)) return;
+  const o=document.createElement('option'); o.value=plate; o.textContent=plate+' (not in active list)';
+  el.appendChild(o);
 }
 function populateDriverFilter(){
   const el=document.getElementById('filter-driver');
@@ -2661,6 +2672,7 @@ function fillForm(t){
     'f-checker':t.checker,'f-load':t.load,'f-gcash':t.gcash,'f-maint':t.maint,'f-other-exp':t.otherExp,
     'f-gen-remarks':t.genRemarks,'f-km':t.km
   };
+  ensurePlateOption(t.plate);
   for(const[id,val]of Object.entries(ids)){ const el=document.getElementById(id); if(el) el.value=val||''; }
   document.getElementById('f-no-driver-flag').checked=!!t.noDriverFlag;
   document.getElementById('f-no-driver-reason').value=t.noDriverReason||'';
