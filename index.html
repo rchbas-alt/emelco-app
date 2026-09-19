@@ -119,6 +119,47 @@ tr:last-child td{border-bottom:none}
 .status-badge-idle{background:rgba(90,97,117,.2);color:var(--text3);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
 .status-badge-oncall{background:rgba(58,134,255,.15);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
 .status-badge-resigned{background:rgba(231,76,60,.15);color:var(--red);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+/* DIRECTORY ROWS (Staff + Fleet) */
+.dir-period{display:flex;align-items:center;gap:6px;margin:0 0 12px;flex-wrap:wrap;font-size:11px;color:var(--text2)}
+.per-pill{padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.per-pill.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.dir-list{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.dir-head,.dir-row{display:grid;align-items:center;column-gap:10px;padding:8px 12px}
+.dir-head{background:var(--bg3);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.dir-row{border-bottom:1px solid var(--border);font-size:12px}
+.dir-row:hover{background:rgba(0,0,0,.02)}
+.dir-row>*,.dir-head>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dir-staff{grid-template-columns:minmax(0,2.2fr) 84px 72px 92px minmax(0,1.3fr) 60px minmax(0,1.4fr) 84px}
+.dir-fleet{grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 104px 60px 90px minmax(0,1.4fr) 84px}
+.dir-fleet-noinc{grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 104px 60px minmax(0,1.4fr) 84px}
+.dir-note{font-size:11px;color:var(--text3);margin:0 0 10px;line-height:1.5}
+.dir-sec{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;user-select:none}
+.dir-sec.locked{cursor:default}
+.dir-sec .cnt{font-weight:400;color:var(--text3)}
+.dir-sec .car{display:inline-block;width:12px;font-size:10px}
+.dir-av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;margin-right:8px;vertical-align:middle;flex-shrink:0}
+.dir-av.drv{background:rgba(58,134,255,.2);color:var(--blue)}
+.dir-av.hlp{background:rgba(46,204,113,.2);color:var(--green)}
+.dir-nm{font-weight:600}
+.dir-id{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;font-weight:400}
+.dir-plate{font-family:'DM Mono',monospace;font-weight:700;color:var(--accent);font-size:13px}
+.dir-sub{font-size:10px;color:var(--text3);white-space:nowrap}
+.dir-mono{font-family:'DM Mono',monospace;font-size:11px}
+.dir-warn{color:var(--red)}
+.dir-ok{color:var(--green)}
+.dir-mute{color:var(--text2)}
+.dir-empty{padding:32px 16px;text-align:center;color:var(--text3);font-size:12px}
+.dir-row .c-mt{display:none}
+.dir-act{display:flex;gap:4px;justify-content:flex-end}
+@media(max-width:820px){
+  .dir-head{display:none}
+  .dir-staff,.dir-fleet{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nm st" "mt ac";row-gap:6px;padding:10px 12px}
+  .dir-row .c-nm{grid-area:nm}
+  .dir-row .c-st{grid-area:st;justify-self:end}
+  .dir-row .c-ac{grid-area:ac;justify-self:end}
+  .dir-row .c-mt{grid-area:mt;display:block;white-space:normal;color:var(--text2);line-height:1.5}
+  .dir-row .c-d{display:none}
+}
 /* FLEET PAGE */
 .fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .fleet-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
@@ -415,16 +456,19 @@ body.role-operations .fin-only{display:none!important}
     <div class="tab-filter" onclick="filterStaff('Resigned',this)">Resigned</div>
   </div>
   <div id="staff-summary-bar" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
-  <div class="staff-grid" id="staff-grid"></div>
+  <div class="dir-period" id="staff-period"></div>
+  <div class="dir-list" id="staff-list"></div>
 </div>
 
 <!-- ====== FLEET PAGE ====== -->
 <div class="page" id="page-fleet">
   <div class="page-header">
     <h2>🚛 Fleet Directory</h2>
-    <button class="btn btn-ghost" onclick="openAddTruck()">+ Add Truck</button>
+    <button class="btn btn-ghost" id="fleet-add-btn" onclick="openAddTruck()">+ Add Truck</button>
   </div>
-  <div class="fleet-grid" id="fleet-grid"></div>
+  <div class="dir-note" id="fleet-note"></div>
+  <div class="dir-period" id="fleet-period"></div>
+  <div class="dir-list" id="fleet-list"></div>
 </div>
 
 <!-- ====== FUEL PAGE ====== -->
@@ -1295,7 +1339,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609182100'; // Restored Office Payroll redesign (payFrequency, weekly/semi-monthly blocks, per-person history) lost between Sep 11 and Sep 15 uploads; reapplied on top of all later work
+const APP_VERSION = '202609191700'; // Fleet tab now lists the Fleet Registry's trucks (falls back to own list if unreachable); Net income hidden from Operations; Registry re-renders Fleet tab + plate dropdown once loaded
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1618,6 +1662,7 @@ async function fetchFleetRegistry(){
     const trucks = data.trucks || [];
     if(!trucks.length) return; // don't replace a working local list with an empty one
     fleetRegistryPlates = trucks.map(t=>({ plate:t.plate, type:t.type||'', status:t.status||'Active' }));
+    try{ renderFleet(); populatePlateDropdown(); }catch(e){ console.warn('re-render after registry load failed', e); }
   }catch(e){ console.warn('fleet.html registry fetch failed — plate dropdown uses local fleet array instead:', e.message); }
 }
 
@@ -3244,25 +3289,59 @@ function statusBadgeClass(status){
   if(status==='Resigned') return 'status-badge-resigned';
   return 'status-badge-idle';
 }
-function renderStaff(){
-  let filtered=staff;
-  if(['DRIVER','HELPER','OFFICE','ADMIN','TECH'].includes(staffFilter)) filtered=staff.filter(s=>s.position===staffFilter);
-  else if(['Active','On Call','Idle','Resigned'].includes(staffFilter)) filtered=staff.filter(s=>s.status===staffFilter);
-  const counts={};
-  ['DRIVER','HELPER','OFFICE','ADMIN','TECH'].forEach(p=>{
-    counts[p+'_active']=staff.filter(s=>s.position===p&&s.status==='Active').length;
-    counts[p+'_other']=staff.filter(s=>s.position===p&&s.status!=='Active').length;
+// ===== DIRECTORY (Staff + Fleet) shared helpers =====
+let dirPeriod='ytd';
+const DIR_PERIODS=[['m3','3 mo'],['m6','6 mo'],['ytd','This year'],['all','All time']];
+const DIR_COLLAPSED={'staff-current':false,'staff-resigned':true,'fleet-current':false,'fleet-sold':true};
+function dirEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function dirLocalISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function dirPeriodStart(p){
+  const n=new Date();
+  if(p==='m3') return dirLocalISO(new Date(n.getFullYear(),n.getMonth()-3,n.getDate()));
+  if(p==='m6') return dirLocalISO(new Date(n.getFullYear(),n.getMonth()-6,n.getDate()));
+  if(p==='ytd') return n.getFullYear()+'-01-01';
+  return '';
+}
+function dirPeriodLabel(p){ const f=DIR_PERIODS.find(x=>x[0]===p); return f?f[1]:''; }
+// Trips (and optionally income) per key for the selected period. keysFn(t) returns the keys a trip counts toward.
+// "All time" counts every trip, dated or not (same as the old fleet card); a period needs a trip start date inside it.
+function dirTripStats(keysFn,withIncome){
+  const from=dirPeriodStart(dirPeriod), out={};
+  trips.forEach(t=>{
+    if(from && !(t.tripStartDate && t.tripStartDate>=from)) return;
+    const keys=keysFn(t); if(!keys.length) return;
+    let inc=0; if(withIncome){ try{ inc=computeAll(t).income||0; }catch(e){} }
+    new Set(keys).forEach(k=>{ const o=out[k]||(out[k]={trips:0,income:0}); o.trips++; o.income+=inc; });
   });
-  document.getElementById('staff-summary-bar').innerHTML=`
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 16px;display:flex;gap:20px;font-size:12px;flex-wrap:wrap">
-      <span>🚗 Drivers: <strong style="color:var(--green)">${counts.DRIVER_active} Active</strong> / <span style="color:var(--text2)">${counts.DRIVER_other} Other</span></span>
-      <span>🧑‍🤝‍🧑 Helpers: <strong style="color:var(--green)">${counts.HELPER_active} Active</strong> / <span style="color:var(--text2)">${counts.HELPER_other} Other</span></span>
-      <span>🏢 Office: <strong>${counts.OFFICE_active+counts.OFFICE_other}</strong></span>
-      <span>📋 Admin: <strong>${counts.ADMIN_active+counts.ADMIN_other}</strong></span>
-      <span>🔧 Tech: <strong>${counts.TECH_active+counts.TECH_other}</strong></span>
-      <span>Total Staff: <strong>${staff.length}</strong></span>
-    </div>`;
-  document.getElementById('staff-grid').innerHTML=filtered.map(s=>{
+  return out;
+}
+function renderDirPeriodBars(){
+  const html='<span>Trips:</span>'+DIR_PERIODS.map(([k,l])=>`<span class="per-pill${k===dirPeriod?' active':''}" onclick="setDirPeriod('${k}')">${l}</span>`).join('');
+  ['staff-period','fleet-period'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=html; });
+}
+function setDirPeriod(p){ dirPeriod=p; renderDirPeriodBars(); renderStaff(); renderFleet(); }
+function toggleDirSec(key){ DIR_COLLAPSED[key]=!DIR_COLLAPSED[key]; renderStaff(); renderFleet(); }
+function dirIdleShort(info){
+  if(info.days===null) return 'No trips';
+  if(info.days<=0) return 'Active today';
+  return 'idle '+info.days+'d';
+}
+// One collapsible section: header row + rows. forceOpen keeps it open while a filter is targeting it.
+function dirSectionHTML(key,label,list,rowFn,forceOpen){
+  if(!list.length) return '';
+  const open=forceOpen||!DIR_COLLAPSED[key];
+  const hdr=`<div class="dir-sec${forceOpen?' locked':''}"${forceOpen?'':` onclick="toggleDirSec('${key}')"`}><span class="car">${open?'▼':'▶'}</span>${label} <span class="cnt">(${list.length})</span></div>`;
+  return hdr+(open?list.map(rowFn).join(''):'');
+}
+
+// ===== STAFF PAGE (rows) =====
+function getFilteredStaff(){
+  if(['DRIVER','HELPER','OFFICE','ADMIN','TECH'].includes(staffFilter)) return staff.filter(s=>s.position===staffFilter);
+  if(['Active','On Call','Idle','Resigned'].includes(staffFilter)) return staff.filter(s=>s.status===staffFilter);
+  return staff;
+}
+// Card markup — kept for the print/PDF output only.
+function staffCardHTML(s){
     const lastDate=lastTripDateFor(t=>t.driver===s.name||t.h1===s.name||t.h2===s.name);
     const idleInfo=daysIdleLabel(lastDate);
     const idleWarn=idleInfo.days!==null && idleInfo.days>=7;
@@ -3293,7 +3372,76 @@ function renderStaff(){
         <button class="btn btn-ghost btn-sm" onclick="openEditStaff('${s.id}')">✏️ Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${s.id}','staff')">🗑</button>
       </div>
-    </div>`;}).join('');
+    </div>`;}
+function licenseShort(s){
+  if(s.position!=='DRIVER') return {text:'—',level:'na',title:''};
+  if(!s.licenseNumber) return {text:'⚠ No license',level:'bad',title:'No license on file'};
+  const title='License '+s.licenseNumber;
+  if(!s.licenseExpiry) return {text:s.licenseNumber,level:'ok',title};
+  const days=Math.round((new Date(s.licenseExpiry)-new Date())/86400000);
+  if(days<0) return {text:'⚠ Expired '+Math.abs(days)+'d ago',level:'bad',title};
+  if(days<=60) return {text:'⚠ Expires in '+days+'d',level:'bad',title};
+  return {text:'exp '+s.licenseExpiry,level:'ok',title};
+}
+function staffRowHTML(s,stats){
+  const last=lastTripDateFor(t=>t.driver===s.name||t.h1===s.name||t.h2===s.name);
+  const info=daysIdleLabel(last);
+  const idleWarn=info.days!==null && info.days>=7;
+  const lic=licenseShort(s);
+  const n=(stats[s.name]&&stats[s.name].trips)||0;
+  const av=s.position==='DRIVER'?'drv':'hlp';
+  const initials=dirEsc(s.name.split(' ').map(p=>p[0]).join('').slice(0,2));
+  const prev=s.previousIds&&s.previousIds.length?` title="Previous ID: ${dirEsc(s.previousIds.join(', '))}"`:'';
+  const resigned=s.status==='Resigned';
+  const lastTxt=last?fmtDate(last)+' · '+dirIdleShort(info):'No trips';
+  const licCls=lic.level==='bad'?'dir-warn':'dir-mute';
+  const meta=[
+    s.duty?dirEsc(s.duty):null,
+    lic.level!=='na'?`<span class="${licCls}">${dirEsc(lic.text)}</span>`:null,
+    `${n} trip${n===1?'':'s'}`,
+    `<span class="${idleWarn?'dir-warn':''}">${dirEsc(last?'Last '+fmtDate(last)+' · '+dirIdleShort(info):'No trips')}</span>`,
+    resigned&&s.resignedDate?`<span class="dir-warn">Resigned ${dirEsc(s.resignedDate)}</span>`:null
+  ].filter(Boolean).join(' · ');
+  return `<div class="dir-row dir-staff">
+    <div class="c-nm"><span class="dir-av ${av}">${initials}</span><span class="dir-nm">${dirEsc(s.name)}</span><span class="dir-id"${prev}>${dirEsc(s.staffId||'—')}</span></div>
+    <div class="c-st"><span class="${statusBadgeClass(s.status)}">${dirEsc(s.status)}</span>${resigned&&s.resignedDate?`<div class="dir-sub c-d">${dirEsc(s.resignedDate)}</div>`:''}</div>
+    <div class="c-d dir-mute">${dirEsc(s.duty||'—')}</div>
+    <div class="c-d dir-mono">${dirEsc(s.startDate||'—')}</div>
+    <div class="c-d ${licCls}" title="${dirEsc(lic.title)}">${dirEsc(lic.text)}</div>
+    <div class="c-d" style="font-weight:700;color:var(--blue)">${n}</div>
+    <div class="c-d ${idleWarn?'dir-warn':'dir-mute'}" title="${dirEsc(info.label)}">${dirEsc(lastTxt)}</div>
+    <div class="c-mt">${meta}</div>
+    <div class="c-ac dir-act"><button class="btn btn-ghost btn-sm" title="Edit" aria-label="Edit ${dirEsc(s.name)}" onclick="openEditStaff('${s.id}')">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Delete" aria-label="Delete ${dirEsc(s.name)}" onclick="askDelete('${s.id}','staff')">🗑</button></div>
+  </div>`;
+}
+function renderStaff(){
+  let filtered=staff;
+  if(['DRIVER','HELPER','OFFICE','ADMIN','TECH'].includes(staffFilter)) filtered=staff.filter(s=>s.position===staffFilter);
+  else if(['Active','On Call','Idle','Resigned'].includes(staffFilter)) filtered=staff.filter(s=>s.status===staffFilter);
+  const counts={};
+  ['DRIVER','HELPER','OFFICE','ADMIN','TECH'].forEach(p=>{
+    counts[p+'_active']=staff.filter(s=>s.position===p&&s.status==='Active').length;
+    counts[p+'_other']=staff.filter(s=>s.position===p&&s.status!=='Active').length;
+  });
+  document.getElementById('staff-summary-bar').innerHTML=`
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 16px;display:flex;gap:20px;font-size:12px;flex-wrap:wrap">
+      <span>🚗 Drivers: <strong style="color:var(--green)">${counts.DRIVER_active} Active</strong> / <span style="color:var(--text2)">${counts.DRIVER_other} Other</span></span>
+      <span>🧑‍🤝‍🧑 Helpers: <strong style="color:var(--green)">${counts.HELPER_active} Active</strong> / <span style="color:var(--text2)">${counts.HELPER_other} Other</span></span>
+      <span>🏢 Office: <strong>${counts.OFFICE_active+counts.OFFICE_other}</strong></span>
+      <span>📋 Admin: <strong>${counts.ADMIN_active+counts.ADMIN_other}</strong></span>
+      <span>🔧 Tech: <strong>${counts.TECH_active+counts.TECH_other}</strong></span>
+      <span>Total Staff: <strong>${staff.length}</strong></span>
+    </div>`;
+  const stats=dirTripStats(t=>[t.driver,t.h1,t.h2].filter(Boolean),false);
+  const cur=filtered.filter(s=>s.status!=='Resigned'), res=filtered.filter(s=>s.status==='Resigned');
+  const rowFn=s=>staffRowHTML(s,stats);
+  const heads=['Name','Status','Duty','Start','License','Trips','Last trip',''];
+  let html=`<div class="dir-head dir-staff">${heads.map((h,i)=>`<div class="${i===0||i===1?'':'c-d'}">${h}</div>`).join('')}</div>`;
+  html+=dirSectionHTML('staff-current','Current staff',cur,rowFn,false);
+  html+=dirSectionHTML('staff-resigned','Resigned',res,rowFn,staffFilter==='Resigned');
+  if(!cur.length && !res.length) html+='<div class="dir-empty">No staff match this filter.</div>';
+  document.getElementById('staff-list').innerHTML=html;
+  renderDirPeriodBars();
   updateStaffBadge();
 }
 
@@ -3316,12 +3464,13 @@ function saveTruck(){
   else{ fleet.push(tk); toast('Truck added ✓','success'); }
   saveFleetData(); closeTruckModal(); renderFleet(); populatePlateDropdown();
 }
-function renderFleet(){
-  const tripsByPlate={};
-  trips.forEach(t=>{ if(t.plate){tripsByPlate[t.plate]=(tripsByPlate[t.plate]||0)+1;} });
-  const incByPlate={};
-  trips.forEach(t=>{ if(t.plate){const c=computeAll(t);incByPlate[t.plate]=(incByPlate[t.plate]||0)+c.income;} });
-  document.getElementById('fleet-grid').innerHTML=fleet.map(tk=>{
+function fleetAllTimeMaps(){
+  const tripsByPlate={}, incByPlate={};
+  trips.forEach(t=>{ if(t.plate){ tripsByPlate[t.plate]=(tripsByPlate[t.plate]||0)+1; const c=computeAll(t); incByPlate[t.plate]=(incByPlate[t.plate]||0)+c.income; } });
+  return {tripsByPlate,incByPlate};
+}
+// Card markup — kept for the print/PDF output only (all-time figures, as before).
+function fleetCardHTML(tk,tripsByPlate,incByPlate){
     const lastDate=lastTripDateFor(t=>t.plate===tk.plate);
     const idleInfo=daysIdleLabel(lastDate);
     const idleWarn=idleInfo.days!==null && idleInfo.days>=7;
@@ -3337,7 +3486,7 @@ function renderFleet(){
       <div style="margin-bottom:10px"><span class="${statusClass}">${statusLabel}</span></div>
       <div class="fleet-meta">
         <div class="fleet-stat"><div class="fleet-stat-label">Trips</div><div style="font-weight:700;color:var(--blue)">${tripsByPlate[tk.plate]||0}</div></div>
-        <div class="fleet-stat"><div class="fleet-stat-label">Net Income</div><div style="font-weight:700;color:${(incByPlate[tk.plate]||0)>=0?'var(--green)':'var(--red)'}">₱${fmtK(incByPlate[tk.plate]||0)}</div></div>
+        ${currentRole==='operations'?'':`<div class="fleet-stat"><div class="fleet-stat-label">Net Income</div><div style="font-weight:700;color:${(incByPlate[tk.plate]||0)>=0?'var(--green)':'var(--red)'}">₱${fmtK(incByPlate[tk.plate]||0)}</div></div>`}
       </div>
       <div style="margin-top:8px;font-size:11px;color:${idleWarn?'var(--red)':'var(--text2)'}">
         Last Trip: ${lastDate?fmtDate(lastDate):'—'} · <strong>${idleInfo.label}</strong>
@@ -3346,7 +3495,80 @@ function renderFleet(){
         <button class="btn btn-ghost btn-sm" onclick="openEditTruck('${tk.id}')">✏️ Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${tk.id}','truck')">🗑</button>
       </div>
-    </div>`;}).join('');
+    </div>`;}
+const FLEET_REGISTRY_URL='https://rchbas-alt.github.io/emelco-app/fleet.html';
+// Registry (fleet.html) is the source of truth once it has loaded; this app's own list is only the fallback.
+function fleetUsesRegistry(){ return !!(fleetRegistryPlates && fleetRegistryPlates.length); }
+function fleetDisplayList(){ return fleetUsesRegistry()?fleetRegistryPlates:fleet; }
+function fleetStatusBadge(tk){
+  const repair=(tk.status==='maintenance'||tk.status==='Under Repair');
+  const cls=tk.status==='Active'?'status-badge-active'
+    :(tk.status==='sold'||tk.status==='Retired')?'badge badge-unpaid'
+    :repair?'badge badge-pending'
+    :'status-badge-idle';
+  const label=repair?'🔧 '+(tk.status==='maintenance'?'Maintenance':'Under Repair'):tk.status;
+  return `<span class="${cls}">${dirEsc(label)}</span>`;
+}
+function fleetRowHTML(tk,stats,fromReg,showInc){
+  const last=lastTripDateFor(t=>t.plate===tk.plate);
+  const info=daysIdleLabel(last);
+  const idleWarn=info.days!==null && info.days>=7;
+  const st=stats[tk.plate]||{trips:0,income:0};
+  const incTxt='₱'+fmtK(st.income);
+  const incCol=st.income>=0?'var(--green)':'var(--red)';
+  const lastTxt=last?fmtDate(last)+' · '+dirIdleShort(info):'No trips';
+  const meta=[
+    dirEsc(tk.type),
+    `${st.trips} trip${st.trips===1?'':'s'}`,
+    showInc?`<span style="color:${incCol}">${incTxt}</span>`:null,
+    `<span class="${idleWarn?'dir-warn':''}">${dirEsc(last?'Last '+fmtDate(last)+' · '+dirIdleShort(info):'No trips')}</span>`
+  ].filter(Boolean).join(' · ');
+  const actions=fromReg
+    ?`<a class="btn btn-ghost btn-sm" href="${FLEET_REGISTRY_URL}" target="_blank" title="Open Fleet Registry" aria-label="Open Fleet Registry">↗</a>`
+    :`<button class="btn btn-ghost btn-sm" title="Edit" aria-label="Edit ${dirEsc(tk.plate)}" onclick="openEditTruck('${tk.id}')">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Delete" aria-label="Delete ${dirEsc(tk.plate)}" onclick="askDelete('${tk.id}','truck')">🗑</button>`;
+  return `<div class="dir-row dir-fleet${showInc?'':' dir-fleet-noinc'}">
+    <div class="c-nm dir-plate">${dirEsc(tk.plate)}</div>
+    <div class="c-d dir-mute">${dirEsc(tk.type)}</div>
+    <div class="c-st">${fleetStatusBadge(tk)}</div>
+    <div class="c-d" style="font-weight:700;color:var(--blue)">${st.trips}</div>
+    ${showInc?`<div class="c-d" style="font-weight:700;color:${incCol}">${incTxt}</div>`:''}
+    <div class="c-d ${idleWarn?'dir-warn':'dir-mute'}" title="${dirEsc(info.label)}">${dirEsc(lastTxt)}</div>
+    <div class="c-mt">${meta}</div>
+    <div class="c-ac dir-act">${actions}</div>
+  </div>`;
+}
+function renderFleet(){
+  const fromReg=fleetUsesRegistry();
+  const list=fleetDisplayList();
+  const showInc=currentRole!=='operations'; // Net income is a financial figure — Owner only, like the rest of the app
+  const stats=dirTripStats(t=>t.plate?[t.plate]:[],showInc);
+  const retiredStatus=fromReg?'Retired':'sold';
+  const cur=list.filter(tk=>tk.status!==retiredStatus), sold=list.filter(tk=>tk.status===retiredStatus);
+  const rowFn=tk=>fleetRowHTML(tk,stats,fromReg,showInc);
+  const heads=['Plate','Type','Status','Trips'].concat(showInc?['Net income']:[]).concat(['Last trip','']);
+  let html=`<div class="dir-head dir-fleet${showInc?'':' dir-fleet-noinc'}">${heads.map((h,i)=>`<div class="${i===0||i===2?'':'c-d'}">${h}</div>`).join('')}</div>`;
+  html+=dirSectionHTML('fleet-current','Current fleet',cur,rowFn,false);
+  html+=dirSectionHTML('fleet-sold',fromReg?'Retired':'Sold',sold,rowFn,false);
+  if(!cur.length && !sold.length) html+='<div class="dir-empty">No trucks yet. Use + Add Truck.</div>';
+  document.getElementById('fleet-list').innerHTML=html;
+  const btn=document.getElementById('fleet-add-btn');
+  if(btn){
+    if(fromReg){ btn.textContent='🚛 Manage in Fleet Registry ↗'; btn.onclick=()=>window.open(FLEET_REGISTRY_URL,'_blank'); }
+    else { btn.textContent='+ Add Truck'; btn.onclick=openAddTruck; }
+  }
+  const note=document.getElementById('fleet-note');
+  if(note){
+    if(fromReg){
+      const regSet=new Set(fleetRegistryPlates.map(t=>String(t.plate||'').trim().toUpperCase()));
+      const missing=[...new Set(fleet.map(tk=>String(tk.plate||'').trim().toUpperCase()).filter(p=>p&&!regSet.has(p)))];
+      let h='Trucks here come from the Fleet Registry — add, edit or retire them there.';
+      if(missing.length) h+=` <span class="dir-warn" title="${dirEsc(missing.join(', '))}">⚠ In this app's old list but not in the Registry: ${dirEsc(missing.slice(0,8).join(', '))}${missing.length>8?' +'+(missing.length-8)+' more':''}</span>`;
+      note.innerHTML=h;
+    } else {
+      note.textContent="Fleet Registry not loaded — showing this app's own truck list.";
+    }
+  }
+  renderDirPeriodBars();
 }
 
 // ===== SUMMARY PAGE =====
@@ -4088,7 +4310,7 @@ function exportFleetExcel(){
   if(typeof XLSX==='undefined'){toast('Excel library not loaded — check internet connection','error');return;}
   const tripsByPlate={};trips.forEach(t=>{if(t.plate){tripsByPlate[t.plate]=(tripsByPlate[t.plate]||0)+1;}});
   const hdrs=['Plate #','Truck Type','Fleet Status','Total Trips','Last Trip','Idle Days'];
-  const rows=fleet.map(tk=>{
+  const rows=fleetDisplayList().map(tk=>{
     const lastDate=lastTripDateFor(t=>t.plate===tk.plate);
     const idleInfo=daysIdleLabel(lastDate);
     return[tk.plate,tk.type,tk.status,tripsByPlate[tk.plate]||0,lastDate?fmtDate(lastDate):'',idleInfo.days!==null?idleInfo.days:''];
@@ -4102,15 +4324,16 @@ function exportFleetExcel(){
 }
 
 function printStaffPDF(){
-  const grid=document.getElementById('staff-grid');
-  if(!grid){toast('Staff directory not loaded','error');return;}
-  openPrintWindow('EMELCO Staff Directory', grid.innerHTML);
+  const list=getFilteredStaff();
+  if(!list.length){toast('Nothing to print','error');return;}
+  openPrintWindow('EMELCO Staff Directory', list.map(staffCardHTML).join(''));
 }
 
 function printFleetPDF(){
-  const grid=document.getElementById('fleet-grid');
-  if(!grid){toast('Fleet directory not loaded','error');return;}
-  openPrintWindow('EMELCO Fleet Directory', grid.innerHTML);
+  const fl=fleetDisplayList();
+  if(!fl.length){toast('Nothing to print','error');return;}
+  const {tripsByPlate,incByPlate}=fleetAllTimeMaps();
+  openPrintWindow('EMELCO Fleet Directory', fl.map(tk=>fleetCardHTML(tk,tripsByPlate,incByPlate)).join(''));
 }
 
 function openPrintWindow(title, gridHTML){
