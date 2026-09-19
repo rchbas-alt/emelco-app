@@ -120,6 +120,34 @@ body.role-operations .owner-only{display:none!important}
 .fc-meta{font-size:11px;color:var(--text2);margin:6px 0 10px;line-height:1.6}
 .fc-flags{display:flex;flex-wrap:wrap;gap:4px}
 
+/* registry rows */
+.dir-list{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.dir-head,.dir-row{display:grid;align-items:center;column-gap:10px;padding:8px 12px;grid-template-columns:minmax(0,1.3fr) 150px minmax(0,1fr) minmax(0,1.4fr) minmax(0,1.2fr) minmax(0,2fr)}
+.dir-head{background:var(--bg3);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.dir-row{border-bottom:1px solid var(--border);font-size:12px;cursor:pointer}
+.dir-row:hover{background:rgba(0,0,0,.02)}
+.dir-row.flagged{box-shadow:inset 3px 0 0 var(--red)}
+.dir-row>*,.dir-head>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dir-sec{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;user-select:none}
+.dir-sec.locked{cursor:default}
+.dir-sec .cnt{font-weight:400;color:var(--text3)}
+.dir-sec .car{display:inline-block;width:12px;font-size:10px}
+.dir-plate{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--accent)}
+.dir-chassis{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);font-weight:400;margin-left:8px}
+.dir-mute{color:var(--text2)}
+.dir-empty{padding:32px 16px;text-align:center;color:var(--text3);font-size:12px}
+.dir-row .c-fl2{display:none}
+@media(max-width:820px){
+  .dir-head{display:none}
+  .dir-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"pl st" "mt mt" "fl fl";row-gap:5px;padding:10px 12px}
+  .dir-row .c-pl{grid-area:pl}
+  .dir-row .c-st{grid-area:st;justify-self:end}
+  .dir-row .c-mt{grid-area:mt;white-space:normal;color:var(--text2);line-height:1.5}
+  .dir-row .c-fl{grid-area:fl;white-space:normal}
+  .dir-row .c-d{display:none}
+  .dir-row .c-fl2{display:block}
+}
+
 /* login */
 .login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
 .login-overlay.hidden{display:none}
@@ -234,7 +262,7 @@ body.role-operations .owner-only{display:none!important}
       <button class="btn btn-primary btn-sm" onclick="openTruckModal()">+ New Truck</button>
     </div>
     <div class="hint">Chassis number is each truck's permanent identity — plate can change (e.g. confiscation) without losing history.</div>
-    <div class="fleet-grid" id="registry-grid"></div>
+    <div class="dir-list" id="registry-grid"></div>
   </div>
 
   <!-- ===== MAINTENANCE LOG ===== -->
@@ -409,7 +437,7 @@ body.role-operations .owner-only{display:none!important}
    Standalone module. Own data file, same Cloudflare Worker.
    index.html is NOT touched by this file (Phase 1 rule).
    ============================================================ */
-const APP_VERSION = '202608231400';
+const APP_VERSION = '202609191600'; // Registry list redrawn as compact rows (Retired collapsed); data and index.html link unchanged
 
 // ---- proxy wiring: identical mechanism to index.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -716,6 +744,34 @@ function populatePlateFilter(){
   sel.innerHTML='<option value="">All trucks</option>'+STATE.trucks.map(t=>`<option value="${esc(t.plate)}" ${t.plate===cur?'selected':''}>${esc(t.plate)}</option>`).join('');
 }
 
+const REG_COLLAPSED={current:false,retired:true};
+function toggleRegSec(k){ REG_COLLAPSED[k]=!REG_COLLAPSED[k]; renderRegistry(); }
+function registryRowHTML(t){
+  const flags=truckFlags(t);
+  const badgeCls = t.status==='Active'?'badge-active':t.status==='Retired'?'badge-retired':(t.repair&&t.repair.severity==='Major'?'badge-major':'badge-repair');
+  const statusText = t.status==='Under Repair' ? `Under Repair (${(t.repair&&t.repair.severity)||'Minor'})` : t.status;
+  const chipStyle='border-color:rgba(192,57,43,.4);color:var(--red)';
+  // Desktop: a flag count first (so it survives a narrow column), then the first flag; full list is in the tooltip.
+  const chips=flags.length?((flags.length>1?`<span class="chip" style="${chipStyle};font-weight:700">${flags.length} flags</span>`:'')+`<span class="chip" style="${chipStyle}">${esc(flags[0])}</span>`):'';
+  const allChips=flags.slice(0,3).map(f=>`<span class="chip" style="${chipStyle}">${esc(f)}</span>`).join('')+(flags.length>3?`<span class="chip">+${flags.length-3} more</span>`:'');
+  const meta=[t.type,t.regName,t.owner?('Owner: '+t.owner):''].filter(Boolean).map(esc).join(' · ')||'—';
+  return `<div class="dir-row ${flags.length?'flagged':''}" onclick="openTruckModal('${esc(t.chassis||t.plate)}')">
+    <div class="c-pl"><span class="dir-plate">${esc(t.plate)||'—'}</span><span class="dir-chassis">${esc(t.chassis)||'no chassis yet'}</span></div>
+    <div class="c-st"><span class="badge ${badgeCls}">${esc(statusText)}</span></div>
+    <div class="c-d dir-mute">${esc(t.type||'—')}</div>
+    <div class="c-d dir-mute">${esc(t.regName||'—')}</div>
+    <div class="c-d dir-mute">${esc(t.owner||'—')}</div>
+    <div class="c-d c-fl" title="${esc(flags.join('; '))}">${chips}</div>
+    <div class="c-mt c-fl2">${meta}</div>
+    ${flags.length?`<div class="c-fl c-fl2">${allChips}</div>`:''}
+  </div>`;
+}
+function registrySectionHTML(key,label,list,forceOpen){
+  if(!list.length) return '';
+  const open=forceOpen||!REG_COLLAPSED[key];
+  const hdr=`<div class="dir-sec${forceOpen?' locked':''}"${forceOpen?'':` onclick="toggleRegSec('${key}')"`}><span class="car">${open?'▼':'▶'}</span>${label} <span class="cnt">(${list.length})</span></div>`;
+  return hdr+(open?list.map(registryRowHTML).join(''):'');
+}
 function renderRegistry(){
   const q=($('#regSearch').value||'').toLowerCase();
   const statusF=$('#regStatusFilter').value;
@@ -725,24 +781,15 @@ function renderRegistry(){
     return true;
   });
   const grid=$('#registry-grid');
-  if(!list.length){ grid.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🚛</div><div class="empty-title">No trucks found</div></div>`; return; }
-  grid.innerHTML=list.map(t=>{
-    const flags=truckFlags(t);
-    const badgeCls = t.status==='Active'?'badge-active':t.status==='Retired'?'badge-retired':(t.repair&&t.repair.severity==='Major'?'badge-major':'badge-repair');
-    const statusText = t.status==='Under Repair' ? `Under Repair (${(t.repair&&t.repair.severity)||'Minor'})` : t.status;
-    return `<div class="fleet-card ${flags.length?'flagged':''}" onclick="openTruckModal('${esc(t.chassis||t.plate)}')">
-      <div class="fc-top">
-        <div><div class="fc-plate">${esc(t.plate)||'—'}</div><div class="fc-chassis">${esc(t.chassis)||'no chassis yet'}</div></div>
-        <span class="badge ${badgeCls}">${esc(statusText)}</span>
-      </div>
-      <div class="fc-meta">
-        ${esc(t.type||'—')}<br>
-        ${esc(t.regName||'—')}<br>
-        Owner: ${esc(t.owner||'—')}
-      </div>
-      ${flags.length? `<div class="fc-flags">${flags.slice(0,3).map(f=>`<span class="chip" style="border-color:rgba(192,57,43,.4);color:var(--red)">${esc(f)}</span>`).join('')}${flags.length>3?`<span class="chip">+${flags.length-3} more</span>`:''}</div>` : ''}
-    </div>`;
-  }).join('');
+  if(!list.length){ grid.innerHTML=`<div class="empty-state"><div class="empty-icon">🚛</div><div class="empty-title">No trucks found</div></div>`; return; }
+  // A search or status filter keeps every section with matches open, so a hit is never hidden in a collapsed one.
+  const forceOpen=!!q||!!statusF;
+  const cur=list.filter(t=>t.status!=='Retired'), ret=list.filter(t=>t.status==='Retired');
+  const heads=['Plate','Status','Type','Registered name','Owner','Flags'];
+  let html=`<div class="dir-head">${heads.map((h,i)=>`<div>${h}</div>`).join('')}</div>`;
+  html+=registrySectionHTML('current','Current fleet',cur,forceOpen);
+  html+=registrySectionHTML('retired','Retired',ret,forceOpen);
+  grid.innerHTML=html;
 }
 
 let editingChassisKey=null;
