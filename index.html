@@ -348,6 +348,7 @@ body.role-operations .fin-only{display:none!important}
     <table id="trip-table">
       <thead><tr>
         <th>#</th>
+        <th title="Payment status of this trip's billing period">●</th>
         <th class="sortable col-code" onclick="sortBy('code')">Code</th>
         <th class="sortable col-date" onclick="sortBy('tripStartDate')">Trip Date</th>
         <th class="col-cutoff">Cut-Off</th><th class="col-client">Client</th><th class="col-area">Area</th><th class="col-dest">Destination</th><th class="col-dr">DR #</th><th class="col-tripticket">Trip Ticket</th>
@@ -1641,6 +1642,113 @@ function scheduleCloudPush(){
 // `fleet` array exactly as before. If this fetch fails or the file
 // is empty, populatePlateDropdown() silently falls back to `fleet`.
 // ============================================================
+// ============================================================
+// PAYMENT STATUS (read-only, mirrors billing.html's own matching
+// logic exactly, so a trip's dot here always agrees with the Trip
+// Bill Check there). Never writes back — billing.html owns the data.
+// ============================================================
+const BILLING_FILE='emelco_billing_2026.json';
+const CUTOFF_MONTHS={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,JULY:7,AUG:8,SEP:9,SEPT:9,OCT:10,NOV:11,DEC:12};
+function parseCutoff(raw){
+  const s=String(raw||'').trim().toUpperCase();
+  if(!s) return null;
+  const m=s.match(/^([A-Z]+)\.?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*,?\s*(\d{4})$/);
+  if(!m) return null;
+  const mo=CUTOFF_MONTHS[m[1]]; if(!mo) return null;
+  const p=n=>String(Number(n)).padStart(2,'0');
+  const start=`${m[4]}-${p(mo)}-${p(m[2])}`, end=`${m[4]}-${p(mo)}-${p(m[3])}`;
+  if(end<start) return null;
+  return {start,end,label:s};
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function addDays(iso,d){ const t=new Date(iso); t.setDate(t.getDate()+d); return t.toISOString().slice(0,10); }
+function entryDueDate(e){ return e.submitted?addDays(e.submitted,Number(e.dueDays)||30):''; }
+function entryIsOverdue(e){
+  if(e.status==='paid'||e.voided) return false;
+  const dd=entryDueDate(e);
+  return dd ? daysBetween(todayISO(),dd)<0 : false;
+}
+
+let billingPeriods=null;    // array of {bu,start,end,ents[]} — null until fetched
+let billingLoadFailed=false;
+
+async function fetchBillingEntries(){
+  try{
+    const r=await fetch(`${PROXY_URL}/contents/${BILLING_FILE}?t=`+Date.now(),{
+      headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+    });
+    if(!r.ok) throw new Error('http '+r.status);
+    const meta=await r.json();
+    let text;
+    if(meta.content && meta.encoding==='base64'){ text=safeAtobUtf8(meta.content); }
+    else{
+      const blobRes=await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`,{
+        headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
+      });
+      if(!blobRes.ok) throw new Error('blob '+blobRes.status);
+      text=safeAtobUtf8((await blobRes.json()).content);
+    }
+    const data=JSON.parse(text);
+    const entries=(data.entries||[]).filter(e=>!e.voided);
+    const per={};
+    entries.forEach(e=>{
+      if(!e.bu||!e.tripStart||!e.tripEnd) return;
+      const bu=String(e.bu).trim().toUpperCase(), k=bu+'|'+e.tripStart+'|'+e.tripEnd;
+      (per[k]=per[k]||{bu,start:e.tripStart,end:e.tripEnd,ents:[]}).ents.push(e);
+    });
+    billingPeriods=Object.values(per);
+    billingLoadFailed=false;
+    try{ renderTable(); }catch(e){ console.warn('re-render after billing fetch failed', e); }
+  }catch(e){
+    billingLoadFailed=true;
+    console.warn('billing entries fetch failed — payment status dots unavailable:', e.message);
+  }
+}
+
+// Best-overlap match, same rule buildTripBillRows() uses in billing.html —
+// keeps this dot and that Trip Bill Check panel always in agreement.
+function matchTripPeriod(t){
+  if(!billingPeriods) return {state:'loading'};
+  const co=parseCutoff(t.cutoff);
+  if(!co) return {state:t.cutoff?'unresolved':'uncut'};
+  const bu=String(t.client||'').trim().toUpperCase();
+  let best=null,bestOv=0;
+  billingPeriods.forEach(p=>{
+    if(p.bu!==bu) return;
+    const lo=co.start>p.start?co.start:p.start, hi=co.end<p.end?co.end:p.end;
+    if(lo>hi) return;
+    const ov=(Date.parse(hi)-Date.parse(lo))/86400000+1;
+    if(ov>bestOv){ bestOv=ov; best=p; }
+  });
+  if(!best) return {state:'unresolved'};
+  const paid=best.ents.filter(e=>e.status==='paid');
+  const overdue=best.ents.some(entryIsOverdue);
+  if(overdue) return {state:'overdue',period:best};
+  if(paid.length===best.ents.length) return {state:'paid',period:best};
+  if(paid.length>0) return {state:'mixed',period:best};
+  return {state:'processing',period:best};
+}
+const STATUS_DOT={
+  uncut:      {color:'var(--text3)',       title:'No cutoff yet'},
+  loading:    {color:'var(--text3)',       title:'Loading payment status…'},
+  unresolved: {color:'var(--text3)',       title:'⚠ Cutoff doesn\'t match any billing period — check for a typo',warn:true},
+  processing: {color:'var(--orange,#e67e22)', title:'Billed, awaiting payment'},
+  overdue:    {color:'var(--red)',         title:'Overdue'},
+  mixed:      {color:'var(--blue)',        title:'Partly paid — some entries in this period are still unpaid'},
+  paid:       {color:'var(--green)',       title:'Paid'},
+};
+function statusDotHTML(t){
+  const m=matchTripPeriod(t);
+  const d=STATUS_DOT[m.state];
+  let title=d.title;
+  if(m.period && m.period.ents.some(e=>e.status==='paid'&&e.paidDate)){
+    const dates=[...new Set(m.period.ents.filter(e=>e.status==='paid').map(e=>e.paidDate))];
+    if(dates.length) title+=' — paid '+dates.sort().join(', ');
+  }
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${d.color};margin-right:${d.warn?'2px':'0'}" title="${title.replace(/"/g,'&quot;')}"></span>${d.warn?'<span title="'+title.replace(/"/g,'&quot;')+'" style="font-size:9px">⚠</span>':''}`;
+}
+
 async function fetchFleetRegistry(){
   try{
     const r = await fetch(`${PROXY_URL}/contents/emelco_fleet_2026.json?t=`+Date.now(), {
@@ -3006,7 +3114,7 @@ function renderTable(){
 
   document.getElementById('record-info').innerHTML=`${filtered.length} of ${trips.length} trips${dupeInfo}`;
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="23"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="24"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
     renderPaginationControls(0,1);
     return;
   }
@@ -3022,6 +3130,7 @@ function renderTable(){
       :'';
     return`<tr class="${trClass}">
       <td style="color:var(--text3)">${i+1}</td>
+      <td>${statusDotHTML(t)}</td>
       <td class="code-cell col-code">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
       <td class="col-date" style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
       <td class="col-cutoff" style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
@@ -4729,6 +4838,7 @@ async function publishAppVersion(note){
 (async()=>{
   await loadData();
   fetchFleetRegistry(); // fire-and-forget, non-blocking — populatePlateDropdown() only reads it once it resolves
+  fetchBillingEntries(); // fire-and-forget, non-blocking — dots show "loading" grey until this resolves, then re-render
   checkAppVersion(); // non-blocking, runs in background
   // Normalize all cutoff values including preloaded
   trips.forEach(t=>{ if(t.cutoff) t.cutoff=normalizeCutoff(t.cutoff); });
