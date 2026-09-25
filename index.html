@@ -298,19 +298,6 @@ body.role-operations .fin-only{display:none!important}
     <div class="stat-card profit fin-only"><div class="stat-label">Net Income</div><div class="stat-value" id="stat-profit">₱0</div><div class="stat-sub">Before OPEX</div></div>
     <div class="stat-card fin-only"><div class="stat-label">Avg % Profit</div><div class="stat-value" id="stat-pct">0%</div><div class="stat-sub">Excl. VAT</div></div>
   </div>
-  <!-- DUPE BANNER -->
-  <div class="dupe-banner" id="dupe-banner">
-    <span style="font-size:18px">⚠️</span>
-    <div class="dupe-banner-text">
-      <strong id="dupe-banner-text">Duplicates detected.</strong>
-      <span style="color:var(--text2)"> Rows highlighted below.</span>
-      <div class="dupe-legend" style="margin-top:4px">
-        <div class="dupe-legend-item"><span class="dupe-icon exact">🔴 EXACT</span> Same code, or same date + plate + driver + area + destination</div>
-        <div class="dupe-legend-item"><span class="dupe-icon soft">🟡 SIMILAR</span> Same date + plate + driver (different area/destination)</div>
-      </div>
-    </div>
-    <button class="btn btn-ghost btn-sm" onclick="filterDupes()" id="dupe-filter-btn">Show Only Dupes</button>
-  </div>
   <div class="toolbar">
     <input class="search-box" type="text" id="search" placeholder="Search code, trip ticket, DR #, driver, plate, destination, cut-off, remarks… (comma = or)" oninput="currentPage=1;renderTable()">
     <select class="filter-select" id="filter-client" onchange="currentPage=1;renderTable()">
@@ -324,14 +311,25 @@ body.role-operations .fin-only{display:none!important}
       <option value="none">No cutoff</option>
       <option value="has">Has cutoff</option>
     </select>
-    <select class="filter-select" id="filter-dupe" onchange="currentPage=1;renderTable()">
+    <select class="filter-select" id="filter-entries" onchange="currentPage=1;renderTable()">
       <option value="">All Entries</option>
-      <option value="exact">🔴 Exact Duplicates</option>
       <option value="soft">🟡 Similar (same date+plate+driver)</option>
-      <option value="any">⚠️ All Duplicates</option>
+      <option value="uncut">● No cutoff yet</option>
+      <option value="unresolved">● ⚠ Cutoff unresolved</option>
+      <option value="processing">● Processing</option>
+      <option value="overdue">● Overdue</option>
+      <option value="mixed">● Mixed (partly paid)</option>
+      <option value="paid">● Paid</option>
     </select>
     <span class="record-info" id="record-info"></span>
     <button class="btn btn-ghost btn-sm" onclick="toggleColPicker()" title="Choose which columns to show. Saved on this device only — it does not change anything for anyone else.">🧩 Columns</button>
+  </div>
+  <div style="font-size:11px;color:var(--text3);margin:0 0 10px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+    <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text3);margin-right:4px"></span>No cutoff / unresolved ⚠</span>
+    <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--orange,#e67e22);margin-right:4px"></span>Processing</span>
+    <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:4px"></span>Overdue</span>
+    <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);margin-right:4px"></span>Mixed</span>
+    <span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:4px"></span>Paid</span>
   </div>
   <div id="col-picker" style="display:none;margin:0 0 10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
     <div style="font-weight:700;margin-bottom:2px">Show columns</div>
@@ -1713,9 +1711,10 @@ function matchTripPeriod(t){
   const co=parseCutoff(t.cutoff);
   if(!co) return {state:t.cutoff?'unresolved':'uncut'};
   const bu=String(t.client||'').trim().toUpperCase();
+  const buPeriods=billingPeriods.filter(p=>p.bu===bu);
+  if(!buPeriods.length) return {state:'uncut'}; // this BU never appears in billing at all (e.g. a subcontractor) — a typo warning here would just be noise
   let best=null,bestOv=0;
-  billingPeriods.forEach(p=>{
-    if(p.bu!==bu) return;
+  buPeriods.forEach(p=>{
     const lo=co.start>p.start?co.start:p.start, hi=co.end<p.end?co.end:p.end;
     if(lo>hi) return;
     const ov=(Date.parse(hi)-Date.parse(lo))/86400000+1;
@@ -2908,7 +2907,6 @@ function getBadge(status){
 function sortBy(col){ if(sortCol===col)sortDir*=-1; else{sortCol=col;sortDir=-1;} renderTable(); }
 // ===== DUPLICATE DETECTION =====
 let dupeMap={}; // id -> 'exact' | 'soft' | null
-let showingDupesOnly=false;
 
 function buildDupeMap(){
   dupeMap={};
@@ -2950,52 +2948,14 @@ function getDupeCounts(){
   return{exact,soft};
 }
 
-function updateDupeBanner(){
-  buildDupeMap();
-  const{exact,soft}=getDupeCounts();
-  const total=exact+soft;
-  const banner=document.getElementById('dupe-banner');
-  if(total>0){
-    banner.classList.add('visible');
-    let msg='';
-    if(exact>0) msg+=`<strong>${exact} exact duplicate${exact>1?'s':''}</strong> (same code)`;
-    if(exact>0&&soft>0) msg+=' and ';
-    if(soft>0) msg+=`<strong>${soft} similar entr${soft>1?'ies':'y'}</strong> (same date+plate+driver)`;
-    msg+=' found.';
-    document.getElementById('dupe-banner-text').innerHTML=msg;
-  } else {
-    banner.classList.remove('visible');
-  }
-}
-
-function filterDupes(){
-  showingDupesOnly=!showingDupesOnly;
-  const btn=document.getElementById('dupe-filter-btn');
-  const sel=document.getElementById('filter-dupe');
-  if(showingDupesOnly){
-    sel.value='any';
-    btn.textContent='Show All Trips';
-    btn.style.background='var(--accent)';
-    btn.style.color='#000';
-  } else {
-    sel.value='';
-    btn.textContent='Show Only Dupes';
-    btn.style.background='';
-    btn.style.color='';
-  }
-  renderTable();
-}
-
 function getFiltered(){
   const q=document.getElementById('search').value.toLowerCase();
   const cl=document.getElementById('filter-client').value;
   const ar=document.getElementById('filter-area').value;
   const wk=document.getElementById('filter-week').value;
   const dr=document.getElementById('filter-driver').value;
-  const dp=document.getElementById('filter-dupe').value;
+  const en=document.getElementById('filter-entries').value;
   const co=document.getElementById('filter-cutoff').value;
-  // sync dupe filter btn state
-  showingDupesOnly=(dp==='any'||dp==='exact'||dp==='soft');
   return trips.filter(t=>{
     if(cl&&t.client!==cl)return false;
     if(ar&&t.area!==ar)return false;
@@ -3003,9 +2963,8 @@ function getFiltered(){
     if(dr&&t.driver!==dr)return false;
     if(co==='none'&&String(t.cutoff||'').trim())return false;
     if(co==='has'&&!String(t.cutoff||'').trim())return false;
-    if(dp==='exact'&&dupeMap[t.id]!=='exact')return false;
-    if(dp==='soft'&&dupeMap[t.id]!=='soft')return false;
-    if(dp==='any'&&!dupeMap[t.id])return false;
+    if(en==='soft'&&dupeMap[t.id]!=='soft')return false;
+    if(en&&en!=='soft'&&matchTripPeriod(t).state!==en)return false;
     if(q){
       // Comma separates alternatives: "MAZ6896, CAS8037" matches either. Spaces stay inside a
       // term so "metro manila, pampanga" is two destinations, not four words. The dropdown
@@ -3016,8 +2975,6 @@ function getFiltered(){
     }
     return true;
   }).sort((a,b)=>{
-    // When showing dupes, group exact first then soft
-    if(dp==='any'){const order={exact:0,soft:1};const oa=order[dupeMap[a.id]]??2,ob=order[dupeMap[b.id]]??2;if(oa!==ob)return oa-ob;}
     const va=a[sortCol]||'',vb=b[sortCol]||'';
     if(typeof va==='number')return(va-vb)*sortDir;
     return String(va).localeCompare(String(vb))*sortDir;
@@ -3098,11 +3055,8 @@ function toggleColPicker(){
 }
 function renderTable(){
   buildDupeMap();
-  updateDupeBanner();
   const filtered=getFiltered();
   const tbody=document.getElementById('table-body');
-  const{exact,soft}=getDupeCounts();
-  const dupeInfo=exact+soft>0?` · <span style="color:var(--red);font-weight:600">⚠ ${exact+soft} dupe${exact+soft>1?'s':''}</span>`:'';
   document.getElementById('trips-badge').textContent=trips.length;
 
   // ---- Pagination ----
@@ -3112,7 +3066,7 @@ function renderTable(){
   const startIdx=(currentPage-1)*PAGE_SIZE;
   const pageItems=filtered.slice(startIdx,startIdx+PAGE_SIZE);
 
-  document.getElementById('record-info').innerHTML=`${filtered.length} of ${trips.length} trips${dupeInfo}`;
+  document.getElementById('record-info').innerHTML=`${filtered.length} of ${trips.length} trips`;
   if(!filtered.length){
     tbody.innerHTML=`<tr><td colspan="24"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
     renderPaginationControls(0,1);
@@ -3122,7 +3076,7 @@ function renderTable(){
     const i=startIdx+pi;
     const c=computeAll(t);
     const dupeType=dupeMap[t.id];
-    const trClass=(dupeType==='exact'?'dupe-exact':dupeType==='soft'?'dupe-soft':'')+(t.noDriverFlag?' no-driver-flag':'');
+    const trClass=(t.noDriverFlag?' no-driver-flag':'').trim();
     const dupeTag=dupeType==='exact'
       ?`<span class="dupe-icon exact" title="EXACT DUPLICATE — same trip code, OR same date + plate + driver + area + destination. One should be deleted.">🔴 EXACT</span>`
       :dupeType==='soft'
