@@ -3166,18 +3166,31 @@ function groupRowHTML(g,expanded){
     ? `Paid — ${cheques.length} cheques, click to see dates`
     : paidDates.length ? `Paid ${paidDates[paidDates.length-1]}${cheques[0]?' · Cheque '+esc(cheques[0]):''}` : 'Paid';
   return`<tr style="background:var(--bg2);cursor:pointer" onclick="togglePeriodCollapse('${g.key}')">
-    <td colspan="2" style="color:var(--text3)"><i style="font-style:normal">${expanded?'▾':'▸'}</i></td>
+    <td></td>
+    <td style="color:var(--text3)">${expanded?'▾':'▸'}</td>
     <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green)"></span></td>
-    <td colspan="4" style="font-weight:600">${g.period.start} to ${g.period.end} <span style="font-weight:400;color:var(--text2)">· ${g.period.bu}</span></td>
-    <td colspan="2" style="color:var(--text2)">${trips_.length} trip${trips_.length===1?'':'s'} · ${siSet.size||'—'} SI</td>
-    <td colspan="5"></td>
-    <td class="num-cell">₱${fmt(rate)}</td>
-    <td class="num-cell" style="color:var(--text2)">₱${fmt(sur)}</td>
-    <td class="num-cell accent-text">₱${fmt(rate+sur)}</td>
-    <td colspan="2"></td>
-    <td colspan="2"></td>
-    <td colspan="2" style="color:var(--green)">${paidLabel}</td>
-    <td colspan="2"></td>
+    <td class="code-cell col-code" style="font-weight:600">${g.period.start} to ${g.period.end}</td>
+    <td class="col-date"></td>
+    <td class="col-cutoff"></td>
+    <td class="col-client"><span class="badge" style="background:${clientBadgeColor(g.period.bu).bg};color:${clientBadgeColor(g.period.bu).fg}">${g.period.bu}</span></td>
+    <td class="col-area" style="color:var(--text2)">${trips_.length} trip${trips_.length===1?'':'s'}</td>
+    <td class="col-dest" style="color:var(--text2)">${siSet.size||'—'} SI</td>
+    <td class="col-dr"></td>
+    <td class="col-tripticket"></td>
+    <td class="col-plate"></td>
+    <td class="col-driver"></td>
+    <td class="col-h1"></td>
+    <td class="num-cell col-rate">₱${fmt(rate)}</td>
+    <td class="num-cell col-surcharge" style="color:var(--text2)">₱${fmt(sur)}</td>
+    <td class="num-cell accent-text col-rsvat">₱${fmt(rate+sur)}</td>
+    <td class="num-cell col-expenses"></td>
+    <td class="num-cell col-staffpay"></td>
+    <td class="num-cell fin-only col-income"></td>
+    <td class="num-cell fin-only col-pct"></td>
+    <td class="remarks-cell col-remarks" style="color:var(--green)">${paidLabel}</td>
+    <td class="col-truck"></td>
+    <td class="num-cell col-wk"></td>
+    <td></td>
   </tr>`;
 }
 
