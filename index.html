@@ -178,6 +178,8 @@ tr.dupe-exact td{background:rgba(231,76,60,0.10)!important;border-bottom:1px sol
 tr.dupe-exact:hover td{background:rgba(231,76,60,0.16)!important}
 tr.dupe-soft td{background:rgba(240,165,0,0.08)!important;border-bottom:1px solid rgba(240,165,0,0.2)!important}
 tr.dupe-soft:hover td{background:rgba(240,165,0,0.14)!important}
+tr.indent-row td{background:rgba(46,204,113,0.05)!important}
+tr.indent-row td.col-code{padding-left:14px}
 tr.no-driver-flag td{background:rgba(230,126,34,0.07)!important;border-bottom:1px solid rgba(230,126,34,0.18)!important}
 tr.no-driver-flag:hover td{background:rgba(230,126,34,0.13)!important}
 .dupe-icon{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;cursor:help}
@@ -322,6 +324,8 @@ body.role-operations .fin-only{display:none!important}
       <option value="paid">● Paid</option>
     </select>
     <span class="record-info" id="record-info"></span>
+    <button class="btn btn-ghost btn-sm" id="collapse-toggle-btn" onclick="collapseAllPeriods()" title="Fold every fully-paid period back into a summary row">▸ Collapse all</button>
+    <button class="btn btn-ghost btn-sm" onclick="expandAllPeriods()" title="Open every fully-paid period to show its individual trips">▾ Expand all</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleColPicker()" title="Choose which columns to show. Saved on this device only — it does not change anything for anyone else.">🧩 Columns</button>
   </div>
   <div style="font-size:11px;color:var(--text3);margin:0 0 10px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
@@ -346,6 +350,7 @@ body.role-operations .fin-only{display:none!important}
     <table id="trip-table">
       <thead><tr>
         <th>#</th>
+        <th></th>
         <th title="Payment status of this trip's billing period">●</th>
         <th class="sortable col-code" onclick="sortBy('code')">Code</th>
         <th class="sortable col-date" onclick="sortBy('tripStartDate')">Trip Date</th>
@@ -2392,6 +2397,7 @@ function toggleBudgetDetail(area,type){
     }).join('')}</tbody></table></div></div>`;
 }
 function fmtDate(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function lastTripDateFor(matchFn){
   let latest=null;
   trips.forEach(t=>{
@@ -3068,73 +3074,178 @@ function toggleColPicker(){
   p.style.display=show?'block':'none';
   if(show) renderColPicker();
 }
+function tripRowHTML(t,i,chevronCell,indent){
+  const c=computeAll(t);
+  const dupeType=dupeMap[t.id];
+  const trClass=((t.noDriverFlag?' no-driver-flag':'')+(indent?' indent-row':'')).trim();
+  const dupeTag=dupeType==='exact'
+    ?`<span class="dupe-icon exact" title="EXACT DUPLICATE — same trip code, OR same date + plate + driver + area + destination. One should be deleted.">🔴 EXACT</span>`
+    :dupeType==='soft'
+    ?`<span class="dupe-icon soft" title="SIMILAR ENTRY — same date, plate, and driver as another entry. Check if this is a duplicate.">🟡 SIMILAR</span>`
+    :'';
+  return`<tr class="${trClass}">
+    <td style="color:var(--text3)">${i+1}</td>
+    <td>${chevronCell||''}</td>
+    <td>${statusDotHTML(t)}</td>
+    <td class="code-cell col-code">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
+    <td class="col-date" style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
+    <td class="col-cutoff" style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
+    <td class="col-client"><span class="badge" style="background:${clientBadgeColor(t.client).bg};color:${clientBadgeColor(t.client).fg}">${t.client||'—'}</span></td>
+    <td class="col-area" style="color:var(--text2)">${t.area||'—'}</td>
+    <td class="col-dest" style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${t.destination}">
+      ${Array.isArray(t.drops)&&t.drops.length>1
+        ? `<span style="display:inline-block;background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 4px;margin-right:3px;vertical-align:middle" title="${t.drops.map((d,i)=>`Drop ${i+1}: ${d.location}`).join('\n')}">×${t.drops.length}</span>`
+        : ''}
+      ${t.destination||'—'}
+    </td>
+    <td class="mono col-dr" style="font-size:10px">${t.dr||'—'}</td>
+    <td class="mono col-tripticket" style="font-size:10px">${t.tripticket||'—'}</td>
+    <td class="mono col-plate" style="font-size:10px">${t.noDriverFlag&&!t.plate
+        ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO PLATE</span>`
+        :(t.plate||'—')}</td>
+    <td class="col-driver" style="font-size:11px">${t.noDriverFlag&&!t.driver
+        ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO DRIVER</span>`
+        :(t.driver||'—')}</td>
+    <td class="col-h1" style="color:var(--text2);font-size:10px">${t.h1||'—'}</td>
+    <td class="num-cell col-rate">₱${fmt(t.rate)}</td>
+    <td class="num-cell col-surcharge" style="color:var(--text2)">₱${fmt(t.surcharge)}</td>
+    <td class="num-cell accent-text col-rsvat">₱${fmt(c.rsvat)}</td>
+    <td class="num-cell col-expenses" style="color:var(--red)">₱${fmt(c.expenses)}</td>
+    <td class="num-cell col-staffpay" style="color:var(--red)">₱${fmt(c.staffPay)}</td>
+    <td class="num-cell fin-only col-income ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
+    <td class="num-cell fin-only col-pct ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
+    <td class="remarks-cell col-remarks" title="${(t.genRemarks||'').replace(/"/g,'&quot;')}">${t.genRemarks||''}</td>
+    <td class="col-truck" style="font-size:10px;color:var(--text2)">${t.truckType||'—'}</td>
+    <td class="num-cell col-wk" style="color:var(--text3)">W${t.weekMon||'?'}</td>
+    <td><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}')">✏️</button><button class="btn btn-ghost btn-sm" title="Add Diesel Entry" onclick="addDieselEntry('${t.id}')">⛽</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${t.id}','trip')">🗑️</button></div></td>
+  </tr>`;
+}
+
+// ============================================================
+// COLLAPSED PAID PERIODS — display-only grouping, active only
+// under the default Trip Date sort. Never merges data, never
+// changes what a filter matches — only how already-matching
+// rows are presented.
+// ============================================================
+let EXPANDED_PERIODS=new Set(); // period keys the user chose to keep open
+function periodKey(p){ return p.bu+'|'+p.start+'|'+p.end; }
+
+// All fully-paid period keys visible in the CURRENT filtered set — i.e. eligible
+// to collapse (every one of that period's paid trips, network-wide, is present
+// in `filtered`; a narrower filter that excludes even one trip disqualifies it).
+function collapsiblePeriodKeys(filtered){
+  if(!billingPeriods) return new Set();
+  const allCounts={};
+  trips.forEach(t=>{ const m=matchTripPeriod(t); if(m.state==='paid'){ const k=periodKey(m.period); allCounts[k]=(allCounts[k]||0)+1; } });
+  const filteredCounts={};
+  filtered.forEach(t=>{ const m=matchTripPeriod(t); if(m.state==='paid'){ const k=periodKey(m.period); filteredCounts[k]=(filteredCounts[k]||0)+1; } });
+  const eligible=new Set();
+  Object.keys(filteredCounts).forEach(k=>{ if(filteredCounts[k]===allCounts[k]) eligible.add(k); });
+  return eligible;
+}
+
+function collapseAllPeriods(){ EXPANDED_PERIODS.clear(); renderTable(); }
+function expandAllPeriods(){
+  const eligible=collapsiblePeriodKeys(getFiltered());
+  eligible.forEach(k=>EXPANDED_PERIODS.add(k));
+  renderTable();
+}
+function togglePeriodCollapse(k){
+  if(EXPANDED_PERIODS.has(k)) EXPANDED_PERIODS.delete(k); else EXPANDED_PERIODS.add(k);
+  renderTable();
+}
+
+function groupRowHTML(g,expanded){
+  const trips_=g.trips;
+  const rate=trips_.reduce((a,t)=>a+(Number(t.rate)||0),0);
+  const sur=trips_.reduce((a,t)=>a+(Number(t.surcharge)||0),0);
+  const siSet=new Set(g.period.ents.map(e=>e.si||'').filter(Boolean));
+  const paidDates=[...new Set(g.period.ents.filter(e=>e.status==='paid'&&e.paidDate).map(e=>e.paidDate))].sort();
+  const cheques=[...new Set(g.period.ents.filter(e=>e.status==='paid'&&e.chequeNo).map(e=>e.chequeNo))];
+  const paidLabel = cheques.length>1
+    ? `Paid — ${cheques.length} cheques, click to see dates`
+    : paidDates.length ? `Paid ${paidDates[paidDates.length-1]}${cheques[0]?' · Cheque '+esc(cheques[0]):''}` : 'Paid';
+  return`<tr style="background:var(--bg2);cursor:pointer" onclick="togglePeriodCollapse('${g.key}')">
+    <td colspan="2" style="color:var(--text3)"><i style="font-style:normal">${expanded?'▾':'▸'}</i></td>
+    <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green)"></span></td>
+    <td colspan="4" style="font-weight:600">${g.period.start} to ${g.period.end} <span style="font-weight:400;color:var(--text2)">· ${g.period.bu}</span></td>
+    <td colspan="2" style="color:var(--text2)">${trips_.length} trip${trips_.length===1?'':'s'} · ${siSet.size||'—'} SI</td>
+    <td colspan="3"></td>
+    <td class="num-cell">₱${fmt(rate)}</td>
+    <td class="num-cell" style="color:var(--text2)">₱${fmt(sur)}</td>
+    <td class="num-cell accent-text">₱${fmt(rate+sur)}</td>
+    <td colspan="2"></td>
+    <td colspan="2" style="color:var(--green)">${paidLabel}</td>
+    <td colspan="3"></td>
+  </tr>`;
+}
+
+// Builds what actually renders: individual trip rows, with fully-paid periods
+// (under the default date sort only) folded into one group row apiece.
+function buildDisplayItems(filtered){
+  if(sortCol!=='tripStartDate') return filtered.map(t=>({type:'trip',trip:t}));
+  const eligible=collapsiblePeriodKeys(filtered);
+  const groups={};
+  filtered.forEach(t=>{
+    const m=matchTripPeriod(t);
+    if(m.state==='paid'){
+      const k=periodKey(m.period);
+      if(eligible.has(k)){ (groups[k]=groups[k]||{key:k,period:m.period,trips:[]}).trips.push(t); }
+    }
+  });
+  const items=[]; const emitted=new Set();
+  filtered.forEach(t=>{
+    const m=matchTripPeriod(t);
+    const k=m.state==='paid'?periodKey(m.period):null;
+    if(k && eligible.has(k)){
+      if(emitted.has(k)) return;
+      emitted.add(k);
+      const g=groups[k];
+      if(EXPANDED_PERIODS.has(k)){
+        items.push({type:'group-open',group:g});
+        g.trips.forEach(gt=>items.push({type:'trip',trip:gt,indent:true}));
+      } else {
+        items.push({type:'group',group:g});
+      }
+      return;
+    }
+    items.push({type:'trip',trip:t});
+  });
+  return items;
+}
+
 function renderTable(){
   buildDupeMap();
   const filtered=getFiltered();
   const tbody=document.getElementById('table-body');
   document.getElementById('trips-badge').textContent=trips.length;
+  const items=buildDisplayItems(filtered);
 
-  // ---- Pagination ----
-  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  // ---- Pagination (by visible rows, so pages stay consistently full —
+  // the trip-count label below is independent and always exact) ----
+  const totalPages=Math.max(1,Math.ceil(items.length/PAGE_SIZE));
   if(currentPage>totalPages) currentPage=totalPages;
   if(currentPage<1) currentPage=1;
   const startIdx=(currentPage-1)*PAGE_SIZE;
-  const pageItems=filtered.slice(startIdx,startIdx+PAGE_SIZE);
+  const pageItems=items.slice(startIdx,startIdx+PAGE_SIZE);
 
   document.getElementById('record-info').innerHTML=`${filtered.length} of ${trips.length} trips`;
+  const btn=document.getElementById('collapse-toggle-btn'); if(btn) btn.style.display = sortCol==='tripStartDate' ? '' : 'none';
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="24"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="25"><div class="empty-state"><div class="empty-icon">${trips.length===0?'🚚':'🔍'}</div><div class="empty-title">${trips.length===0?'No trips yet':'No results found'}</div></div></td></tr>`;
     renderPaginationControls(0,1);
     return;
   }
-  tbody.innerHTML=pageItems.map((t,pi)=>{
-    const i=startIdx+pi;
-    const c=computeAll(t);
-    const dupeType=dupeMap[t.id];
-    const trClass=(t.noDriverFlag?' no-driver-flag':'').trim();
-    const dupeTag=dupeType==='exact'
-      ?`<span class="dupe-icon exact" title="EXACT DUPLICATE — same trip code, OR same date + plate + driver + area + destination. One should be deleted.">🔴 EXACT</span>`
-      :dupeType==='soft'
-      ?`<span class="dupe-icon soft" title="SIMILAR ENTRY — same date, plate, and driver as another entry. Check if this is a duplicate.">🟡 SIMILAR</span>`
-      :'';
-    return`<tr class="${trClass}">
-      <td style="color:var(--text3)">${i+1}</td>
-      <td>${statusDotHTML(t)}</td>
-      <td class="code-cell col-code">${t.code||'—'}<span style="display:inline-block;margin-left:5px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:${t.tripKey?'var(--blue)':'var(--text3)'};color:#fff" title="TripKey — used for stable CSV import matching">TK:${t.tripKey||'—'}</span>${dupeTag?'<br>'+dupeTag:''}</td>
-      <td class="col-date" style="font-weight:600">${fmtDate(t.tripStartDate)}</td>
-      <td class="col-cutoff" style="font-size:10px;color:var(--text2)">${t.cutoff||'—'}</td>
-      <td class="col-client"><span class="badge" style="background:${clientBadgeColor(t.client).bg};color:${clientBadgeColor(t.client).fg}">${t.client||'—'}</span></td>
-      <td class="col-area" style="color:var(--text2)">${t.area||'—'}</td>
-      <td class="col-dest" style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${t.destination}">
-        ${Array.isArray(t.drops)&&t.drops.length>1
-          ? `<span style="display:inline-block;background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 4px;margin-right:3px;vertical-align:middle" title="${t.drops.map((d,i)=>`Drop ${i+1}: ${d.location}`).join('\n')}">×${t.drops.length}</span>`
-          : ''}
-        ${t.destination||'—'}
-      </td>
-      <td class="mono col-dr" style="font-size:10px">${t.dr||'—'}</td>
-      <td class="mono col-tripticket" style="font-size:10px">${t.tripticket||'—'}</td>
-      <td class="mono col-plate" style="font-size:10px">${t.noDriverFlag&&!t.plate
-          ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO PLATE</span>`
-          :(t.plate||'—')}</td>
-      <td class="col-driver" style="font-size:11px">${t.noDriverFlag&&!t.driver
-          ?`<span style="display:inline-block;background:var(--orange,#e67e22);color:#fff;font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px" title="${(t.noDriverReason||'').replace(/"/g,'&quot;')}">⚠️ NO DRIVER</span>`
-          :(t.driver||'—')}</td>
-      <td class="col-h1" style="color:var(--text2);font-size:10px">${t.h1||'—'}</td>
-      <td class="num-cell col-rate">₱${fmt(t.rate)}</td>
-      <td class="num-cell col-surcharge" style="color:var(--text2)">₱${fmt(t.surcharge)}</td>
-      <td class="num-cell accent-text col-rsvat">₱${fmt(c.rsvat)}</td>
-      <td class="num-cell col-expenses" style="color:var(--red)">₱${fmt(c.expenses)}</td>
-      <td class="num-cell col-staffpay" style="color:var(--red)">₱${fmt(c.staffPay)}</td>
-      <td class="num-cell fin-only col-income ${c.income>=0?'positive':'negative'}">₱${fmt(c.income)}</td>
-      <td class="num-cell fin-only col-pct ${c.pctProfit>=0.3?'positive':c.pctProfit<0?'negative':''}">${pct(c.pctProfit)}</td>
-      <td class="remarks-cell col-remarks" title="${(t.genRemarks||'').replace(/"/g,'&quot;')}">${t.genRemarks||''}</td>
-      <td class="col-truck" style="font-size:10px;color:var(--text2)">${t.truckType||'—'}</td>
-      <td class="num-cell col-wk" style="color:var(--text3)">W${t.weekMon||'?'}</td>
-      <td><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}')">✏️</button><button class="btn btn-ghost btn-sm" title="Add Diesel Entry" onclick="addDieselEntry('${t.id}')">⛽</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="askDelete('${t.id}','trip')">🗑️</button></div></td>
-    </tr>`;
+  let rowNum=startIdx;
+  tbody.innerHTML=pageItems.map(item=>{
+    if(item.type==='group') return groupRowHTML(item.group,false);
+    if(item.type==='group-open') return groupRowHTML(item.group,true);
+    const html=tripRowHTML(item.trip,rowNum,'',item.indent);
+    rowNum++;
+    return html;
   }).join('');
   applyColVisibility();
-  renderPaginationControls(filtered.length,totalPages);
+  renderPaginationControls(items.length,totalPages);
 }
 
 function renderPaginationControls(totalItems,totalPages){
@@ -3150,7 +3261,7 @@ function renderPaginationControls(totalItems,totalPages){
   el.innerHTML=`
     <button onclick="goToPage(1)" ${currentPage===1?'disabled':''} style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;color:var(--text)">« First</button>
     <button onclick="goToPage(${currentPage-1})" ${currentPage===1?'disabled':''} style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;color:var(--text)">‹ Prev</button>
-    <span>Page <strong>${currentPage}</strong> of ${totalPages} &nbsp;(${totalItems} trips)</span>
+    <span>Page <strong>${currentPage}</strong> of ${totalPages} &nbsp;(${totalItems} rows)</span>
     <button onclick="goToPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''} style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;color:var(--text)">Next ›</button>
     <button onclick="goToPage(${totalPages})" ${currentPage===totalPages?'disabled':''} style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;color:var(--text)">Last »</button>
   `;
