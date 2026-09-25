@@ -1509,7 +1509,7 @@ function renderPaymentsSummary(){
   const rows=buildPaymentsSummaryRows();
   $('#paySumCount').textContent=rows.length?`${rows.length} payment groups`:'';
   const tb=$('#pay-sum-table tbody');
-  if(!rows.length){ tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table tfoot').innerHTML=''; return; }
+  if(!rows.length){ tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">💵</div><div class="empty-title">No payments recorded yet</div>Mark entries as Paid (single or in bulk) to see them grouped here.</div></td></tr>`; $('#pay-sum-table > tfoot').innerHTML=''; return; }
   // Cross-BU payments are legitimate (historically CCAC and CMIP were settled on one
   // cheque), so this is an informational marker, not a warning.
   tb.innerHTML=rows.map(g=>{
@@ -1531,7 +1531,7 @@ function renderPaymentsSummary(){
     <td class="muted">${esc(g.remark||'')}</td></tr>`+(open?payDetailHTML(g):'');
   }).join('');
   const grand=rows.reduce((a,g)=>a+g.total,0);
-  $('#pay-sum-table tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
+  $('#pay-sum-table > tfoot').innerHTML=`<tr class="grand"><td>Total</td><td></td><td></td><td></td><td class="num-cell">${rows.reduce((a,g)=>a+g.count,0)}</td><td class="num-cell">₱${peso(grand)}</td><td></td></tr>`;
 }
 
 function switchTab(name){
