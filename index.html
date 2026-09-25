@@ -3170,13 +3170,14 @@ function groupRowHTML(g,expanded){
     <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green)"></span></td>
     <td colspan="4" style="font-weight:600">${g.period.start} to ${g.period.end} <span style="font-weight:400;color:var(--text2)">· ${g.period.bu}</span></td>
     <td colspan="2" style="color:var(--text2)">${trips_.length} trip${trips_.length===1?'':'s'} · ${siSet.size||'—'} SI</td>
-    <td colspan="3"></td>
+    <td colspan="5"></td>
     <td class="num-cell">₱${fmt(rate)}</td>
     <td class="num-cell" style="color:var(--text2)">₱${fmt(sur)}</td>
     <td class="num-cell accent-text">₱${fmt(rate+sur)}</td>
     <td colspan="2"></td>
+    <td colspan="2"></td>
     <td colspan="2" style="color:var(--green)">${paidLabel}</td>
-    <td colspan="3"></td>
+    <td colspan="2"></td>
   </tr>`;
 }
 
