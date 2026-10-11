@@ -605,7 +605,7 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
       <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
       <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and Office Payroll are visible to the Owner account only. Office Payroll shows two blocks — <strong>Weekly (Mon–Sat)</strong> for Mechanics/Tech/Monitoring and <strong>Semi-monthly (1–15 / 16–end)</strong> for Office Admin — one row per person with Pending/Finalized status; set a person's <strong>Pay Frequency</strong> in the Staff tab edit form (blank = default for position). Click <strong>History</strong> on a row for their 2026 slips with gross, deductions (hover for breakdown), net and year total. If you don't see these tabs, that's by design — not a bug.</div></div>
-      <div class="guide-step"><div class="step-num">🎁</div><div class="step-content"><div class="step-title">13th Month (Owner only)</div><div class="step-desc">Live 13th month &amp; bonus cost report. Type a Driver rate and a Helper rate per trip: each driver/helper gets (driver trips × driver rate + helper trips × helper rate) ÷ 12 for the year, regardless of actual earnings. Office / admin / mechanic staff get their standard pay on finalized Office Payroll slips ÷ 12. Add a discretionary bonus per person; the top cards show the total cost to EMELCO, and Print / PDF makes a copy. The Staff tab also shows each person's 13th month so far.</div></div></div></div>
+      <div class="guide-step"><div class="step-num">🎁</div><div class="step-content"><div class="step-title">13th Month (Owner only)</div><div class="step-desc">Live 13th month &amp; bonus cost report. Type a default Driver rate and Helper rate per trip, and optionally a different rate in any person's row (e.g. merit increase): each driver/helper gets (driver trips × driver rate + helper trips × helper rate) ÷ 12 for the year, regardless of actual earnings. Office / admin / mechanic staff get their standard pay on finalized Office Payroll slips ÷ 12. Add a discretionary bonus per person; the top cards show the total cost to EMELCO, and Print / PDF makes a copy. The Staff tab also shows each person's 13th month so far.</div></div></div></div>
     </div>
 
     <h3 style="margin-top:24px">🚀 Daily Essentials</h3>
@@ -1355,7 +1355,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202610112040'; // 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
+const APP_VERSION = '202610112110'; // 13th Month: per-person driver/helper rate overrides (blank = default). Earlier: 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -6105,15 +6105,18 @@ function renderOfficeHistory(s){
 //   Salaried (office/admin/tech): 13th = standard pay on finalized slips this year / 12
 // ============================================================
 const TM_YEAR=String(new Date().getFullYear());
-function tmStore(){ const s=prGet(PR_KEYS.th13); return {rates:s.rates||{}, bonus:s.bonus||{}}; }
+function tmStore(){ const s=prGet(PR_KEYS.th13); return {rates:s.rates||{}, bonus:s.bonus||{}, prate:s.prate||{}}; }
 function tmWrite(s){ localStorage.setItem(PR_KEYS.th13, JSON.stringify(s)); scheduleCloudPush(); }
 function mergeThirteenth(cloud){
   const L=tmStore(), C=cloud||{};
-  const out={rates:{...L.rates}, bonus:{...L.bonus}};
+  const out={rates:{...L.rates}, bonus:{...L.bonus}, prate:{...L.prate}};
   const cr=C.rates||{};
   if(cr._u && String(cr._u)>String(out.rates._u||'')) out.rates=cr;
   Object.entries(C.bonus||{}).forEach(([k,v])=>{
     if(!out.bonus[k] || String((v||{})._u||'')>String(out.bonus[k]._u||'')) out.bonus[k]=v;
+  });
+  Object.entries(C.prate||{}).forEach(([k,v])=>{
+    if(!out.prate[k] || String((v||{})._u||'')>String(out.prate[k]._u||'')) out.prate[k]=v;
   });
   localStorage.setItem(PR_KEYS.th13, JSON.stringify(out));
 }
@@ -6142,8 +6145,11 @@ function tmBuild(){
     });
   });
   const tripRows=Object.values(tp).map(p=>{
-    const drv13=p.drv*rd/12, hlp13=p.hlp*rh/12;
-    return {...p, bkey:'trip:'+p.key, drv13, hlp13, th:drv13+hlp13, ref:p.earn/12,
+    const ov=st.prate[p.key]||{};
+    const hasD=String(ov.d==null?'':ov.d).trim()!=='', hasH=String(ov.h==null?'':ov.h).trim()!=='';
+    const erd=hasD?n(ov.d):rd, erh=hasH?n(ov.h):rh;   // person's own rate wins; blank = default
+    const drv13=p.drv*erd/12, hlp13=p.hlp*erh/12;
+    return {...p, bkey:'trip:'+p.key, erd, erh, hasD, hasH, ovD:hasD?ov.d:'', ovH:hasH?ov.h:'', drv13, hlp13, th:drv13+hlp13, ref:p.earn/12,
             bonus:bonusOf('trip:'+p.key), status:p.s?p.s.status:'Not in Staff'};
   }).sort((a,b)=>b.earn-a.earn || a.name.localeCompare(b.name));
   const salRows=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position)).map(s=>{
@@ -6176,7 +6182,7 @@ function tmReportHTML(m,print){
   const P=v=>'₱'+fmt(v);
   const R='text-align:right';
   const st=tmStore();
-  const inp=(id,attrs,val)=>print?(val===''||val==null?'—':P(n(val))):`<input type="text" inputmode="decimal" class="form-input" id="${id}" ${attrs} value="${dirEsc(val==null?'':val)}" placeholder="0" style="width:96px;text-align:right" oninput="${attrs.startsWith('data-r')?'tmSetRate(this)':'tmSetBonus(this)'}">`;
+  const inp=(id,attrs,val,ph,w)=>print?(val===''||val==null?'—':P(n(val))):`<input type="text" inputmode="decimal" class="form-input" id="${id}" ${attrs} value="${dirEsc(val==null?'':val)}" placeholder="${dirEsc(ph==null?'0':ph)}" style="width:${w||96}px;text-align:right" oninput="${attrs.startsWith('data-r')?'tmSetRate(this)':attrs.indexOf('data-f')>=0?'tmSetPRate(this)':'tmSetBonus(this)'}">`;
   const card=(label,val,sub,strong)=>`<div style="background:var(--card,#fff);border:1px solid var(--border,#ccc);border-radius:8px;padding:10px 14px;min-width:140px;${strong?'border-width:2px':''}"><div style="font-size:11px;color:var(--text2,#666)">${label}</div><div style="font-size:${strong?'20':'16'}px;font-weight:700">${val}</div>${sub?`<div style="font-size:10px;color:var(--text2,#666)">${sub}</div>`:''}</div>`;
   const T=m.T;
   let h='';
@@ -6185,7 +6191,7 @@ function tmReportHTML(m,print){
     <strong style="font-size:13px">Base trip rates</strong>
     <label style="font-size:12px">Driver rate / trip ${inp('tm-rate-d','data-r="driver"',st.rates.driver)}</label>
     <label style="font-size:12px">Helper rate / trip ${inp('tm-rate-h','data-r="helper"',st.rates.helper)}</label>
-    <span style="font-size:11px;color:var(--text2,#666)">13th month for drivers &amp; helpers = (their driver trips × driver rate + helper trips × helper rate) ÷ 12, regardless of what they actually earned.</span>
+    <span style="font-size:11px;color:var(--text2,#666)">These are the default rates. A person with a different rate (e.g. merit increase) gets their own rate typed in their row below; blank = default. 13th month = (driver trips × driver rate + helper trips × helper rate) ÷ 12, regardless of what they actually earned.</span>
   </div>`;
   if(!m.rd && !m.rh) h+=`<div style="font-size:12px;color:var(--red,#c00);margin-bottom:10px">Enter the driver and helper trip rates above — the trip-paid 13th month shows ₱0 until you do.</div>`;
   h+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
@@ -6200,15 +6206,17 @@ function tmReportHTML(m,print){
   // ---- trip-paid table
   h+=`<h3 style="margin:14px 0 6px;font-size:14px">Drivers &amp; Helpers (trip-paid)</h3>
   <div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>
-    <th>Name</th><th>Status</th><th style="${R}">Driver trips</th><th style="${R}">Helper trips</th><th style="${R}">Actual trip earnings</th><th style="${R}">Earnings ÷ 12</th><th style="${R}">13th month (rates)</th><th style="${R}">Bonus</th><th style="${R}">Total</th></tr></thead><tbody>`;
+    <th>Name</th><th>Status</th><th style="${R}">Driver trips</th><th style="${R}">Driver rate</th><th style="${R}">Helper trips</th><th style="${R}">Helper rate</th><th style="${R}">Actual trip earnings</th><th style="${R}">Earnings ÷ 12</th><th style="${R}">13th month (rates)</th><th style="${R}">Bonus</th><th style="${R}">Total</th></tr></thead><tbody>`;
   m.tripRows.forEach((r,i)=>{
-    h+=`<tr><td style="font-weight:600">${dirEsc(r.name)}</td><td>${tmBadge(r.status)}</td>
-      <td style="${R}">${r.drv}</td><td style="${R}">${r.hlp}</td><td style="${R}">${P(r.earn)}</td><td style="${R};color:var(--text2,#666)">${P(r.ref)}</td>
+    const own=r.hasD||r.hasH;
+    h+=`<tr${own?' style="background:rgba(244,162,97,.14)"':''}><td style="font-weight:600">${dirEsc(r.name)}${own?' <span title="Has own rate" style="font-size:10px;color:var(--accent,#d68910)">● own rate</span>':''}</td><td>${tmBadge(r.status)}</td>
+      <td style="${R}">${r.drv}</td><td style="${R}">${print?P(r.erd):inp('tm-pd-'+i,'data-k="'+dirEsc(r.key)+'" data-f="d"',r.ovD,String(m.rd||0),74)}</td>
+      <td style="${R}">${r.hlp}</td><td style="${R}">${print?P(r.erh):inp('tm-ph-'+i,'data-k="'+dirEsc(r.key)+'" data-f="h"',r.ovH,String(m.rh||0),74)}</td><td style="${R}">${P(r.earn)}</td><td style="${R};color:var(--text2,#666)">${P(r.ref)}</td>
       <td style="${R};font-weight:600">${P(r.th)}</td><td style="${R}">${inp('tm-bt-'+i,'data-k="'+dirEsc(r.bkey)+'"',(st.bonus[r.bkey]||{}).amt)}</td><td style="${R};font-weight:700">${P(r.th+r.bonus)}</td></tr>`;
   });
-  if(!m.tripRows.length) h+=`<tr><td colspan="9" style="color:var(--text2,#666)">No trips recorded for ${TM_YEAR}.</td></tr>`;
+  if(!m.tripRows.length) h+=`<tr><td colspan="11" style="color:var(--text2,#666)">No trips recorded for ${TM_YEAR}.</td></tr>`;
   const tt=m.tripRows.reduce((a,r)=>({drv:a.drv+r.drv,hlp:a.hlp+r.hlp,earn:a.earn+r.earn,ref:a.ref+r.ref,th:a.th+r.th,b:a.b+r.bonus}),{drv:0,hlp:0,earn:0,ref:0,th:0,b:0});
-  h+=`<tr style="font-weight:700;border-top:2px solid var(--border,#999)"><td>Subtotal</td><td></td><td style="${R}">${tt.drv}</td><td style="${R}">${tt.hlp}</td><td style="${R}">${P(tt.earn)}</td><td style="${R}">${P(tt.ref)}</td><td style="${R}">${P(tt.th)}</td><td style="${R}">${P(tt.b)}</td><td style="${R}">${P(tt.th+tt.b)}</td></tr>`;
+  h+=`<tr style="font-weight:700;border-top:2px solid var(--border,#999)"><td>Subtotal</td><td></td><td style="${R}">${tt.drv}</td><td></td><td style="${R}">${tt.hlp}</td><td></td><td style="${R}">${P(tt.earn)}</td><td style="${R}">${P(tt.ref)}</td><td style="${R}">${P(tt.th)}</td><td style="${R}">${P(tt.b)}</td><td style="${R}">${P(tt.th+tt.b)}</td></tr>`;
   h+=`</tbody></table></div>`;
   // ---- salaried table
   h+=`<h3 style="margin:18px 0 6px;font-size:14px">Office / Admin / Mechanic (salaried — standard pay on finalized slips)</h3>
@@ -6223,7 +6231,7 @@ function tmReportHTML(m,print){
   const st2=m.salRows.reduce((a,r)=>({base:a.base+r.base,th:a.th+r.th,b:a.b+r.bonus}),{base:0,th:0,b:0});
   h+=`<tr style="font-weight:700;border-top:2px solid var(--border,#999)"><td>Subtotal</td><td></td><td></td><td></td><td style="${R}">${P(st2.base)}</td><td style="${R}">${P(st2.th)}</td><td style="${R}">${P(st2.b)}</td><td style="${R}">${P(st2.th+st2.b)}</td></tr>`;
   h+=`</tbody></table></div>`;
-  h+=`<div style="font-size:11px;color:var(--text2,#666);margin-top:10px">Salaried 13th month counts only finalized slips, so it grows as each pay period is finalized. Holiday pay, leave pay, bonus and other pay on slips are not part of the base. A trip counts when that person was paid for it (foul, preload-only and unpriced entries are skipped).</div>`;
+  h+=`<div style="font-size:11px;color:var(--text2,#666);margin-top:10px">Salaried 13th month counts only finalized slips, so it grows as each pay period is finalized. Holiday pay, leave pay, bonus and other pay on slips are not part of the base. Own-rate boxes (blank = default rate) apply to all of that person's trips this year. A trip counts when that person was paid for it (foul, preload-only and unpriced entries are skipped).</div>`;
   return h;
 }
 function renderTh13(){
@@ -6236,6 +6244,11 @@ function renderTh13(){
 function tmSetRate(el){
   const st=tmStore(); st.rates[el.dataset.r]=el.value; st.rates._u=new Date().toISOString();
   tmWrite(st); renderTh13();
+}
+function tmSetPRate(el){
+  const st=tmStore(), k=el.dataset.k, f=el.dataset.f;
+  const cur={...(st.prate[k]||{})}; cur[f]=el.value; cur._u=new Date().toISOString();
+  st.prate[k]=cur; tmWrite(st); renderTh13();
 }
 function tmSetBonus(el){
   const st=tmStore(); st.bonus[el.dataset.k]={amt:el.value,_u:new Date().toISOString()};
