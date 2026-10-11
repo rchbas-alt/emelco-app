@@ -130,6 +130,7 @@ tr:last-child td{border-bottom:none}
 .dir-row:hover{background:rgba(0,0,0,.02)}
 .dir-row>*,.dir-head>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dir-staff{grid-template-columns:minmax(0,2.2fr) 84px 72px 92px minmax(0,1.3fr) 60px minmax(0,1.4fr) 84px}
+.dir-staff-13{grid-template-columns:minmax(0,2.2fr) 84px 72px 92px minmax(0,1.3fr) 60px 100px minmax(0,1.4fr) 84px}
 .dir-fleet{grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 104px 60px 90px minmax(0,1.4fr) 84px}
 .dir-fleet-noinc{grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 104px 60px minmax(0,1.4fr) 84px}
 .dir-note{font-size:11px;color:var(--text3);margin:0 0 10px;line-height:1.5}
@@ -153,7 +154,7 @@ tr:last-child td{border-bottom:none}
 .dir-act{display:flex;gap:4px;justify-content:flex-end}
 @media(max-width:820px){
   .dir-head{display:none}
-  .dir-staff,.dir-fleet{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nm st" "mt ac";row-gap:6px;padding:10px 12px}
+  .dir-staff,.dir-staff-13,.dir-fleet{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nm st" "mt ac";row-gap:6px;padding:10px 12px}
   .dir-row .c-nm{grid-area:nm}
   .dir-row .c-st{grid-area:st;justify-self:end}
   .dir-row .c-ac{grid-area:ac;justify-self:end}
@@ -284,6 +285,7 @@ body.role-operations .fin-only{display:none!important}
   <div class="tab" onclick="switchTab('import')">⬆ Data</div>
   <div class="tab" onclick="switchTab('payroll')">💰 Payroll</div>
   <div class="tab fin-only" onclick="switchTab('officepayroll')">🏢 Office Payroll</div>
+  <div class="tab fin-only" onclick="switchTab('th13')">🎁 13th Month</div>
   <div class="tab" onclick="switchTab('ledger')">📒 Ledger</div>
   <div class="tab fin-only" onclick="switchTab('budget')">📊 Budget</div>
   <div class="tab" onclick="switchTab('guide')">📖 Guide</div>
@@ -602,7 +604,8 @@ body.role-operations .fin-only{display:none!important}
       <div class="guide-step"><div class="step-num">⬆</div><div class="step-content"><div class="step-title">Data</div><div class="step-desc">CSV import for correcting past trips in bulk, a JSON backup download of trips/staff/fleet for an extra offline copy, and a one-time <strong>🔗 Link Trip Groups</strong> tool for pairing up MilkRun and Convoy trips that don't have a group ID yet.</div></div></div>
       <div class="guide-step"><div class="step-num">💰</div><div class="step-content"><div class="step-title">Payroll</div><div class="step-desc">Weekly driver &amp; helper pay slips. Trip pay pulls in automatically for the selected week; deductions (CA, bond, phone, utilities, government) are entered on the slip, and finalizing posts them to the Ledger.</div></div></div>
       <div class="guide-step"><div class="step-num">📒</div><div class="step-content"><div class="step-title">Ledger</div><div class="step-desc">Live running balances per staff: Cash Advance owed, Bond savings, phone installments and utilities. Every movement is logged with who recorded it and from which device.</div></div></div>
-      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and Office Payroll are visible to the Owner account only. Office Payroll shows two blocks — <strong>Weekly (Mon–Sat)</strong> for Mechanics/Tech/Monitoring and <strong>Semi-monthly (1–15 / 16–end)</strong> for Office Admin — one row per person with Pending/Finalized status; set a person's <strong>Pay Frequency</strong> in the Staff tab edit form (blank = default for position). Click <strong>History</strong> on a row for their 2026 slips with gross, deductions (hover for breakdown), net and year total. If you don't see these tabs, that's by design — not a bug.</div></div></div>
+      <div class="guide-step"><div class="step-num">📊</div><div class="step-content"><div class="step-title">Summary &amp; Office Payroll (Owner only)</div><div class="step-desc">Financial summaries and Office Payroll are visible to the Owner account only. Office Payroll shows two blocks — <strong>Weekly (Mon–Sat)</strong> for Mechanics/Tech/Monitoring and <strong>Semi-monthly (1–15 / 16–end)</strong> for Office Admin — one row per person with Pending/Finalized status; set a person's <strong>Pay Frequency</strong> in the Staff tab edit form (blank = default for position). Click <strong>History</strong> on a row for their 2026 slips with gross, deductions (hover for breakdown), net and year total. If you don't see these tabs, that's by design — not a bug.</div></div>
+      <div class="guide-step"><div class="step-num">🎁</div><div class="step-content"><div class="step-title">13th Month (Owner only)</div><div class="step-desc">Live 13th month &amp; bonus cost report. Type a Driver rate and a Helper rate per trip: each driver/helper gets (driver trips × driver rate + helper trips × helper rate) ÷ 12 for the year, regardless of actual earnings. Office / admin / mechanic staff get their standard pay on finalized Office Payroll slips ÷ 12. Add a discretionary bonus per person; the top cards show the total cost to EMELCO, and Print / PDF makes a copy. The Staff tab also shows each person's 13th month so far.</div></div></div></div>
     </div>
 
     <h3 style="margin-top:24px">🚀 Daily Essentials</h3>
@@ -866,6 +869,15 @@ body.role-operations .fin-only{display:none!important}
   <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Salary-based staff — no trips involved. Periods are set automatically from each person's pay frequency (edit it in the Staff tab). Use ‹ › to step periods; click <strong>History</strong> for a person's 2026 slips.</div>
   <div id="op-weekly-block"></div>
   <div id="op-semi-block"></div>
+</div>
+
+<!-- ====== 13TH MONTH & BONUS REPORT (Owner only) ====== -->
+<div class="page" id="page-th13">
+  <div class="page-header">
+    <h2>🎁 13th Month &amp; Bonus Report</h2>
+    <button class="btn btn-ghost" onclick="tmPrint()">🖨 Print / PDF</button>
+  </div>
+  <div id="th13-body"></div>
 </div>
 
 <!-- ====== LEDGER PAGE ====== -->
@@ -1343,7 +1355,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202609252345'; // Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
+const APP_VERSION = '202610112040'; // 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1467,7 +1479,7 @@ const PAYROLL_EPOCH_KEY='emelco_payroll_epoch';
 let ghPayrollSha=null;
 let isPayrollSyncing=false;
 
-const PR_KEYS={slips:'emelco_payroll_slips_2026', office:'emelco_office_slips_2026', ledger:'emelco_ledger_2026', txn:'emelco_ledger_txn_2026', audit:'emelco_ledger_audit_2026'};
+const PR_KEYS={slips:'emelco_payroll_slips_2026', office:'emelco_office_slips_2026', ledger:'emelco_ledger_2026', txn:'emelco_ledger_txn_2026', audit:'emelco_ledger_audit_2026', th13:'emelco_13th_2026'};
 function prGet(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
 function getPayrollEpoch(){ return parseInt(localStorage.getItem(PAYROLL_EPOCH_KEY)||'0',10)||0; }
 
@@ -1531,6 +1543,7 @@ function adoptPayrollContent(content){
   mergeLedgerBalances(content.ledgerData);
   mergeLedgerTxns(content.ledgerTxn);
   mergeLedgerAudit(content.ledgerAudit);
+  mergeThirteenth(content.thirteenth);
   ledgerLoaded=false; // in-memory copy is now stale — force reload on next access
 }
 
@@ -1565,6 +1578,7 @@ async function savePayrollToCloud(retrying){
       payrollSlips:prGet(PR_KEYS.slips), officeSlips:prGet(PR_KEYS.office),
       ledgerData:prGet(PR_KEYS.ledger), ledgerTxn:prGet(PR_KEYS.txn),
       ledgerAudit:prGet(PR_KEYS.audit),
+      thirteenth:prGet(PR_KEYS.th13),
       savedAt:new Date().toISOString(), savedBy:getDeviceName()
     };
     const content=btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,1))));
@@ -3608,22 +3622,25 @@ function staffRowHTML(s,stats){
   const initials=dirEsc(s.name.split(' ').map(p=>p[0]).join('').slice(0,2));
   const prev=s.previousIds&&s.previousIds.length?` title="Previous ID: ${dirEsc(s.previousIds.join(', '))}"`:'';
   const resigned=s.status==='Resigned';
+  const tmOn=!!window._tmStaffMap, tm=tmOn?(window._tmStaffMap[s.id]||{th:0,bonus:0}):null;
   const lastTxt=last?fmtDate(last)+' · '+dirIdleShort(info):'No trips';
   const licCls=lic.level==='bad'?'dir-warn':'dir-mute';
   const meta=[
     s.duty?dirEsc(s.duty):null,
     lic.level!=='na'?`<span class="${licCls}">${dirEsc(lic.text)}</span>`:null,
     `${n} trip${n===1?'':'s'}`,
+    tm?`13th ₱${fmt(tm.th)}`:null,
     `<span class="${idleWarn?'dir-warn':''}">${dirEsc(last?'Last '+fmtDate(last)+' · '+dirIdleShort(info):'No trips')}</span>`,
     resigned&&s.resignedDate?`<span class="dir-warn">Resigned ${dirEsc(s.resignedDate)}</span>`:null
   ].filter(Boolean).join(' · ');
-  return `<div class="dir-row dir-staff">
+  return `<div class="dir-row dir-staff${tmOn?' dir-staff-13':''}">
     <div class="c-nm"><span class="dir-av ${av}">${initials}</span><span class="dir-nm">${dirEsc(s.name)}</span><span class="dir-id"${prev}>${dirEsc(s.staffId||'—')}</span></div>
     <div class="c-st"><span class="${statusBadgeClass(s.status)}">${dirEsc(s.status)}</span>${resigned&&s.resignedDate?`<div class="dir-sub c-d">${dirEsc(s.resignedDate)}</div>`:''}</div>
     <div class="c-d dir-mute">${dirEsc(s.duty||'—')}</div>
     <div class="c-d dir-mono">${dirEsc(s.startDate||'—')}</div>
     <div class="c-d ${licCls}" title="${dirEsc(lic.title)}">${dirEsc(lic.text)}</div>
     <div class="c-d" style="font-weight:700;color:var(--blue)">${n}</div>
+    ${tmOn?`<div class="c-d dir-mono" style="color:var(--green)" title="13th month so far this year (rates / standard pay ÷ 12)${tm.bonus?' · bonus ₱'+fmt(tm.bonus):''}">${tm.th?'₱'+fmt(tm.th):'—'}</div>`:''}
     <div class="c-d ${idleWarn?'dir-warn':'dir-mute'}" title="${dirEsc(info.label)}">${dirEsc(lastTxt)}</div>
     <div class="c-mt">${meta}</div>
     <div class="c-ac dir-act"><button class="btn btn-ghost btn-sm" title="Edit" aria-label="Edit ${dirEsc(s.name)}" onclick="openEditStaff('${s.id}')">✏️</button><button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Delete" aria-label="Delete ${dirEsc(s.name)}" onclick="askDelete('${s.id}','staff')">🗑</button></div>
@@ -3649,9 +3666,12 @@ function renderStaff(){
     </div>`;
   const stats=dirTripStats(t=>[t.driver,t.h1,t.h2].filter(Boolean),false);
   const cur=filtered.filter(s=>s.status!=='Resigned'), res=filtered.filter(s=>s.status==='Resigned');
+  // Owner only: 13th month so far (rate-based for trip-paid, standard pay ÷ 12 for salaried) — see 13th Month tab
+  const tmOwner=currentRole==='owner';
+  window._tmStaffMap = tmOwner ? tmBuild().staffMap : null;
   const rowFn=s=>staffRowHTML(s,stats);
-  const heads=['Name','Status','Duty','Start','License','Trips','Last trip',''];
-  let html=`<div class="dir-head dir-staff">${heads.map((h,i)=>`<div class="${i===0||i===1?'':'c-d'}">${h}</div>`).join('')}</div>`;
+  const heads=tmOwner?['Name','Status','Duty','Start','License','Trips','13th mo. (YTD)','Last trip','']:['Name','Status','Duty','Start','License','Trips','Last trip',''];
+  let html=`<div class="dir-head dir-staff${tmOwner?' dir-staff-13':''}">${heads.map((h,i)=>`<div class="${i===0||i===1?'':'c-d'}">${h}</div>`).join('')}</div>`;
   html+=dirSectionHTML('staff-current','Current staff',cur,rowFn,false);
   html+=dirSectionHTML('staff-resigned','Resigned',res,rowFn,staffFilter==='Resigned');
   if(!cur.length && !res.length) html+='<div class="dir-empty">No staff match this filter.</div>';
@@ -4606,7 +4626,8 @@ function switchTab(name){
   if(name==='summary' && currentRole==='operations'){ toast('Summary is restricted to Owner access','error'); return; }
   if(name==='officepayroll' && currentRole==='operations'){ toast('Office Payroll is restricted to Owner access','error'); return; }
   if(name==='budget' && currentRole==='operations'){ toast('Budget is restricted to Owner access','error'); return; }
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','fuel','import','payroll','officepayroll','ledger','budget','guide'][i]===name));
+  if(name==='th13' && currentRole==='operations'){ toast('13th Month report is restricted to Owner access','error'); return; }
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['trips','summary','staff','fleet','fuel','import','payroll','officepayroll','th13','ledger','budget','guide'][i]===name));
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(name==='summary')renderSummary();
@@ -4616,6 +4637,7 @@ function switchTab(name){
   if(name==='import')renderStorageStatus();
   if(name==='payroll'){ populatePayrollWeeks(); renderPayroll(); renderPayrollTrend(); }
   if(name==='officepayroll'){ populateOfficePayrollDropdowns(); }
+  if(name==='th13'){ renderTh13(); }
   if(name==='ledger'){ renderLedgerSummary(); }
   if(name==='budget'){ renderBudgetTab(); }
 }
@@ -6073,6 +6095,164 @@ function renderOfficeHistory(s){
     <tr style="font-weight:700;border-top:2px solid var(--border)"><td>2026 total</td><td class="num-cell">₱${fmt(tg)}</td><td class="num-cell" style="color:var(--red)">₱${fmt(td)}</td><td class="num-cell" style="color:var(--green)">₱${fmt(tn)}</td><td></td></tr>
     </tbody></table>`;
 }
+
+// ============================================================
+// 13TH MONTH & BONUS REPORT (Owner only) — added 2026-10-11
+// Read-only over trips and finalized office slips; the only data it writes is the two
+// trip rates and the per-person discretionary bonus amounts (store PR_KEYS.th13, synced
+// with the payroll cloud file, newest _u wins per record).
+//   Trip-paid (drivers/helpers): 13th = (driver trips x driver rate + helper trips x helper rate) / 12
+//   Salaried (office/admin/tech): 13th = standard pay on finalized slips this year / 12
+// ============================================================
+const TM_YEAR=String(new Date().getFullYear());
+function tmStore(){ const s=prGet(PR_KEYS.th13); return {rates:s.rates||{}, bonus:s.bonus||{}}; }
+function tmWrite(s){ localStorage.setItem(PR_KEYS.th13, JSON.stringify(s)); scheduleCloudPush(); }
+function mergeThirteenth(cloud){
+  const L=tmStore(), C=cloud||{};
+  const out={rates:{...L.rates}, bonus:{...L.bonus}};
+  const cr=C.rates||{};
+  if(cr._u && String(cr._u)>String(out.rates._u||'')) out.rates=cr;
+  Object.entries(C.bonus||{}).forEach(([k,v])=>{
+    if(!out.bonus[k] || String((v||{})._u||'')>String(out.bonus[k]._u||'')) out.bonus[k]=v;
+  });
+  localStorage.setItem(PR_KEYS.th13, JSON.stringify(out));
+}
+function tmBuild(){
+  const st=tmStore();
+  const rd=n(st.rates.driver), rh=n(st.rates.helper);
+  loadOfficeSlips();
+  const bonusOf=k=>n((st.bonus[k]||{}).amt);
+  const byName={}; staff.forEach(s=>{ if(s.name) byName[s.name]=s; });
+  const tp={};
+  const get=name=>{
+    const s=byName[name], key=s?s.id:'name:'+name;
+    return tp[key]||(tp[key]={key,name,s:s||null,drv:0,hlp:0,earn:0});
+  };
+  trips.forEach(t=>{
+    if(String(t.tripStartDate||'').slice(0,4)!==TM_YEAR) return;
+    getTripWorkers(t).forEach(w=>{
+      if(!w||!w.name) return;
+      // Only entries where this person was actually paid count as a trip (skips foul trips,
+      // preload-only / ride-along entries and not-yet-priced future entries)
+      const pay=w.role==='driver'?n(t.drvPay):w.role==='h1'?n(t.h1Pay):w.role==='h2'?n(t.h2Pay):0;
+      if(!(pay>0)) return;
+      const p=get(w.name);
+      if(w.role==='driver') p.drv++; else p.hlp++;
+      p.earn+=pay;
+    });
+  });
+  const tripRows=Object.values(tp).map(p=>{
+    const drv13=p.drv*rd/12, hlp13=p.hlp*rh/12;
+    return {...p, bkey:'trip:'+p.key, drv13, hlp13, th:drv13+hlp13, ref:p.earn/12,
+            bonus:bonusOf('trip:'+p.key), status:p.s?p.s.status:'Not in Staff'};
+  }).sort((a,b)=>b.earn-a.earn || a.name.localeCompare(b.name));
+  const salRows=staff.filter(s=>['OFFICE','ADMIN','TECH'].includes(s.position)).map(s=>{
+    const slips=officeSlipsFor(s).filter(d=>String(d.periodStart||'').slice(0,4)===TM_YEAR);
+    const base=slips.reduce((a,d)=>a+n(d.standardPay),0);
+    return {key:s.id, name:s.name, s, duty:s.duty||s.position, status:s.status, slips:slips.length,
+            base, th:base/12, bkey:'sal:'+s.id, bonus:bonusOf('sal:'+s.id)};
+  }).filter(r=>r.slips>0 || r.status!=='Resigned').sort((a,b)=>a.name.localeCompare(b.name));
+  const sum=(a,f)=>a.reduce((x,r)=>x+f(r),0);
+  const T={drv13:sum(tripRows,r=>r.drv13), hlp13:sum(tripRows,r=>r.hlp13), sal13:sum(salRows,r=>r.th),
+           bonus:sum(tripRows,r=>r.bonus)+sum(salRows,r=>r.bonus)};
+  T.th=T.drv13+T.hlp13+T.sal13; T.grand=T.th+T.bonus;
+  const act=r=>r.status==='Active';
+  T.active=sum(tripRows.filter(act),r=>r.th+r.bonus)+sum(salRows.filter(act),r=>r.th+r.bonus);
+  T.other=T.grand-T.active;
+  T.people=tripRows.length+salRows.length;
+  const staffMap={};
+  [...tripRows,...salRows].forEach(r=>{
+    if(!r.s) return;
+    const o=staffMap[r.s.id]||(staffMap[r.s.id]={th:0,bonus:0});
+    o.th+=r.th; o.bonus+=r.bonus;
+  });
+  return {rd,rh,tripRows,salRows,T,staffMap};
+}
+function tmBadge(status){
+  const cls=['Active','On Call','Idle','Resigned'].includes(status)?statusBadgeClass(status):'status-badge-idle';
+  return `<span class="${cls}">${dirEsc(status)}</span>`;
+}
+function tmReportHTML(m,print){
+  const P=v=>'₱'+fmt(v);
+  const R='text-align:right';
+  const st=tmStore();
+  const inp=(id,attrs,val)=>print?(val===''||val==null?'—':P(n(val))):`<input type="text" inputmode="decimal" class="form-input" id="${id}" ${attrs} value="${dirEsc(val==null?'':val)}" placeholder="0" style="width:96px;text-align:right" oninput="${attrs.startsWith('data-r')?'tmSetRate(this)':'tmSetBonus(this)'}">`;
+  const card=(label,val,sub,strong)=>`<div style="background:var(--card,#fff);border:1px solid var(--border,#ccc);border-radius:8px;padding:10px 14px;min-width:140px;${strong?'border-width:2px':''}"><div style="font-size:11px;color:var(--text2,#666)">${label}</div><div style="font-size:${strong?'20':'16'}px;font-weight:700">${val}</div>${sub?`<div style="font-size:10px;color:var(--text2,#666)">${sub}</div>`:''}</div>`;
+  const T=m.T;
+  let h='';
+  h+=`<div style="font-size:12px;color:var(--text2,#666);margin-bottom:10px">Year ${TM_YEAR} · live as of ${new Date().toLocaleString('en-PH')} · updates as trips are entered and office slips are finalized</div>`;
+  h+=`<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 14px;border:1px solid var(--border,#ccc);border-radius:8px;background:var(--bg3,#f6f6f6)">
+    <strong style="font-size:13px">Base trip rates</strong>
+    <label style="font-size:12px">Driver rate / trip ${inp('tm-rate-d','data-r="driver"',st.rates.driver)}</label>
+    <label style="font-size:12px">Helper rate / trip ${inp('tm-rate-h','data-r="helper"',st.rates.helper)}</label>
+    <span style="font-size:11px;color:var(--text2,#666)">13th month for drivers &amp; helpers = (their driver trips × driver rate + helper trips × helper rate) ÷ 12, regardless of what they actually earned.</span>
+  </div>`;
+  if(!m.rd && !m.rh) h+=`<div style="font-size:12px;color:var(--red,#c00);margin-bottom:10px">Enter the driver and helper trip rates above — the trip-paid 13th month shows ₱0 until you do.</div>`;
+  h+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    ${card('Drivers 13th month',P(T.drv13))}
+    ${card('Helpers 13th month',P(T.hlp13))}
+    ${card('Office / Admin / Tech 13th month',P(T.sal13))}
+    ${card('Total 13th month',P(T.th))}
+    ${card('Discretionary bonus',P(T.bonus))}
+    ${card('TOTAL COST TO EMELCO',P(T.grand),`${T.people} people listed`,true)}
+  </div>
+  <div style="font-size:12px;margin-bottom:16px">Of the total: <strong>${P(T.active)}</strong> for Active staff · <strong>${P(T.other)}</strong> for Idle / On Call / Resigned / not in Staff</div>`;
+  // ---- trip-paid table
+  h+=`<h3 style="margin:14px 0 6px;font-size:14px">Drivers &amp; Helpers (trip-paid)</h3>
+  <div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>
+    <th>Name</th><th>Status</th><th style="${R}">Driver trips</th><th style="${R}">Helper trips</th><th style="${R}">Actual trip earnings</th><th style="${R}">Earnings ÷ 12</th><th style="${R}">13th month (rates)</th><th style="${R}">Bonus</th><th style="${R}">Total</th></tr></thead><tbody>`;
+  m.tripRows.forEach((r,i)=>{
+    h+=`<tr><td style="font-weight:600">${dirEsc(r.name)}</td><td>${tmBadge(r.status)}</td>
+      <td style="${R}">${r.drv}</td><td style="${R}">${r.hlp}</td><td style="${R}">${P(r.earn)}</td><td style="${R};color:var(--text2,#666)">${P(r.ref)}</td>
+      <td style="${R};font-weight:600">${P(r.th)}</td><td style="${R}">${inp('tm-bt-'+i,'data-k="'+dirEsc(r.bkey)+'"',(st.bonus[r.bkey]||{}).amt)}</td><td style="${R};font-weight:700">${P(r.th+r.bonus)}</td></tr>`;
+  });
+  if(!m.tripRows.length) h+=`<tr><td colspan="9" style="color:var(--text2,#666)">No trips recorded for ${TM_YEAR}.</td></tr>`;
+  const tt=m.tripRows.reduce((a,r)=>({drv:a.drv+r.drv,hlp:a.hlp+r.hlp,earn:a.earn+r.earn,ref:a.ref+r.ref,th:a.th+r.th,b:a.b+r.bonus}),{drv:0,hlp:0,earn:0,ref:0,th:0,b:0});
+  h+=`<tr style="font-weight:700;border-top:2px solid var(--border,#999)"><td>Subtotal</td><td></td><td style="${R}">${tt.drv}</td><td style="${R}">${tt.hlp}</td><td style="${R}">${P(tt.earn)}</td><td style="${R}">${P(tt.ref)}</td><td style="${R}">${P(tt.th)}</td><td style="${R}">${P(tt.b)}</td><td style="${R}">${P(tt.th+tt.b)}</td></tr>`;
+  h+=`</tbody></table></div>`;
+  // ---- salaried table
+  h+=`<h3 style="margin:18px 0 6px;font-size:14px">Office / Admin / Mechanic (salaried — standard pay on finalized slips)</h3>
+  <div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>
+    <th>Name</th><th>Status</th><th>Duty</th><th style="${R}">Slips</th><th style="${R}">Standard pay YTD</th><th style="${R}">13th month (÷ 12)</th><th style="${R}">Bonus</th><th style="${R}">Total</th></tr></thead><tbody>`;
+  m.salRows.forEach((r,i)=>{
+    h+=`<tr><td style="font-weight:600">${dirEsc(r.name)}</td><td>${tmBadge(r.status)}</td><td>${dirEsc(r.duty)}</td>
+      <td style="${R}">${r.slips}</td><td style="${R}">${P(r.base)}</td><td style="${R};font-weight:600">${P(r.th)}</td>
+      <td style="${R}">${inp('tm-bs-'+i,'data-k="'+dirEsc(r.bkey)+'"',(st.bonus[r.bkey]||{}).amt)}</td><td style="${R};font-weight:700">${P(r.th+r.bonus)}</td></tr>`;
+  });
+  if(!m.salRows.length) h+=`<tr><td colspan="8" style="color:var(--text2,#666)">No salaried staff found.</td></tr>`;
+  const st2=m.salRows.reduce((a,r)=>({base:a.base+r.base,th:a.th+r.th,b:a.b+r.bonus}),{base:0,th:0,b:0});
+  h+=`<tr style="font-weight:700;border-top:2px solid var(--border,#999)"><td>Subtotal</td><td></td><td></td><td></td><td style="${R}">${P(st2.base)}</td><td style="${R}">${P(st2.th)}</td><td style="${R}">${P(st2.b)}</td><td style="${R}">${P(st2.th+st2.b)}</td></tr>`;
+  h+=`</tbody></table></div>`;
+  h+=`<div style="font-size:11px;color:var(--text2,#666);margin-top:10px">Salaried 13th month counts only finalized slips, so it grows as each pay period is finalized. Holiday pay, leave pay, bonus and other pay on slips are not part of the base. A trip counts when that person was paid for it (foul, preload-only and unpriced entries are skipped).</div>`;
+  return h;
+}
+function renderTh13(){
+  const box=document.getElementById('th13-body'); if(!box) return;
+  const ae=document.activeElement, id=ae&&ae.id&&box.contains(ae)?ae.id:null;
+  const pos=id&&typeof ae.selectionStart==='number'?ae.selectionStart:null;
+  box.innerHTML=tmReportHTML(tmBuild(),false);
+  if(id){ const el=document.getElementById(id); if(el){ el.focus(); try{ if(pos!=null) el.setSelectionRange(pos,pos); }catch(e){} } }
+}
+function tmSetRate(el){
+  const st=tmStore(); st.rates[el.dataset.r]=el.value; st.rates._u=new Date().toISOString();
+  tmWrite(st); renderTh13();
+}
+function tmSetBonus(el){
+  const st=tmStore(); st.bonus[el.dataset.k]={amt:el.value,_u:new Date().toISOString()};
+  tmWrite(st); renderTh13();
+}
+function tmPrint(){
+  const w=window.open('','_blank');
+  if(!w){ toast('Allow pop-ups to print the report','error'); return; }
+  const css='body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:18px}h1{font-size:16px;margin:0 0 4px}h3{font-size:13px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #bbb;padding:3px 6px;text-align:left;font-size:11px}th{background:#eee}span[class^="status-badge"]{font-size:10px}';
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>13th Month Report ${TM_YEAR}</title><style>${css}</style></head><body><h1>EMELCO — 13th Month &amp; Bonus Report</h1>${tmReportHTML(tmBuild(),true)}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+}
+// Keep the report live while it is open (new trips / finalized slips arrive via sync)
+setInterval(()=>{
+  const pg=document.getElementById('page-th13');
+  if(pg && pg.classList.contains('active') && !(document.activeElement && document.activeElement.tagName==='INPUT')) renderTh13();
+}, 30000);
 
 let currentOfficeStaffId=null, currentOfficeStart=null, currentOfficeEnd=null;
 
