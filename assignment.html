@@ -145,7 +145,7 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 const PROXY_URL = 'https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET = 'emelco1254rch';
 const GH_FILE  = 'emelco_data.json';
-const GH_API   = `${PROXY_URL}/contents/${GH_FILE}`;
+const FLEET_FILE = 'emelco_fleet_2026.json';
 
 let trips = [];
 let fleet = [];
@@ -200,31 +200,43 @@ function safeAtobUtf8(b64){
   return new TextDecoder('utf-8').decode(bytes);
 }
 
+async function ghGetJson(file){
+  const api = `${PROXY_URL}/contents/${file}`;
+  const hdrs = { 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
+  const metaRes = await fetch(api+'?t='+Date.now(), { headers: hdrs });
+  if(!metaRes.ok) throw new Error(file+' HTTP '+metaRes.status);
+  const meta = await metaRes.json();
+  let text;
+  if(meta.content && meta.encoding==='base64'){
+    text = safeAtobUtf8(meta.content);
+  } else {
+    const blobRes = await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`, { headers: hdrs });
+    if(!blobRes.ok) throw new Error(file+' blob HTTP '+blobRes.status);
+    const blob = await blobRes.json();
+    text = safeAtobUtf8(blob.content);
+  }
+  return JSON.parse(text);
+}
+
 async function loadData(manual){
   const statusEl = document.getElementById('sync-status');
   statusEl.textContent = manual ? 'Refreshing…' : 'Syncing…';
   try{
-    const metaRes = await fetch(GH_API+'?t='+Date.now(), {
-      headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
-    });
-    if(!metaRes.ok) throw new Error('HTTP '+metaRes.status);
-    const meta = await metaRes.json();
-    let text;
-    if(meta.content && meta.encoding==='base64'){
-      text = safeAtobUtf8(meta.content);
-    } else {
-      const blobRes = await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`, {
-        headers:{ 'X-Proxy-Auth': PROXY_SECRET, Accept:'application/vnd.github.v3+json' }
-      });
-      if(!blobRes.ok) throw new Error('Blob HTTP '+blobRes.status);
-      const blob = await blobRes.json();
-      text = safeAtobUtf8(blob.content);
-    }
-    const content = JSON.parse(text);
+    const content = await ghGetJson(GH_FILE);
     trips = content.trips || [];
-    fleet = content.fleet || [];
+    // Truck list: Fleet registry (emelco_fleet_2026.json) is the source of truth.
+    // Falls back to the older fleet list inside emelco_data.json if the registry can't be loaded.
+    let usedRegistry = false;
+    try{
+      const reg = await ghGetJson(FLEET_FILE);
+      if(Array.isArray(reg.trucks) && reg.trucks.length){
+        fleet = reg.trucks;
+        usedRegistry = true;
+      }
+    }catch(e){ console.warn('Fleet registry load failed, using fallback list:', e.message); }
+    if(!usedRegistry) fleet = content.fleet || [];
     const now = new Date();
-    statusEl.textContent = 'Live · last updated ' + now.toLocaleTimeString();
+    statusEl.textContent = 'Live · last updated ' + now.toLocaleTimeString() + (usedRegistry ? '' : ' · ⚠ using backup truck list');
     renderGrid();
   }catch(e){
     console.error(e);
@@ -234,7 +246,7 @@ async function loadData(manual){
 
 function renderGrid(){
   const activePlates = fleet
-    .filter(f => (f.status||'').toLowerCase()==='active')
+    .filter(f => String(f.status||'').trim().toLowerCase()==='active')
     .map(f => f.plate)
     .sort();
 
