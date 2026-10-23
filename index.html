@@ -1355,7 +1355,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202610112110'; // 13th Month: per-person driver/helper rate overrides (blank = default). Earlier: 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
+const APP_VERSION = '202610232100'; // 13th Month: per-person driver/helper rate overrides (blank = default). Earlier: 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1840,9 +1840,9 @@ async function loadData(){
       if(!staff.length){ staff=[...DEFAULT_STAFF]; }
       if(!fleet.length){ fleet=[...DEFAULT_FLEET]; }
       if(!trips.length){ trips=[...PRELOADED_TRIPS]; }
-      localStorage.setItem(TRIPS_KEY,JSON.stringify(trips));
-      localStorage.setItem(STAFF_KEY,JSON.stringify(staff));
-      localStorage.setItem(FLEET_KEY,JSON.stringify(fleet));
+      lsSet(TRIPS_KEY,JSON.stringify(trips));
+      lsSet(STAFF_KEY,JSON.stringify(staff));
+      lsSet(FLEET_KEY,JSON.stringify(fleet));
       lastSyncTime=new Date();
       setSyncStatus('☁️ Synced '+timeAgo(lastSyncTime),'var(--green)');
       startAutoSync();
@@ -1873,8 +1873,8 @@ async function saveToGitHub(){
   isSyncing=true;
   setSyncStatus('⏳ Saving to cloud…','var(--accent)');
   try{
-    const payload = { trips, staff, fleet, savedAt: new Date().toISOString(), savedBy: getDeviceName() };
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload,null,2))));
+    const payload = { trips: trips.map(slimTripForCloud), staff, fleet, savedAt: new Date().toISOString(), savedBy: getDeviceName() };
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
     const body = { message:`Update ${new Date().toLocaleString('en-PH')}`, content };
     if(ghSha) body.sha = ghSha;
     const res = await fetch(GH_API,{
@@ -1944,9 +1944,9 @@ async function pullFromGitHub(){
     fleet=content.fleet||[];
     trips.forEach(t=>{ if(t.cutoff) t.cutoff=normalizeCutoff(t.cutoff); });
     migrateAllTrips(); // in-memory + localStorage only — a pull never triggers a cloud write
-    localStorage.setItem(TRIPS_KEY,JSON.stringify(trips));
-    localStorage.setItem(STAFF_KEY,JSON.stringify(staff));
-    localStorage.setItem(FLEET_KEY,JSON.stringify(fleet));
+    lsSet(TRIPS_KEY,JSON.stringify(trips));
+    lsSet(STAFF_KEY,JSON.stringify(staff));
+    lsSet(FLEET_KEY,JSON.stringify(fleet));
     lastSyncTime=new Date();
     setSyncStatus('☁️ Synced '+timeAgo(lastSyncTime),'var(--green)');
     renderTable(); updateStats(); updateFilterOptions();
@@ -2037,18 +2037,46 @@ function getTripWorkers(t){
 // Save to both localStorage AND GitHub
 function saveTripsData(){
   migrateAllTrips(); // idempotent — guarantees every persisted trip carries the new shape
-  localStorage.setItem(TRIPS_KEY,JSON.stringify(trips));
+  lsSet(TRIPS_KEY,JSON.stringify(trips));
   saveToGitHub();
 }
 function saveStaffData(){
-  localStorage.setItem(STAFF_KEY,JSON.stringify(staff));
+  lsSet(STAFF_KEY,JSON.stringify(staff));
   saveToGitHub();
 }
 function saveFleetData(){
-  localStorage.setItem(FLEET_KEY,JSON.stringify(fleet));
+  lsSet(FLEET_KEY,JSON.stringify(fleet));
   saveToGitHub();
 }
 function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+// The browser copy is only a local cache. If the browser's storage is full or blocked, a failed write
+// must NEVER stop the cloud save/sync that follows it (it used to throw and abort everything after it).
+var _lsWarned=false;
+function lsSet(key,val){
+  try{ localStorage.setItem(key,val); return true; }
+  catch(e){
+    console.warn('Local storage write failed for '+key+' (storage full or blocked):',e);
+    if(!_lsWarned){ _lsWarned=true; toast('⚠️ Browser storage is full — changes still save to the cloud','error'); }
+    return false;
+  }
+}
+
+// Cloud copy only: leave out fields that carry no information. Nothing in the app reads these when empty,
+// and migrateTrip() recreates statusLog/_migrated in memory on every load, so the screens behave the same.
+// Fields are only omitted when EMPTY — any trip that actually has a value keeps it.
+var CLOUD_DROP_ALWAYS=['_migrated'];
+var CLOUD_DROP_IF_EMPTY=['statusLog','docsRemarks','paidVariance','docsStatus','payRemarks','payStatus'];
+function slimTripForCloud(t){
+  if(!t || typeof t!=='object') return t;
+  const o=Object.assign({},t);
+  CLOUD_DROP_ALWAYS.forEach(k=>{ delete o[k]; });
+  CLOUD_DROP_IF_EMPTY.forEach(k=>{
+    const v=o[k];
+    if(v===undefined || v===null || v==='' || v===0 || (Array.isArray(v) && v.length===0)) delete o[k];
+  });
+  return o;
+}
 
 function cleanupStaffDates(){
   let changed=0;
