@@ -149,6 +149,7 @@ body.role-operations .owner-only{display:none!important}
     <span id="sync-status">local</span>
     <a href="https://rchbas-alt.github.io/emelco-app/index.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Trip List">🚚 Trip 2026</a>
     <span class="role-label" id="role-label" onclick="doLogout()" title="Click to switch user"></span>
+    <button class="btn btn-ghost btn-sm" id="logoffBtn" style="display:none" onclick="doLogout()">⎋ Log off</button>
   </div>
 </div>
 
@@ -323,7 +324,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610241600'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202610241730'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -379,14 +380,22 @@ function doLogin(){
   } else { $('#login-error').textContent='Incorrect access code.'; }
 }
 function setRole(r){
-  currentRole=r; localStorage.setItem('emelco_role',r);
+  currentRole=r;
+  // Own keys (not the shared 'emelco_role' of the other modules). Owner lasts only until the tab/browser closes; Operations is remembered on the device.
+  try{ if(r==='owner'){ sessionStorage.setItem('emelco_exp_owner','1'); localStorage.removeItem('emelco_exp_role'); } else { localStorage.setItem('emelco_exp_role','operations'); sessionStorage.removeItem('emelco_exp_owner'); } }catch(_){}
+  const lo=$('#logoffBtn'); if(lo) lo.style.display='inline-flex';
   document.body.classList.toggle('role-operations',r==='operations');
   document.body.classList.toggle('role-owner',r==='owner');
   const b=$('#role-label'); b.style.display='inline-block'; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations';
   const pv=$('#publishVersionBtn'); if(pv) pv.style.display = isDeployAdmin() ? 'inline-flex' : 'none';
 }
-function doLogout(){ if(!confirm('Switch user / lock expenses?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations','role-owner','owner-tab'); $('#role-label').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
-function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
+function doLogout(){ if(!confirm('Log off from Expenses?'))return; try{ sessionStorage.removeItem('emelco_exp_owner'); localStorage.removeItem('emelco_exp_role'); }catch(_){} currentRole=null; document.body.classList.remove('role-operations','role-owner','owner-tab'); $('#role-label').style.display='none'; const lo=$('#logoffBtn'); if(lo) lo.style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); location.reload(); }
+function initRoleGate(){
+  let s=null;
+  try{ if(sessionStorage.getItem('emelco_exp_owner')==='1') s='owner'; else if(localStorage.getItem('emelco_exp_role')==='operations') s='operations'; }catch(_){}
+  if(s){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; }
+  return false;
+}
 
 /* ============================================================
    Version gate — own expensesVersion key, merge-safe with the
