@@ -373,7 +373,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610242030'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202610242100'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -683,7 +683,9 @@ async function loadPayroll(){
     // Two slips for the same person whose dates overlap: only the most recently finalized one counts.
     const kept={}; list.slice().sort((a,b)=>String(b.finalizedAt).localeCompare(String(a.finalizedAt))).forEach(r=>{
       const k=r.staffId||r.name; kept[k]=kept[k]||[];
-      const clash=kept[k].find(o=>r.start<=(o.end||o.start)&&o.start<=(r.end||r.start));
+      const dd=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000);
+      // a shared boundary day (e.g. Aug 1–15 then Aug 15–31) is normal; real duplicates share two or more days
+      const clash=kept[k].find(o=>dd(r.start>o.start?r.start:o.start,(r.end||r.start)<(o.end||o.start)?(r.end||r.start):(o.end||o.start))>=1);
       if(clash){ r.superseded=true; r.supersededBy=clash.start+' → '+clash.end; } else kept[k].push(r);
     });
     Object.keys(m).forEach(k=>delete m[k]); list.forEach(r=>{ if(!r.superseded){ const mo=r.start.slice(0,7); m[mo]=(m[mo]||0)+r.gross; } });
