@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMELCO — Expenses 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--accent2:#c04a18;--accent-soft:rgba(212,130,10,.12);--on-accent:#000;--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--purple:#7c3aed;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--card:#ffffff;--input-bg:#f8f9fb;--shadow:0 2px 12px rgba(0,0,0,0.08);--radius:10px}
+/* Operations view = blue everywhere so the two roles can never be confused */
+body.role-operations{--accent:#2563eb;--accent2:#1d4ed8;--accent-soft:rgba(37,99,235,.12);--on-accent:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);border-top:5px solid var(--accent);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:100;gap:10px}
+.logo{display:flex;align-items:center;gap:12px;min-width:0}
+.logo-mark{width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-weight:500;font-size:13px;color:var(--on-accent);letter-spacing:-.5px;flex:0 0 auto}
+.logo-text{font-weight:700;font-size:16px;letter-spacing:.5px}
+.logo-sub{font-size:11px;color:var(--text2);font-weight:300}
+.header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.client-pill{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;letter-spacing:.5px}
+.role-label{display:none;font-size:13px;font-weight:800;letter-spacing:1.2px;padding:6px 14px;border-radius:8px;background:var(--accent);color:var(--on-accent);cursor:pointer;text-transform:uppercase}
+#sync-status{font-size:11px;color:var(--text2)}
+.btn{padding:8px 14px;border-radius:var(--radius);border:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:var(--on-accent)}.btn-primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--border2)}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#a93226}
+.btn-sm{padding:4px 9px;font-size:11px}
+.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:64px;z-index:99}
+.tab{padding:13px 18px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.owner-banner{display:none;background:var(--accent-soft);border-bottom:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;padding:6px 24px}
+body.owner-tab .owner-banner{display:block}
+.main{padding:20px;max-width:1500px}
+.page{display:none}.page.active{display:block}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:3px}
+.stat-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px}
+.stat-value{font-size:20px;font-weight:700;font-family:'DM Mono',monospace}
+.stat-sub{font-size:10px;color:var(--text2)}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+.search-box,.filter-select,.month-input{background:var(--input-bg);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px}
+.search-box{min-width:180px}
+.search-box:focus,.filter-select:focus,.month-input:focus{outline:none;border-color:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--radius);overflow:hidden}
+.seg button{background:var(--bg3);border:none;padding:8px 12px;font-family:'Sora',sans-serif;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--on-accent)}
+.table-wrapper{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 330px)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead{position:sticky;top:0;z-index:10}
+th{background:var(--bg3);border-bottom:1px solid var(--border2);padding:9px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+tr:hover td{background:rgba(0,0,0,.015)}
+tr:last-child td{border-bottom:none}
+td.wrap{white-space:normal;min-width:140px}
+.num{text-align:right;font-family:'DM Mono',monospace;white-space:nowrap}
+.muted{color:var(--text3)}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.row-owner td:first-child{box-shadow:inset 3px 0 0 #d4820a}
+.row-total td{font-weight:800;background:var(--bg3)}
+.row-sub td{color:var(--text2)}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.badge-owner{background:rgba(212,130,10,.15);color:#a8660a}
+.badge-daily{background:rgba(37,99,235,.13);color:#1d4ed8}
+.badge-type{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.badge-off{background:rgba(107,114,128,.18);color:#4b5563}
+.hint{font-size:11px;color:var(--text3);margin:6px 0 14px;line-height:1.5}
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:24px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.empty{text-align:center;padding:40px 20px;color:var(--text3);font-size:12px}
+body.role-operations .owner-only{display:none!important}
+.note{background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text);margin-bottom:14px;line-height:1.5}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:640px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.modal.wide{max-width:860px}
+.modal-header{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:16px;font-weight:700}.modal-subtitle{font-size:11px;color:var(--text2);margin-top:2px}
+.modal-close{width:30px;height:30px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+.modal-body{padding:20px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.form-grid{display:grid;gap:10px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.form-input,.form-select,.form-textarea{background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;padding:8px 11px;color:var(--text);font-family:'Sora',sans-serif;font-size:12px;width:100%}
+.form-textarea{resize:vertical;min-height:60px}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.req{color:var(--red)}
+.form-hint{font-size:11px;color:var(--text2);margin-top:2px}
+/* login */
+.login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-overlay.hidden{display:none}
+.login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;width:100%;max-width:380px;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-title{font-weight:800;font-size:18px}
+.login-desc{font-size:11px;color:var(--text2);margin-bottom:20px}
+.role-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.role-opt{border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);transition:all .15s}
+.role-opt:hover{border-color:var(--accent)}
+.role-opt.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.role-opt .em{font-size:20px;display:block;margin-bottom:4px}
+.login-error{color:var(--red);font-size:11px;margin-top:8px;min-height:14px}
+/* toast + version gate */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:6px}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 14px;font-size:12px;box-shadow:var(--shadow);animation:toastIn .3s ease;min-width:220px}
+.toast.success{border-left:3px solid var(--green)}.toast.error{border-left:3px solid var(--red)}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.version-block{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:4000;display:none;align-items:center;justify-content:center;padding:20px}
+.version-block.show{display:flex}
+.version-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;max-width:420px;text-align:center}
+@media(max-width:700px){.g2,.g3{grid-template-columns:1fr}.header{padding:0 12px}.tabs{padding:0 8px}.main{padding:12px}.logo-sub{display:none}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo"><div class="logo-mark">EM</div><div class="login-title">EMELCO Expenses</div></div>
+    <div class="login-desc">Operating expenses &amp; budget · select role and enter access code</div>
+    <div class="role-picker">
+      <div class="role-opt active" id="pick-owner" onclick="pickRole('owner')"><span class="em">👑</span>Owner</div>
+      <div class="role-opt" id="pick-operations" onclick="pickRole('operations')"><span class="em">🧭</span>Operations</div>
+    </div>
+    <input type="password" class="form-input" id="login-pass" placeholder="Access code" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="login-error" id="login-error"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:6px" onclick="doLogin()">Unlock</button>
+  </div>
+</div>
+
+<!-- VERSION GATE -->
+<div class="version-block" id="version-block">
+  <div class="version-card">
+    <div style="font-size:34px;margin-bottom:10px">🔄</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:6px">Update required</div>
+    <div id="version-msg" style="font-size:12px;color:var(--text2);margin-bottom:18px"></div>
+    <button class="btn btn-primary" style="justify-content:center;width:100%" onclick="location.reload(true)">Reload now</button>
+    <button class="btn btn-primary" style="justify-content:center;width:100%;margin-top:8px;background:#16a34a;color:#fff;display:none" id="version-publish-btn" onclick="publishFromBlock()">✅ I just deployed this — Publish it</button>
+  </div>
+</div>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark">EM</div>
+    <div><div class="logo-text">EMELCO Expenses</div><div class="logo-sub">Operating expenses &amp; budget</div></div>
+  </div>
+  <div class="header-right">
+    <span class="client-pill">2026</span>
+    <span id="sync-status">local</span>
+    <a href="https://rchbas-alt.github.io/emelco-app/index.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Trip List">🚚 Trip 2026</a>
+    <span class="role-label" id="role-label" onclick="doLogout()" title="Click to switch user"></span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="entries" onclick="switchTab('entries')">🧾 Entries</div>
+  <div class="tab owner-only" data-tab="monthly" onclick="switchTab('monthly')">📅 Monthly</div>
+  <div class="tab owner-only" data-tab="budget" onclick="switchTab('budget')">🎯 Budget</div>
+  <div class="tab owner-only" data-tab="capital" onclick="switchTab('capital')">🏗️ Capital</div>
+  <div class="tab owner-only" data-tab="categories" onclick="switchTab('categories')">🗂️ Categories</div>
+</div>
+<div class="owner-banner">Owner's Module</div>
+
+<div class="main">
+
+  <!-- ===== ENTRIES ===== -->
+  <div class="page active" id="page-entries">
+    <div class="stats-row" id="entry-stats"></div>
+    <div class="toolbar">
+      <select class="filter-select" id="f-month" onchange="renderEntries()"></select>
+      <select class="filter-select" id="f-group" onchange="renderEntries()"></select>
+      <input class="search-box" id="f-search" placeholder="Search remark / plate…" oninput="renderEntries()">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm owner-only" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-ghost btn-sm owner-only" id="publishVersionBtn" style="display:none" onclick="publishVersionFromUI()">📤 Publish this version</button>
+      <button class="btn btn-primary" onclick="openEntry()">＋ Add expense</button>
+    </div>
+    <div class="hint">Truck repairs, tires and battery are entered in the <strong>Fleet</strong> module's Maintenance Log, not here, so nothing is counted twice.</div>
+    <div class="table-wrapper"><table id="entry-table">
+      <thead><tr><th>Date</th><th>Item</th><th>Where / plate</th><th style="text-align:right">Amount</th><th>Remark</th><th>By</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <!-- ===== MONTHLY ===== -->
+  <div class="page" id="page-monthly">
+    <div class="toolbar">
+      <select class="filter-select" id="m-year" onchange="renderMonthly()"></select>
+      <div class="seg" id="viewSeg">
+        <button data-v="spread" onclick="setView('spread')">Yearly spread over 12 months</button>
+        <button data-v="paid" onclick="setView('paid')">By paid month</button>
+      </div>
+      <div class="spacer"></div>
+    </div>
+    <div class="hint">Yearly items (registration, taxes, stickers, insurance, permits) are either spread evenly over the 12 months from the month paid, or shown in the month they were paid. Truck maintenance is read from the Fleet module.</div>
+    <div class="table-wrapper"><table id="monthly-table"></table></div>
+    <div class="hint" id="rev-note" style="margin-top:10px"></div>
+  </div>
+
+  <!-- ===== BUDGET ===== -->
+  <div class="page" id="page-budget">
+    <div class="toolbar">
+      <label class="form-label">Month</label>
+      <input type="month" class="month-input" id="b-month" onchange="renderBudget()">
+      <div class="seg" id="viewSeg2">
+        <button data-v="spread" onclick="setView('spread')">Yearly spread</button>
+        <button data-v="paid" onclick="setView('paid')">By paid month</button>
+      </div>
+      <div class="spacer"></div>
+    </div>
+    <div class="hint">Set a monthly budget per group. A new amount applies from the selected month onward; earlier months keep the budget they had, so history stays honest.</div>
+    <div class="table-wrapper"><table id="budget-table"></table></div>
+    <div class="section-title">Last 6 months — planned vs used</div>
+    <div class="table-wrapper"><table id="budget-hist"></table></div>
+  </div>
+
+  <!-- ===== CAPITAL ===== -->
+  <div class="page" id="page-capital">
+    <div class="toolbar">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="openCapital()">＋ Add capital item</button>
+    </div>
+    <div class="hint">Big one-time spending (office construction, truck purchases). Kept out of monthly OPEX so one month's profit is not distorted. Depreciation is information only and never enters OPEX. A truck's monthly installment is entered as an OPEX entry (Truck financing); payments recorded here only track the purchase balance.</div>
+    <div class="table-wrapper"><table id="capital-table"></table></div>
+  </div>
+
+  <!-- ===== CATEGORIES ===== -->
+  <div class="page" id="page-categories">
+    <div class="toolbar">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="openCategory()">＋ Add item</button>
+    </div>
+    <div class="hint">Add, rename or retire items any time — no rebuild needed. Retired items stay on past entries. <strong>Daily</strong> items can be entered by Operations; <strong>Owner</strong> items are only visible in this module.</div>
+    <div class="table-wrapper"><table id="cat-table"></table></div>
+
+    <div class="section-title">Review "Other" entries</div>
+    <div class="hint">When the same kind of expense keeps landing in Other, move it to its own item (create the item above first).</div>
+    <div class="table-wrapper"><table id="other-table"></table></div>
+
+    <div class="section-title">Places</div>
+    <div id="places-box"></div>
+  </div>
+
+</div>
+
+<!-- ENTRY MODAL -->
+<div class="modal-overlay" id="entry-modal"><div class="modal">
+  <div class="modal-header"><div><div class="modal-title" id="entry-title">Add expense</div><div class="modal-subtitle">Record what was paid, on the date it was paid.</div></div><div class="modal-close" onclick="closeModal('entry-modal')">✕</div></div>
+  <div class="modal-body"><div class="form-grid">
+    <div class="form-grid g2">
+      <div class="form-group"><label class="form-label">Date <span class="req">*</span></label><input type="date" class="form-input" id="e-date"></div>
+      <div class="form-group"><label class="form-label">Amount (₱) <span class="req">*</span></label><input type="number" step="0.01" min="0" class="form-input" id="e-amount" placeholder="0.00"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Item <span class="req">*</span></label><select class="form-select" id="e-cat" onchange="entryCatChanged()"></select><div class="form-hint" id="e-cat-hint"></div></div>
+    <div class="form-grid g2">
+      <div class="form-group" id="e-place-wrap"><label class="form-label">Place</label><select class="form-select" id="e-place"></select></div>
+      <div class="form-group" id="e-plate-wrap"><label class="form-label">Truck plate <span class="req">*</span></label><input class="form-input" id="e-plate" list="dl-plates" placeholder="e.g. CBP4390" style="text-transform:uppercase"><datalist id="dl-plates"></datalist></div>
+    </div>
+    <div class="form-group"><label class="form-label">Remark <span class="req" id="e-remark-req" style="display:none">* required for Other</span></label><textarea class="form-textarea" id="e-remark" placeholder="What was it for?"></textarea></div>
+  </div></div>
+  <div class="modal-footer">
+    <button class="btn btn-danger" id="e-delete" style="margin-right:auto;display:none" onclick="deleteEntry()">Delete</button>
+    <button class="btn btn-ghost" onclick="closeModal('entry-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveEntry()">Save</button>
+  </div>
+</div></div>
+
+<!-- CATEGORY MODAL -->
+<div class="modal-overlay" id="cat-modal"><div class="modal">
+  <div class="modal-header"><div><div class="modal-title" id="cat-title">Add item</div><div class="modal-subtitle">Items belong to a group; groups roll up into the monthly totals.</div></div><div class="modal-close" onclick="closeModal('cat-modal')">✕</div></div>
+  <div class="modal-body"><div class="form-grid">
+    <div class="form-grid g2">
+      <div class="form-group"><label class="form-label">Group <span class="req">*</span></label><input class="form-input" id="c-group" list="dl-groups" placeholder="e.g. Utilities"><datalist id="dl-groups"></datalist></div>
+      <div class="form-group"><label class="form-label">Item name <span class="req">*</span></label><input class="form-input" id="c-name" placeholder="e.g. Generator fuel"></div>
+    </div>
+    <div class="form-grid g3">
+      <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="c-type"><option value="monthly">Monthly</option><option value="yearly">Yearly (spread over 12 months)</option><option value="adhoc">Ad hoc</option></select></div>
+      <div class="form-group"><label class="form-label">Who enters it</label><select class="form-select" id="c-tier"><option value="daily">Daily (Operations can enter)</option><option value="owner">Owner only</option></select></div>
+      <div class="form-group"><label class="form-label">Tagged to</label><select class="form-select" id="c-tag"><option value="place">A place</option><option value="plate">A truck plate</option><option value="none">Nothing (general)</option></select></div>
+    </div>
+    <div class="form-grid g2">
+      <div class="form-group"><label class="form-label">Default place</label><select class="form-select" id="c-defplace"></select></div>
+      <div class="form-group"><label class="form-label">Status</label><select class="form-select" id="c-active"><option value="1">Active</option><option value="0">Retired</option></select></div>
+    </div>
+  </div></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('cat-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+  </div>
+</div></div>
+
+<!-- CAPITAL MODAL -->
+<div class="modal-overlay" id="cap-modal"><div class="modal wide">
+  <div class="modal-header"><div><div class="modal-title" id="cap-title">Add capital item</div><div class="modal-subtitle">Not part of monthly OPEX.</div></div><div class="modal-close" onclick="closeModal('cap-modal')">✕</div></div>
+  <div class="modal-body"><div class="form-grid">
+    <div class="form-grid g3">
+      <div class="form-group"><label class="form-label">Kind</label><select class="form-select" id="k-kind" onchange="capKindChanged()"><option value="project">Project (e.g. office construction)</option><option value="truck">Truck purchase</option></select></div>
+      <div class="form-group"><label class="form-label">Name <span class="req">*</span></label><input class="form-input" id="k-name" placeholder="e.g. Office renovation"></div>
+      <div class="form-group" id="k-plate-wrap"><label class="form-label">Truck plate</label><input class="form-input" id="k-plate" list="dl-plates" style="text-transform:uppercase"></div>
+    </div>
+    <div class="form-grid g3">
+      <div class="form-group"><label class="form-label">Start / purchase date</label><input type="date" class="form-input" id="k-date"></div>
+      <div class="form-group"><label class="form-label">Total price / budget (₱)</label><input type="number" step="0.01" min="0" class="form-input" id="k-total"></div>
+      <div class="form-group" id="k-down-wrap"><label class="form-label">Down payment (₱)</label><input type="number" step="0.01" min="0" class="form-input" id="k-down"></div>
+    </div>
+    <div class="form-grid g2" id="k-years-wrap">
+      <div class="form-group"><label class="form-label">Years of use (for depreciation info)</label><input type="number" step="0.5" min="0" class="form-input" id="k-years" placeholder="e.g. 10"></div>
+      <div class="form-group"><label class="form-label">Note</label><input class="form-input" id="k-note"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Payments recorded</label>
+      <div class="table-wrapper" style="max-height:220px"><table id="k-pay-table"></table></div>
+      <div class="form-grid g3" style="margin-top:8px;grid-template-columns:1fr 1fr 2fr auto">
+        <input type="date" class="form-input" id="kp-date"><input type="number" step="0.01" class="form-input" id="kp-amt" placeholder="Amount"><input class="form-input" id="kp-note" placeholder="Note"><button class="btn btn-ghost" onclick="addCapPayment()">＋ Add</button>
+      </div>
+    </div>
+  </div></div>
+  <div class="modal-footer">
+    <button class="btn btn-danger" id="k-delete" style="margin-right:auto;display:none" onclick="deleteCapital()">Delete</button>
+    <button class="btn btn-ghost" onclick="closeModal('cap-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveCapital()">Save</button>
+  </div>
+</div></div>
+
+<div class="toast-container" id="toasts"></div>
+<script>
+const APP_VERSION = '202610241600'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+
+// ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
+const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
+const PROXY_SECRET = 'emelco1254rch';
+const EXP_FILE     = 'emelco_expenses_2026.json';
+const FLEET_FILE   = 'emelco_fleet_2026.json';   // read-only: plates + maintenance log
+const TRIPS_FILE   = 'emelco_data.json';          // read-only: revenue, for the 25% comparison
+const VERSION_FILE = 'app_version.json';
+const EXP_API   = `${PROXY_URL}/contents/${EXP_FILE}`;
+const FLEET_API = `${PROXY_URL}/contents/${FLEET_FILE}`;
+const TRIPS_API = `${PROXY_URL}/contents/${TRIPS_FILE}`;
+const VERSION_API = `${PROXY_URL}/contents/${VERSION_FILE}`;
+const HDRS = { 'X-Proxy-Auth':PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
+const OPEX_RATE = 0.25;   // same flat estimate index.html uses per trip (Rate + Surcharge)
+let expSha = null;
+
+// Same shared codes as the other modules. Simple UI gate for a small trusted team.
+const ACCESS_CODES = { owner:'emelco2026', operations:'ops2026' };
+
+/* ---- helpers ---- */
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const n=v=>Number(v)||0;
+const peso=v=>'₱'+n(v).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const pesoShort=v=>{ v=n(v); return v===0?'—':v.toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0}); };
+const uid=p=>(p||'x')+Math.random().toString(36).slice(2,10);
+const nowISO=()=>new Date().toISOString();
+const todayISO=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const monthOf=d=>String(d||'').slice(0,7);
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function addMonths(ym,k){ const [y,m]=ym.split('-').map(Number); const t=y*12+(m-1)+k; return `${Math.floor(t/12)}-${String(t%12+1).padStart(2,'0')}`; }
+function monthLabel(ym){ const [y,m]=ym.split('-'); return MONTHS[Number(m)-1]+' '+y; }
+function toast(msg,type='success'){ const c=$('#toasts'); const t=document.createElement('div'); t.className='toast '+type; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.remove(),3800); }
+function safeAtobUtf8(b64){ const bin=atob(b64.replace(/\n/g,'')); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i); return new TextDecoder('utf-8').decode(b); }
+function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
+function getDeviceName(){ return localStorage.getItem('emelco_device')||'expenses-web'; }
+function openModal(id){ $('#'+id).classList.add('open'); }
+function closeModal(id){ $('#'+id).classList.remove('open'); }
+
+/* ============================================================
+   RBAC — Owner = gold, Operations = blue (whole page recolors)
+   ============================================================ */
+let currentRole=null, pickedRole='owner', currentName='';
+function isOwner(){ return currentRole==='owner'; }
+function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
+function doLogin(){
+  const p=$('#login-pass').value.trim();
+  if(p===ACCESS_CODES[pickedRole]){
+    let saved=localStorage.getItem('emelco_user_name')||'';
+    let nm=(prompt('Your name (for the record):', saved)||saved||'').trim();
+    if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); }
+    setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot();
+  } else { $('#login-error').textContent='Incorrect access code.'; }
+}
+function setRole(r){
+  currentRole=r; localStorage.setItem('emelco_role',r);
+  document.body.classList.toggle('role-operations',r==='operations');
+  document.body.classList.toggle('role-owner',r==='owner');
+  const b=$('#role-label'); b.style.display='inline-block'; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations';
+  const pv=$('#publishVersionBtn'); if(pv) pv.style.display = isDeployAdmin() ? 'inline-flex' : 'none';
+}
+function doLogout(){ if(!confirm('Switch user / lock expenses?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations','role-owner','owner-tab'); $('#role-label').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
+function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
+
+/* ============================================================
+   Version gate — own expensesVersion key, merge-safe with the
+   shared app_version.json (other modules' keys untouched)
+   ============================================================ */
+const DEPLOY_ADMIN_NAME='ruchan';
+function isDeployAdmin(){ return String(currentName||'').trim().toLowerCase()===DEPLOY_ADMIN_NAME; }
+async function checkVersion(){
+  const isLocal=location.protocol==='file:'||/localhost|127\.0\.0\.1/.test(location.host);
+  if(isLocal) return;
+  try{
+    const r=await fetch(VERSION_API+'?t='+Date.now(),{headers:HDRS});
+    if(!r.ok) return;
+    const meta=await r.json(); const j=JSON.parse(safeAtobUtf8(meta.content));
+    const deployed=(j.expensesVersion)||'';
+    if(deployed && deployed!==APP_VERSION){
+      $('#version-msg').innerHTML=`You're on <strong>${APP_VERSION}</strong>. Deployed expenses version is <strong>${deployed}</strong>.`;
+      $('#version-block').classList.add('show');
+      const btn=$('#version-publish-btn');
+      if(btn) btn.style.display=(Number(APP_VERSION)>Number(deployed||0)&&isDeployAdmin())?'flex':'none';
+    }
+  }catch(e){ /* non-fatal */ }
+}
+async function publishFromBlock(){
+  if(!isDeployAdmin()){ toast('Publishing a version is restricted to the deploy admin','error'); return; }
+  if(!confirm(`Publish ${APP_VERSION} as the deployed expenses version?\n\nOnly do this if you just uploaded this exact expenses.html to GitHub and confirmed it's live.`)) return;
+  await publishExpVersion(''); location.reload(true);
+}
+async function publishExpVersion(note){
+  let existing={}, sha=null;
+  try{ const r=await fetch(VERSION_API,{headers:HDRS}); if(r.ok){ const m=await r.json(); sha=m.sha; if(m.content){ try{ existing=JSON.parse(safeAtobUtf8(m.content)); }catch(e){ existing={}; } } } }catch(e){}
+  const payload=Object.assign({},existing,{ expensesVersion:APP_VERSION, expensesNote:note||'', expensesPublishedAt:nowISO() });
+  const body={ message:'Bump expenses version to '+APP_VERSION, content:toB64Utf8(JSON.stringify(payload,null,2)) };
+  if(sha) body.sha=sha;
+  const res=await fetch(VERSION_API,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},HDRS),body:JSON.stringify(body)});
+  if(res.ok) toast('Expenses version '+APP_VERSION+' published ✓','success'); else { toast('Version publish failed','error'); console.error(await res.text()); }
+}
+async function publishVersionFromUI(){
+  if(!isDeployAdmin()){ toast('Publishing a version is restricted to the deploy admin','error'); return; }
+  if(!confirm(`Publish version ${APP_VERSION} as the deployed expenses version?\n\nOnly do this AFTER uploading this exact expenses.html to GitHub and confirming it's live.`)) return;
+  const note=(prompt('Optional note for this release (leave blank to skip):')||'').trim();
+  await publishExpVersion(note);
+}
+
+/* ============================================================
+   Default categories — editable in the app (Categories tab).
+   tier: 'daily' (Operations can enter) | 'owner' (Owner's Module only)
+   type: 'monthly' | 'yearly' (spread over 12 months) | 'adhoc'
+   tag : 'place' | 'plate' | 'none'
+   ============================================================ */
+function defaultCategories(){
+  const C=(id,group,name,type,tier,tag,defPlace,other)=>({id,group,name,type,tier,tag,defPlace:defPlace||'',other:!!other,active:true,_u:'seed'});
+  return [
+    C('c-elec-yards','Utilities','Electric — both yards (one Meralco bill)','monthly','daily','place','Both yards'),
+    C('c-elec-office','Utilities','Electric — office','monthly','daily','place','Office'),
+    C('c-water-office','Utilities','Water — office','monthly','daily','place','Office'),
+    C('c-water-barracks','Utilities','Water — barracks (optional)','monthly','daily','place','Barracks yard'),
+    C('c-internet-office','Utilities','Internet / load — office','monthly','daily','place','Office'),
+    C('c-supplies','General','Office supplies','adhoc','daily','place','Office'),
+    C('c-errands','General','Errands & logistics','adhoc','daily','place','General'),
+    C('c-welfare','General','Staff welfare','adhoc','daily','place','General'),
+    C('c-barracks-upkeep','General','Barracks upkeep','adhoc','daily','place','Barracks yard'),
+    C('c-misc','General','Miscellaneous','adhoc','daily','place','General'),
+    C('c-other-daily','General','Other (write a remark)','adhoc','daily','place','General',true),
+    C('c-rent','Rent','Yards rent (one combined bill)','monthly','owner','place','Both yards'),
+    C('c-mgmt-pay','Management pay','Management monthly withdrawal','monthly','owner','none',''),
+    C('c-sss','Employer contributions','SSS — employer share','monthly','owner','none',''),
+    C('c-philhealth','Employer contributions','PhilHealth — employer share','monthly','owner','none',''),
+    C('c-pagibig','Employer contributions','Pag-IBIG — employer share','monthly','owner','none',''),
+    C('c-lto','Truck compliance','LTO registration','yearly','owner','plate',''),
+    C('c-truck-tax','Truck compliance','Truck taxes','yearly','owner','plate',''),
+    C('c-stickers','Truck compliance','Stickers','yearly','owner','plate',''),
+    C('c-insurance','Truck compliance','Insurance (TPL / comprehensive)','yearly','owner','plate',''),
+    C('c-emission','Truck compliance','Emission test','yearly','owner','plate',''),
+    C('c-franchise','Truck compliance','Permits & franchise fees','yearly','owner','plate',''),
+    C('c-biz-fees','Business fees','Business permits & government fees','yearly','owner','none',''),
+    C('c-prop-tax','Office property tax','Office property tax (paid by Rhoda, counted internally)','yearly','owner','place','Office'),
+    C('c-truck-fin','Truck financing','Truck installment','monthly','owner','plate',''),
+    C('c-other-owner','Other (Owner)','Other — owner (write a remark)','adhoc','owner','none','',true)
+  ];
+}
+const FLEET_GROUP='Truck maintenance (Fleet log)';
+const DEFAULT_PLACES=['Both yards','Barracks yard','Truck yard','Office','General'];
+
+/* ============================================================
+   State + cloud I/O
+   ============================================================ */
+let STATE = freshState();
+function freshState(){ return { version:1, categories:defaultCategories(), places:DEFAULT_PLACES.slice(), entries:[], budgets:[], capital:[], deletionLog:[] }; }
+let FLEET = { plates:[], maintenance:[], loaded:false };
+let TRIPS = { monthRS:{}, loaded:false, error:'' };
+let viewMode = localStorage.getItem('emelco_exp_view')||'spread';
+
+function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
+
+async function cloudGetJSON(api){
+  const r=await fetch(api+'?t='+Date.now(),{headers:HDRS});
+  if(r.status===404) return {__missing:true};
+  if(!r.ok) throw new Error('GET '+r.status);
+  const meta=await r.json(); let text;
+  if(meta.content && meta.encoding==='base64'){ text=safeAtobUtf8(meta.content); }
+  else { const b=await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`,{headers:HDRS}); if(!b.ok) throw new Error('blob '+b.status); text=safeAtobUtf8((await b.json()).content); }
+  return { sha:meta.sha, data:JSON.parse(text) };
+}
+
+let saveTimer=null, isSaving=false, dirty=false;
+function saveExp(){
+  dirty=true; clearTimeout(saveTimer); setSync('⏳ saving…','var(--accent)');
+  // Local safety copy at once: if the tab closes inside the 0.8s debounce, the next load merges it back and saves.
+  try{ localStorage.setItem('emelco_exp_backup',JSON.stringify(STATE)); }catch(_){}
+  saveTimer=setTimeout(doSaveExp,800);
+}
+async function doSaveExp(){
+  if(isSaving) return; isSaving=true; dirty=false;
+  try{
+    STATE.savedAt=nowISO(); STATE.savedBy=getDeviceName();
+    const body={ message:`Expenses update ${new Date().toLocaleString('en-PH')}`, content:toB64Utf8(JSON.stringify(STATE,null,2)) };
+    if(expSha) body.sha=expSha;
+    const r=await fetch(EXP_API,{method:'PUT',headers:{...HDRS,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){ const d=await r.json(); expSha=d.content.sha; setSync('☁️ saved','var(--green)'); if(!dirty) localStorage.removeItem('emelco_exp_backup'); }
+    else if(r.status===409||r.status===422){
+      setSync('⚠️ conflict — merging','var(--red)');
+      const got=await cloudGetJSON(EXP_API);
+      if(!got.__missing){ expSha=got.sha; STATE=mergeState(STATE,got.data); renderAll(); toast('Another device saved first — merged latest','error'); }
+      isSaving=false; saveExp(); return;
+    } else { throw new Error('PUT '+r.status); }
+  }catch(e){
+    console.error(e); setSync('⚠️ offline — kept locally','var(--red)');
+    try{ localStorage.setItem('emelco_exp_backup',JSON.stringify(STATE)); }catch(_){}
+  }finally{ isSaving=false; }
+}
+// Union by id; the newer _u wins for records people can edit; the log is append-only.
+function mergeById(remote,local){
+  const map={}; (remote||[]).forEach(x=>map[x.id]=x);
+  (local||[]).forEach(x=>{ const ex=map[x.id]; if(!ex || String(x._u||'')>String(ex._u||'')) map[x.id]=x; });
+  return Object.values(map);
+}
+function mergeState(local,remote){
+  const out=normalize(remote);
+  out.categories=mergeById(out.categories,local.categories);
+  out.entries=mergeById(out.entries,local.entries);
+  out.budgets=mergeById(out.budgets,local.budgets);
+  out.capital=mergeById(out.capital,local.capital);
+  out.places=Array.from(new Set([...(out.places||[]),...(local.places||[])]));
+  const seen=new Set((out.deletionLog||[]).map(x=>x.deletedAt+x.ref));
+  (local.deletionLog||[]).forEach(x=>{ const k=x.deletedAt+x.ref; if(!seen.has(k)){ out.deletionLog.push(x); seen.add(k); } });
+  // a deleted record must not come back just because another copy still holds it
+  const gone=new Set(out.deletionLog.map(x=>x.ref));
+  out.entries=out.entries.filter(e=>!gone.has(e.id));
+  out.capital=out.capital.filter(k=>!gone.has(k.id));
+  return out;
+}
+function normalize(d){
+  const s=freshState();
+  s.categories=(d.categories&&d.categories.length)?d.categories:defaultCategories();
+  s.places=(d.places&&d.places.length)?d.places:DEFAULT_PLACES.slice();
+  s.entries=d.entries||[]; s.budgets=d.budgets||[]; s.capital=d.capital||[]; s.deletionLog=d.deletionLog||[];
+  s.savedAt=d.savedAt; s.savedBy=d.savedBy;
+  return s;
+}
+
+// Read-only look at the Fleet module: plate list + its maintenance log (so repairs are never re-typed here).
+async function loadFleet(){
+  try{
+    const got=await cloudGetJSON(FLEET_API);
+    if(got.__missing) return;
+    const d=got.data||{};
+    FLEET.plates=(d.trucks||[]).filter(t=>t.plate).map(t=>({plate:t.plate,status:t.status||''}));
+    FLEET.maintenance=(d.maintenance||[]).map(m=>({date:m.date||'',amount:n(m.amount),plate:m.plate||'',category:m.category||''}));
+    FLEET.loaded=true;
+  }catch(e){ console.warn('Fleet read failed',e); }
+}
+// Owner only: revenue per month (Rate + Surcharge by trip start date) — same basis as the dashboard's Total Revenue.
+async function loadTripsRevenue(){
+  if(TRIPS.loaded||!isOwner()) return;
+  try{
+    const got=await cloudGetJSON(TRIPS_API);
+    if(got.__missing) throw new Error('trip file not found');
+    const trips=(got.data&&got.data.trips)||[];
+    const m={};
+    trips.forEach(t=>{ const mo=t.tripStartDate?String(t.tripStartDate).slice(0,7):''; if(!mo) return; m[mo]=(m[mo]||0)+n(t.rate)+n(t.surcharge); });
+    TRIPS.monthRS=m; TRIPS.loaded=true; TRIPS.error='';
+  }catch(e){ TRIPS.error=String(e.message||e); console.warn('Trips read failed',e); }
+  renderMonthly();
+}
+
+async function boot(){
+  await checkVersion();
+  try{
+    const got=await cloudGetJSON(EXP_API);
+    if(got.__missing){ setSync('☁️ new file on first save','var(--accent)'); STATE=freshState(); }
+    else { expSha=got.sha; STATE=normalize(got.data); setSync('☁️ synced','var(--green)'); }
+  }catch(e){
+    const bk=localStorage.getItem('emelco_exp_backup');
+    if(bk){ try{ STATE=normalize(JSON.parse(bk)); }catch(_){} }
+    setSync('⚠️ offline — local data','var(--red)');
+    toast('Couldn\'t reach expenses file. Add "'+EXP_FILE+'" to Worker ALLOWED_PATHS.','error');
+  }
+  // Anything saved locally but never confirmed in the cloud (tab closed mid-save, or offline) is merged back in.
+  try{
+    const bk=localStorage.getItem('emelco_exp_backup');
+    if(bk){ const local=normalize(JSON.parse(bk)); STATE=mergeState(local,STATE); saveExp(); }
+  }catch(e){ console.warn('backup merge skipped',e); }
+  await loadFleet();
+  renderAll();
+  if(isOwner()) loadTripsRevenue();
+}
+</script>
+<script>
+/* ============================================================
+   Category helpers
+   ============================================================ */
+function catById(id){ return STATE.categories.find(c=>c.id===id); }
+function catsForRole(){ return STATE.categories.filter(c=>c.active && (isOwner()||c.tier==='daily')); }
+function entryVisible(e){ const c=catById(e.catId); if(isOwner()) return true; return !!c && c.tier==='daily'; }
+function groupOfEntry(e){ const c=catById(e.catId); return c?c.group:'(removed item)'; }
+function orderedGroups(extraFromData){
+  const out=[]; const seen=new Set();
+  const push=g=>{ if(g && !seen.has(g)){ seen.add(g); out.push(g); } };
+  STATE.categories.forEach(c=>{ if(c.tier==='daily') push(c.group); });
+  push(FLEET_GROUP);
+  STATE.categories.forEach(c=>{ if(c.tier==='owner') push(c.group); });
+  (extraFromData||[]).forEach(push);
+  return out;
+}
+function groupTier(g){ const c=STATE.categories.find(x=>x.group===g); return c?c.tier:(g===FLEET_GROUP?'daily':'owner'); }
+
+/* ============================================================
+   Tabs / view
+   ============================================================ */
+let currentTab='entries';
+function switchTab(t){
+  if(!isOwner() && t!=='entries') t='entries';
+  currentTab=t;
+  $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===t));
+  $$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+t));
+  document.body.classList.toggle('owner-tab', isOwner() && t!=='entries');
+  if(t==='monthly'){ renderMonthly(); loadTripsRevenue(); }
+  if(t==='budget') renderBudget();
+  if(t==='capital') renderCapital();
+  if(t==='categories') renderCategories();
+}
+function setView(v){ viewMode=v; localStorage.setItem('emelco_exp_view',v); syncSeg(); renderMonthly(); renderBudget(); }
+function syncSeg(){ $$('#viewSeg button,#viewSeg2 button').forEach(b=>b.classList.toggle('on',b.dataset.v===viewMode)); }
+function renderAll(){
+  syncSeg(); renderEntries();
+  if(isOwner()){ renderMonthly(); renderBudget(); renderCapital(); renderCategories(); }
+}
+
+/* ============================================================
+   Entries
+   ============================================================ */
+let entryMonthInit=false;
+function renderEntries(){
+  const vis=STATE.entries.filter(entryVisible);
+  // month filter
+  const mSel=$('#f-month'); const prevM=mSel.value;
+  const months=Array.from(new Set([...vis.map(e=>monthOf(e.date)).filter(Boolean), monthOf(todayISO())])).sort().reverse();
+  mSel.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join('');
+  if(!entryMonthInit){ mSel.value=monthOf(todayISO()); entryMonthInit=true; } else mSel.value=months.includes(prevM)||prevM===''?prevM:'';
+  // group filter
+  const gSel=$('#f-group'); const prevG=gSel.value;
+  const groups=Array.from(new Set(catsForRole().map(c=>c.group)));
+  gSel.innerHTML='<option value="">All groups</option>'+groups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  gSel.value=groups.includes(prevG)?prevG:'';
+  const mf=mSel.value, gf=gSel.value, q=($('#f-search').value||'').trim().toLowerCase();
+  let list=vis.filter(e=>{
+    if(mf && monthOf(e.date)!==mf) return false;
+    if(gf && groupOfEntry(e)!==gf) return false;
+    if(q){ const c=catById(e.catId); const hay=[e.remark,e.plate,e.place,c&&c.name,c&&c.group,e.by].join(' ').toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const total=list.reduce((s,e)=>s+n(e.amount),0);
+  const ownerSum=list.filter(e=>{const c=catById(e.catId);return c&&c.tier==='owner';}).reduce((s,e)=>s+n(e.amount),0);
+  let stats=`<div class="stat-card"><div class="stat-label">Total shown</div><div class="stat-value">${peso(total)}</div><div class="stat-sub">${mf?monthLabel(mf):'all months'}</div></div>
+    <div class="stat-card"><div class="stat-label">Entries</div><div class="stat-value">${list.length}</div><div class="stat-sub">in this view</div></div>`;
+  if(isOwner()) stats+=`<div class="stat-card"><div class="stat-label">Owner items</div><div class="stat-value">${peso(ownerSum)}</div><div class="stat-sub">rent, pay, compliance…</div></div>
+    <div class="stat-card"><div class="stat-label">Daily items</div><div class="stat-value">${peso(total-ownerSum)}</div><div class="stat-sub">entered by office</div></div>`;
+  $('#entry-stats').innerHTML=stats;
+  const tb=$('#entry-table tbody');
+  if(!list.length){ tb.innerHTML='<tr><td colspan="7" class="empty">No expenses in this view yet. Use “＋ Add expense”.</td></tr>'; return; }
+  tb.innerHTML=list.map(e=>{
+    const c=catById(e.catId); const owner=c&&c.tier==='owner';
+    const where=[e.place,e.plate].filter(Boolean).join(' · ');
+    return `<tr class="${owner?'row-owner':''}"><td>${esc(e.date)}</td>
+      <td class="wrap">${c?`<strong>${esc(c.name)}</strong><br><span class="muted" style="font-size:10px">${esc(c.group)}</span>`:'<span class="muted">(removed item)</span>'}
+        ${owner?'<span class="badge badge-owner" style="margin-left:4px">Owner</span>':''}${c&&c.type==='yearly'?'<span class="badge badge-type" style="margin-left:4px">yearly</span>':''}</td>
+      <td>${esc(where)||'<span class="muted">—</span>'}</td><td class="num">${peso(e.amount)}</td>
+      <td class="wrap">${esc(e.remark)}${e.hist&&e.hist.length?' <span class="badge badge-type" title="Edited — earlier values are kept">edited</span>':''}</td>
+      <td class="muted">${esc(e.by)}</td><td><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button></td></tr>`;
+  }).join('');
+}
+
+let editingEntryId=null;
+function openEntry(id){
+  editingEntryId=id||null;
+  const e=id?STATE.entries.find(x=>x.id===id):null;
+  $('#entry-title').textContent=e?'Edit expense':'Add expense';
+  $('#e-delete').style.display=e?'inline-flex':'none';
+  // category select, grouped
+  const cats=catsForRole(); if(e){ const cur=catById(e.catId); if(cur && !cats.includes(cur)) cats.push(cur); }
+  const groups=Array.from(new Set(cats.map(c=>c.group)));
+  $('#e-cat').innerHTML='<option value="">— choose item —</option>'+groups.map(g=>`<optgroup label="${esc(g)}">`+cats.filter(c=>c.group===g).map(c=>`<option value="${c.id}">${esc(c.name)}${c.active?'':' (retired)'}</option>`).join('')+'</optgroup>').join('');
+  $('#e-place').innerHTML=STATE.places.map(p=>`<option>${esc(p)}</option>`).join('');
+  const pl=FLEET.plates.slice().sort((a,b)=>(a.status==='Retired')-(b.status==='Retired')||a.plate.localeCompare(b.plate));
+  $('#dl-plates').innerHTML=pl.map(p=>`<option value="${esc(p.plate)}">${esc(p.status)}</option>`).join('');
+  $('#e-date').value=e?e.date:todayISO();
+  $('#e-amount').value=e?e.amount:'';
+  $('#e-cat').value=e?e.catId:'';
+  $('#e-remark').value=e?(e.remark||''):'';
+  $('#e-plate').value=e?(e.plate||''):'';
+  entryCatChanged(true);
+  if(e && e.place) $('#e-place').value=e.place;
+  openModal('entry-modal'); if(!e) $('#e-amount').focus();
+}
+function entryCatChanged(keep){
+  const c=catById($('#e-cat').value);
+  $('#e-place-wrap').style.display=(!c||c.tag==='place')?'flex':'none';
+  $('#e-plate-wrap').style.display=(c&&c.tag==='plate')?'flex':'none';
+  $('#e-remark-req').style.display=(c&&c.other)?'inline':'none';
+  let hint='';
+  if(c){ if(c.type==='yearly') hint='Yearly item — counted in full on the paid date, and also shown spread over 12 months in the Monthly view.'; else if(c.type==='monthly') hint='Monthly item.'; else hint='Counted in the month it happened.'; }
+  $('#e-cat-hint').textContent=hint;
+  if(c && c.tag==='place' && !keep && c.defPlace) $('#e-place').value=c.defPlace;
+}
+function saveEntry(){
+  const date=$('#e-date').value, amount=parseFloat($('#e-amount').value), catId=$('#e-cat').value;
+  const c=catById(catId);
+  if(!date){ toast('Pick a date','error'); return; }
+  if(!(amount>0)){ toast('Enter an amount above zero','error'); return; }
+  if(!c){ toast('Choose an item','error'); return; }
+  const remark=$('#e-remark').value.trim();
+  if(c.other && !remark){ toast('“Other” needs a remark saying what it was','error'); return; }
+  const plate=$('#e-plate').value.trim().toUpperCase();
+  if(c.tag==='plate'){
+    if(!plate){ toast('Enter the truck plate','error'); return; }
+    if(FLEET.loaded && !FLEET.plates.some(p=>p.plate.toUpperCase()===plate) && !confirm(`Plate ${plate} is not in the Fleet registry. Save anyway?`)) return;
+  }
+  const place=c.tag==='place'?$('#e-place').value:'';
+  const rec={ date, amount, catId, place, plate:c.tag==='plate'?plate:'', remark };
+  if(editingEntryId){
+    const idx=STATE.entries.findIndex(x=>x.id===editingEntryId); const old=STATE.entries[idx];
+    const before={date:old.date,amount:old.amount,catId:old.catId,place:old.place,plate:old.plate,remark:old.remark};
+    const changed=Object.keys(before).some(k=>String(before[k]||'')!==String(rec[k]||''));
+    STATE.entries[idx]=Object.assign({},old,rec,{ _u:nowISO(), hist: changed?[...(old.hist||[]),{at:nowISO(),by:currentName,before}]:(old.hist||[]) });
+  } else {
+    STATE.entries.push(Object.assign({id:uid('x'),by:currentName,dev:getDeviceName(),createdAt:nowISO(),_u:nowISO(),hist:[]},rec));
+  }
+  closeModal('entry-modal'); saveExp(); renderAll(); toast('Saved');
+}
+function deleteEntry(){
+  if(!editingEntryId) return;
+  const e=STATE.entries.find(x=>x.id===editingEntryId); if(!e) return;
+  if(!confirm('Delete this expense? It stays in the deletion log.')) return;
+  STATE.deletionLog.push({ref:e.id,deletedAt:nowISO(),by:currentName,kind:'entry',snapshot:e});
+  STATE.entries=STATE.entries.filter(x=>x.id!==e.id);
+  closeModal('entry-modal'); saveExp(); renderAll(); toast('Deleted');
+}
+function exportCSV(){
+  const rows=[['Date','Group','Item','Place','Plate','Amount','Remark','By']];
+  STATE.entries.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(e=>{ const c=catById(e.catId); rows.push([e.date,c?c.group:'',c?c.name:'',e.place||'',e.plate||'',n(e.amount),e.remark||'',e.by||'']); });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='emelco_expenses_'+todayISO()+'.csv'; a.click();
+}
+
+/* ============================================================
+   Monthly roll-up (shared by Monthly + Budget)
+   ============================================================ */
+// groups -> { 'YYYY-MM': amount } for one calendar year.
+// view 'spread': yearly items are divided by 12 across the 12 months starting at the month paid.
+// view 'paid'  : everything counts in the month it was paid.
+function monthlyData(year,view){
+  const g={};
+  const add=(grp,ym,a)=>{ if(!ym||ym.slice(0,4)!==String(year)) return; (g[grp]=g[grp]||{}); g[grp][ym]=(g[grp][ym]||0)+a; };
+  STATE.entries.forEach(e=>{
+    const c=catById(e.catId), grp=c?c.group:'(removed item)', a=n(e.amount), mo=monthOf(e.date);
+    if(!mo) return;
+    if(c && c.type==='yearly' && view==='spread'){ for(let i=0;i<12;i++) add(grp,addMonths(mo,i),a/12); }
+    else add(grp,mo,a);
+  });
+  FLEET.maintenance.forEach(m=>add(FLEET_GROUP,monthOf(m.date),n(m.amount)));
+  return g;
+}
+function renderMonthly(){
+  if(!isOwner()) return;
+  const ySel=$('#m-year'); const prev=ySel.value;
+  const years=new Set([String(new Date().getFullYear()),'2026']);
+  STATE.entries.forEach(e=>{ if(e.date) years.add(e.date.slice(0,4)); });
+  FLEET.maintenance.forEach(m=>{ if(m.date) years.add(m.date.slice(0,4)); });
+  const ys=Array.from(years).sort().reverse();
+  ySel.innerHTML=ys.map(y=>`<option>${y}</option>`).join(''); ySel.value=ys.includes(prev)?prev:(ys.includes(String(new Date().getFullYear()))?String(new Date().getFullYear()):ys[0]);
+  const year=ySel.value, data=monthlyData(year,viewMode);
+  const months=MONTHS.map((_,i)=>`${year}-${String(i+1).padStart(2,'0')}`);
+  const groups=orderedGroups(Object.keys(data)).filter(g=>data[g]||STATE.categories.some(c=>c.group===g&&c.active)||g===FLEET_GROUP);
+  let html='<thead><tr><th>Group</th>'+months.map((m,i)=>`<th style="text-align:right">${MONTHS[i]}</th>`).join('')+'<th style="text-align:right">Total</th></tr></thead><tbody>';
+  const colTot=months.map(()=>0); let grand=0;
+  groups.forEach(g=>{
+    const owner=groupTier(g)==='owner'; let rowTot=0;
+    const cells=months.map((m,i)=>{ const v=(data[g]&&data[g][m])||0; rowTot+=v; colTot[i]+=v; return `<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`; }).join('');
+    grand+=rowTot;
+    html+=`<tr class="${owner?'row-owner':''}"><td><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}</td>${cells}<td class="num"><strong>${pesoShort(rowTot)}</strong></td></tr>`;
+  });
+  html+=`<tr class="row-total"><td>Real OPEX</td>${colTot.map(v=>`<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`).join('')}<td class="num">${pesoShort(grand)}</td></tr>`;
+  if(TRIPS.loaded){
+    const rev=months.map(m=>TRIPS.monthRS[m]||0), revTot=rev.reduce((a,b)=>a+b,0);
+    const est=rev.map(v=>v*OPEX_RATE), estTot=revTot*OPEX_RATE;
+    html+=`<tr class="row-sub"><td>Revenue (Rate + Surcharge)</td>${rev.map(v=>`<td class="num">${pesoShort(v)}</td>`).join('')}<td class="num">${pesoShort(revTot)}</td></tr>`;
+    html+=`<tr class="row-sub"><td>25% estimate (current dashboard)</td>${est.map(v=>`<td class="num">${pesoShort(v)}</td>`).join('')}<td class="num">${pesoShort(estTot)}</td></tr>`;
+    html+=`<tr class="row-sub"><td>Real minus 25% estimate</td>${colTot.map((v,i)=>{ if(!rev[i]) return '<td class="num muted">—</td>'; const d=v-est[i]; return `<td class="num ${d>0?'neg':'pos'}">${d>0?'+':''}${pesoShort(d)}</td>`; }).join('')}<td class="num ${grand-estTot>0?'neg':'pos'}">${(grand-estTot>0?'+':'')+pesoShort(grand-estTot)}</td></tr>`;
+    html+=`<tr class="row-sub"><td>Real OPEX as % of revenue</td>${colTot.map((v,i)=>rev[i]>0&&v>0?`<td class="num">${(v/rev[i]*100).toFixed(1)}%</td>`:'<td class="num muted">—</td>').join('')}<td class="num">${revTot>0&&grand>0?(grand/revTot*100).toFixed(1)+'%':'—'}</td></tr>`;
+  }
+  html+='</tbody>';
+  $('#monthly-table').innerHTML=html;
+  let note='Months with no entries yet show no real OPEX, so only compare months that are fully entered. ';
+  if(TRIPS.loaded) note+='Revenue is Rate + Surcharge by trip start date, the same basis as the dashboard. The 25% row is what the dashboard currently assumes.';
+  else if(TRIPS.error) note+='Revenue could not be read ('+esc(TRIPS.error)+'), so the 25% comparison is hidden.';
+  else note+='Loading revenue for the 25% comparison…';
+  $('#rev-note').textContent=note;
+}
+
+/* ============================================================
+   Budget
+   ============================================================ */
+function budgetFor(group,ym){
+  let best=null;
+  STATE.budgets.forEach(b=>{ if(b.group===group && b.from<=ym && (!best || b.from>best.from || (b.from===best.from && String(b._u)>String(best._u)))) best=b; });
+  return best?n(best.amount):null;
+}
+function actualFor(ym,cache){
+  const y=ym.slice(0,4); cache[y]=cache[y]||monthlyData(y,viewMode);
+  const out={}; Object.keys(cache[y]).forEach(g=>{ out[g]=cache[y][g][ym]||0; }); return out;
+}
+function renderBudget(){
+  if(!isOwner()) return;
+  const mi=$('#b-month'); if(!mi.value) mi.value=monthOf(todayISO());
+  const ym=mi.value; const cache={};
+  const act=actualFor(ym,cache);
+  const groups=orderedGroups(Object.keys(act)).filter(g=>STATE.categories.some(c=>c.group===g&&c.active)||act[g]||g===FLEET_GROUP);
+  let html='<thead><tr><th>Group</th><th style="text-align:right">Budget</th><th>Set budget from '+monthLabel(ym)+'</th><th style="text-align:right">Used</th><th style="text-align:right">Remaining</th><th style="text-align:right">% used</th></tr></thead><tbody>';
+  let bT=0,aT=0;
+  groups.forEach((g,i)=>{
+    const b=budgetFor(g,ym), a=act[g]||0; bT+=b||0; aT+=a;
+    const rem=b==null?null:b-a, pct=b>0?a/b*100:null;
+    html+=`<tr class="${groupTier(g)==='owner'?'row-owner':''}"><td><strong>${esc(g)}</strong></td>
+      <td class="num">${b==null?'<span class="muted">no budget</span>':peso(b)}</td>
+      <td><input type="number" step="0.01" min="0" class="form-input" style="width:130px;display:inline-block" id="bi-${i}" placeholder="${b==null?'amount':b}"> <button class="btn btn-ghost btn-sm" onclick="setBudget(${i})">Set</button></td>
+      <td class="num">${peso(a)}</td>
+      <td class="num ${rem!=null&&rem<0?'neg':'pos'}">${rem==null?'—':peso(rem)}</td>
+      <td class="num ${pct!=null&&pct>100?'neg':''}">${pct==null?'—':pct.toFixed(0)+'%'}</td></tr>`;
+  });
+  html+=`<tr class="row-total"><td>Total</td><td class="num">${peso(bT)}</td><td></td><td class="num">${peso(aT)}</td><td class="num ${bT-aT<0?'neg':'pos'}">${peso(bT-aT)}</td><td class="num">${bT>0?(aT/bT*100).toFixed(0)+'%':'—'}</td></tr></tbody>`;
+  $('#budget-table').innerHTML=html; window.__budgetGroups=groups;
+  // last 6 months history
+  let h='<thead><tr><th>Month</th><th style="text-align:right">Budget total</th><th style="text-align:right">Used (all groups)</th><th style="text-align:right">Difference</th><th style="text-align:right">% used</th></tr></thead><tbody>';
+  for(let k=5;k>=0;k--){
+    const m=addMonths(ym,-k), a=actualFor(m,cache); let bt=0, at=0;
+    Object.keys(a).forEach(g=>{ at+=a[g]; });
+    orderedGroups(Object.keys(a)).forEach(g=>{ const b=budgetFor(g,m); if(b!=null) bt+=b; });
+    h+=`<tr><td>${monthLabel(m)}</td><td class="num">${bt?peso(bt):'<span class="muted">—</span>'}</td><td class="num">${peso(at)}</td><td class="num ${bt-at<0?'neg':'pos'}">${bt?peso(bt-at):'—'}</td><td class="num">${bt>0?(at/bt*100).toFixed(0)+'%':'—'}</td></tr>`;
+  }
+  $('#budget-hist').innerHTML=h+'</tbody>';
+}
+function setBudget(i){
+  const g=(window.__budgetGroups||[])[i]; const ym=$('#b-month').value;
+  const raw=$('#bi-'+i).value; if(raw===''){ toast('Type an amount first','error'); return; }
+  const amount=parseFloat(raw); if(!(amount>=0)){ toast('Enter a valid amount','error'); return; }
+  const ex=STATE.budgets.find(b=>b.group===g&&b.from===ym);
+  if(ex){ ex.amount=amount; ex._u=nowISO(); ex.by=currentName; }
+  else STATE.budgets.push({id:uid('b'),group:g,from:ym,amount,by:currentName,_u:nowISO()});
+  saveExp(); renderBudget(); toast('Budget set from '+monthLabel(ym));
+}
+
+/* ============================================================
+   Capital list (outside monthly OPEX)
+   ============================================================ */
+function capPaid(k){ return n(k.down)+(k.payments||[]).reduce((s,p)=>s+n(p.amount),0); }
+function monthsBetween(d1,d2){ const a=new Date(d1), b=new Date(d2); if(isNaN(a)||isNaN(b)) return 0; return Math.max(0,(b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth())); }
+function renderCapital(){
+  if(!isOwner()) return;
+  const list=STATE.capital.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  if(!list.length){ $('#capital-table').innerHTML='<tbody><tr><td class="empty">No capital items yet. Add the office construction or a truck purchase.</td></tr></tbody>'; return; }
+  let html='<thead><tr><th>Name</th><th>Kind</th><th>Plate</th><th>Date</th><th style="text-align:right">Total</th><th style="text-align:right">Paid so far</th><th style="text-align:right">Balance</th><th style="text-align:right">Depreciation / month (info)</th><th style="text-align:right">Est. value today (info)</th><th></th></tr></thead><tbody>';
+  list.forEach(k=>{
+    const paid=capPaid(k), bal=n(k.total)-paid;
+    const dep=n(k.years)>0?n(k.total)/(n(k.years)*12):0;
+    const age=monthsBetween(k.date,todayISO());
+    const val=(k.kind==='truck'&&dep>0)?Math.max(0,n(k.total)-dep*age):null;
+    html+=`<tr><td class="wrap"><strong>${esc(k.name)}</strong>${k.note?`<br><span class="muted" style="font-size:10px">${esc(k.note)}</span>`:''}</td><td>${k.kind==='truck'?'Truck':'Project'}</td><td>${esc(k.plate||'')}</td><td>${esc(k.date||'')}</td>
+      <td class="num">${peso(k.total)}</td><td class="num">${peso(paid)}</td><td class="num ${bal>0?'neg':'pos'}">${peso(bal)}</td>
+      <td class="num">${dep>0&&k.kind==='truck'?peso(dep):'—'}</td><td class="num">${val==null?'—':peso(val)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openCapital('${k.id}')">Edit</button></td></tr>`;
+  });
+  $('#capital-table').innerHTML=html+'</tbody>';
+}
+let editingCapId=null, capPayments=[];
+function openCapital(id){
+  editingCapId=id||null; const k=id?STATE.capital.find(x=>x.id===id):null;
+  $('#cap-title').textContent=k?'Edit capital item':'Add capital item'; $('#k-delete').style.display=k?'inline-flex':'none';
+  const pl=FLEET.plates.slice().sort((a,b)=>a.plate.localeCompare(b.plate)); $('#dl-plates').innerHTML=pl.map(p=>`<option value="${esc(p.plate)}">${esc(p.status)}</option>`).join('');
+  $('#k-kind').value=k?k.kind:'project'; $('#k-name').value=k?k.name:''; $('#k-plate').value=k?(k.plate||''):''; $('#k-date').value=k?(k.date||''):todayISO();
+  $('#k-total').value=k?k.total:''; $('#k-down').value=k?(k.down||''):''; $('#k-years').value=k?(k.years||''):''; $('#k-note').value=k?(k.note||''):'';
+  capPayments=k?JSON.parse(JSON.stringify(k.payments||[])):[]; $('#kp-date').value=todayISO(); $('#kp-amt').value=''; $('#kp-note').value='';
+  capKindChanged(); renderCapPayments(); openModal('cap-modal');
+}
+function capKindChanged(){ const t=$('#k-kind').value==='truck'; $('#k-plate-wrap').style.display=t?'flex':'none'; $('#k-down-wrap').style.display=t?'flex':'none'; $('#k-years-wrap').style.display='grid'; }
+function renderCapPayments(){
+  if(!capPayments.length){ $('#k-pay-table').innerHTML='<tbody><tr><td class="empty" style="padding:14px">No payments recorded.</td></tr></tbody>'; return; }
+  $('#k-pay-table').innerHTML='<thead><tr><th>Date</th><th style="text-align:right">Amount</th><th>Note</th><th></th></tr></thead><tbody>'+capPayments.map((p,i)=>`<tr><td>${esc(p.date)}</td><td class="num">${peso(p.amount)}</td><td>${esc(p.note||'')}</td><td><button class="btn btn-ghost btn-sm" onclick="delCapPayment(${i})">✕</button></td></tr>`).join('')+'</tbody>';
+}
+function addCapPayment(){
+  const date=$('#kp-date').value, amount=parseFloat($('#kp-amt').value);
+  if(!date||!(amount>0)){ toast('Payment needs a date and an amount','error'); return; }
+  capPayments.push({date,amount,note:$('#kp-note').value.trim()}); $('#kp-amt').value=''; $('#kp-note').value=''; renderCapPayments();
+}
+function delCapPayment(i){ capPayments.splice(i,1); renderCapPayments(); }
+function saveCapital(){
+  const name=$('#k-name').value.trim(); if(!name){ toast('Give it a name','error'); return; }
+  const rec={ kind:$('#k-kind').value, name, plate:$('#k-kind').value==='truck'?$('#k-plate').value.trim().toUpperCase():'', date:$('#k-date').value, total:n($('#k-total').value), down:n($('#k-down').value), years:n($('#k-years').value), note:$('#k-note').value.trim(), payments:capPayments, _u:nowISO(), by:currentName };
+  if(editingCapId){ const i=STATE.capital.findIndex(x=>x.id===editingCapId); STATE.capital[i]=Object.assign({},STATE.capital[i],rec); }
+  else STATE.capital.push(Object.assign({id:uid('k')},rec));
+  closeModal('cap-modal'); saveExp(); renderCapital(); toast('Saved');
+}
+function deleteCapital(){
+  if(!editingCapId) return; const k=STATE.capital.find(x=>x.id===editingCapId); if(!k) return;
+  if(!confirm('Delete this capital item?')) return;
+  STATE.deletionLog.push({ref:k.id,deletedAt:nowISO(),by:currentName,kind:'capital',snapshot:k});
+  STATE.capital=STATE.capital.filter(x=>x.id!==k.id); closeModal('cap-modal'); saveExp(); renderCapital(); toast('Deleted');
+}
+
+/* ============================================================
+   Categories, "Other" review, places
+   ============================================================ */
+const TYPE_LABEL={monthly:'Monthly',yearly:'Yearly',adhoc:'Ad hoc'}, TAG_LABEL={place:'Place',plate:'Truck plate',none:'General'};
+function renderCategories(){
+  if(!isOwner()) return;
+  const counts={}; STATE.entries.forEach(e=>{ counts[e.catId]=(counts[e.catId]||0)+1; });
+  let html='<thead><tr><th>Group</th><th>Item</th><th>Type</th><th>Who enters</th><th>Tagged to</th><th>Default place</th><th>Entries</th><th>Status</th><th></th></tr></thead><tbody>';
+  STATE.categories.forEach(c=>{
+    html+=`<tr class="${c.tier==='owner'?'row-owner':''}"><td>${esc(c.group)}</td><td class="wrap"><strong>${esc(c.name)}</strong>${c.other?' <span class="badge badge-type">catch-all</span>':''}</td><td>${TYPE_LABEL[c.type]||c.type}</td>
+      <td><span class="badge ${c.tier==='owner'?'badge-owner':'badge-daily'}">${c.tier==='owner'?'Owner':'Daily'}</span></td><td>${TAG_LABEL[c.tag]||c.tag}</td><td>${esc(c.defPlace||'')}</td><td class="num">${counts[c.id]||0}</td>
+      <td>${c.active?'Active':'<span class="badge badge-off">Retired</span>'}</td><td><button class="btn btn-ghost btn-sm" onclick="openCategory('${c.id}')">Edit</button></td></tr>`;
+  });
+  $('#cat-table').innerHTML=html+'</tbody>';
+  // Other review
+  const others=STATE.entries.filter(e=>{ const c=catById(e.catId); return c&&c.other; }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  if(!others.length){ $('#other-table').innerHTML='<tbody><tr><td class="empty">No “Other” entries to review. 👍</td></tr></tbody>'; }
+  else{
+    let h='<thead><tr><th>Date</th><th style="text-align:right">Amount</th><th>Remark</th><th>Move to</th></tr></thead><tbody>';
+    others.forEach(e=>{
+      const c=catById(e.catId); const opts=STATE.categories.filter(x=>x.active&&!x.other&&x.tier===c.tier);
+      h+=`<tr><td>${esc(e.date)}</td><td class="num">${peso(e.amount)}</td><td class="wrap">${esc(e.remark)}</td><td><select class="filter-select" id="mv-${e.id}"><option value="">— choose item —</option>${opts.map(o=>`<option value="${o.id}">${esc(o.group)} › ${esc(o.name)}</option>`).join('')}</select> <button class="btn btn-ghost btn-sm" onclick="moveOther('${e.id}')">Move</button></td></tr>`;
+    });
+    $('#other-table').innerHTML=h+'</tbody>';
+  }
+  // places
+  const used={}; STATE.entries.forEach(e=>{ if(e.place) used[e.place]=(used[e.place]||0)+1; });
+  $('#places-box').innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${STATE.places.map(p=>`<span class="badge badge-type" style="font-size:11px;padding:5px 9px">${esc(p)} ${used[p]?`<span class="muted">· ${used[p]}</span>`:`<span style="cursor:pointer;margin-left:6px" title="Remove (unused)" onclick="removePlace('${esc(p).replace(/'/g,'&#39;')}')">✕</span>`}</span>`).join('')}</div>
+    <div class="toolbar"><input class="search-box" id="new-place" placeholder="New place, e.g. Warehouse"><button class="btn btn-ghost btn-sm" onclick="addPlace()">＋ Add place</button></div>`;
+}
+function moveOther(id){
+  const to=$('#mv-'+id).value; if(!to){ toast('Choose the item to move it to','error'); return; }
+  const e=STATE.entries.find(x=>x.id===id); if(!e) return;
+  const before={date:e.date,amount:e.amount,catId:e.catId,place:e.place,plate:e.plate,remark:e.remark};
+  e.hist=[...(e.hist||[]),{at:nowISO(),by:currentName,before}]; e.catId=to; e._u=nowISO();
+  const c=catById(to); if(c.tag!=='place') e.place=''; if(c.tag==='place' && !e.place) e.place=c.defPlace||'';
+  saveExp(); renderAll(); toast('Moved');
+}
+function addPlace(){ const v=$('#new-place').value.trim(); if(!v) return; if(STATE.places.includes(v)){ toast('Already there','error'); return; } STATE.places.push(v); saveExp(); renderCategories(); }
+function removePlace(p){ STATE.places=STATE.places.filter(x=>x!==p); saveExp(); renderCategories(); }
+let editingCatId=null;
+function openCategory(id){
+  editingCatId=id||null; const c=id?catById(id):null;
+  $('#cat-title').textContent=c?'Edit item':'Add item';
+  $('#dl-groups').innerHTML=Array.from(new Set(STATE.categories.map(x=>x.group))).map(g=>`<option value="${esc(g)}">`).join('');
+  $('#c-defplace').innerHTML='<option value="">—</option>'+STATE.places.map(p=>`<option>${esc(p)}</option>`).join('');
+  $('#c-group').value=c?c.group:''; $('#c-name').value=c?c.name:''; $('#c-type').value=c?c.type:'monthly'; $('#c-tier').value=c?c.tier:'daily'; $('#c-tag').value=c?c.tag:'place';
+  $('#c-defplace').value=c?(c.defPlace||''):''; $('#c-active').value=c&&!c.active?'0':'1';
+  $('#c-active').disabled=!!(c&&c.other); openModal('cat-modal');
+}
+function saveCategory(){
+  const group=$('#c-group').value.trim(), name=$('#c-name').value.trim();
+  if(!group||!name){ toast('Group and item name are required','error'); return; }
+  const rec={group,name,type:$('#c-type').value,tier:$('#c-tier').value,tag:$('#c-tag').value,defPlace:$('#c-defplace').value,active:$('#c-active').value==='1',_u:nowISO()};
+  if(editingCatId){ const c=catById(editingCatId); if(c.other) rec.active=true; Object.assign(c,rec); }
+  else STATE.categories.push(Object.assign({id:uid('c'),other:false},rec));
+  closeModal('cat-modal'); saveExp(); renderAll(); toast('Saved');
+}
+
+/* ---- start ---- */
+if(initRoleGate()){ boot(); } else { pickRole('owner'); }
+</script>
+</body>
+</html>
