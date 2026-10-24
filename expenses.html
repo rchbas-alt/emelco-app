@@ -112,6 +112,8 @@ body.role-operations .owner-only{display:none!important}
 .clk{cursor:pointer}.clk:hover{background:var(--bg3);outline:1px solid var(--accent)}
 .drill-sum{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0;font-size:13px}.drill-sum b{font-family:'DM Mono',monospace}
 #drill-modal .modal{max-width:1020px;width:94vw}#drill-table td,#drill-table th{white-space:normal;vertical-align:top}#drill-table td.num,#drill-table td.mono{white-space:nowrap}
+.cush-set{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:10px 0}
+.neg-cell{color:#b91c1c;font-weight:700}
 .drill-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
 </style>
 </head>
@@ -161,6 +163,7 @@ body.role-operations .owner-only{display:none!important}
   <div class="tab active" data-tab="entries" onclick="switchTab('entries')">🧾 Entries</div>
   <div class="tab owner-only" data-tab="monthly" onclick="switchTab('monthly')">📅 Monthly</div>
   <div class="tab owner-only" data-tab="budget" onclick="switchTab('budget')">🎯 Budget</div>
+  <div class="tab owner-only" data-tab="cushion" onclick="switchTab('cushion')">💧 Cushion</div>
   <div class="tab owner-only" data-tab="capital" onclick="switchTab('capital')">🏗️ Capital</div>
   <div class="tab owner-only" data-tab="categories" onclick="switchTab('categories')">🗂️ Categories</div>
 </div>
@@ -221,6 +224,22 @@ body.role-operations .owner-only{display:none!important}
   </div>
 
   <!-- ===== CAPITAL ===== -->
+  <div class="page" id="page-cushion">
+    <div class="hint" style="margin-top:0"><strong>Usable cash.</strong> Cash set aside for EMELCO, plus what clients are expected to pay, minus the costs coming up — and how much of it is above the minimum you want to keep. This is an <strong>estimate</strong>: it is only as good as the cash figure you enter and the payment habits seen so far.</div>
+    <div class="cush-set">
+      <div class="form-group"><label class="form-label">Cash set aside for EMELCO (₱)</label><input class="form-input" id="cu-cash" type="number" step="0.01" placeholder="e.g. 1500000" oninput="saveCushion()"><div class="muted" id="cu-cashdate" style="font-size:11px;margin-top:2px"></div></div>
+      <div class="form-group"><label class="form-label">Minimum to keep untouched</label><div style="display:flex;gap:6px"><input class="form-input" id="cu-min" type="number" step="0.01" style="width:110px" oninput="saveCushion()"><select class="form-select" id="cu-minmode" onchange="saveCushion()"><option value="months">months of costs</option><option value="amount">₱ amount</option></select></div></div>
+      <div class="form-group"><label class="form-label">Collection speed assumed</label><select class="form-select" id="cu-speed" onchange="saveCushion()"><option value="cautious">Cautious (slower payers, 80th percentile)</option><option value="typical">Typical (median)</option></select></div>
+      <div class="form-group"><label class="form-label">Monthly costs (₱) <span class="muted">— blank = recent average</span></label><input class="form-input" id="cu-cost" type="number" step="0.01" placeholder="auto" oninput="saveCushion()"></div>
+    </div>
+    <div class="toolbar" style="margin-top:6px">
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="cu-cont" checked onchange="renderCushion()"> Include new trips at the recent monthly average (recommended): their running costs are paid now, their payments arrive about 2 months later</label>
+    </div>
+    <div class="stats-row" id="cu-stats"></div>
+    <div class="table-wrapper"><table id="cu-table"></table></div>
+    <div class="hint" id="cu-notes" style="margin-top:10px"></div>
+  </div>
+
   <div class="page" id="page-capital">
     <div class="toolbar">
       <div class="spacer"></div>
@@ -354,7 +373,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610241930'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202610242030'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -363,11 +382,13 @@ const EXP_FILE     = 'emelco_expenses_2026.json';
 const FLEET_FILE   = 'emelco_fleet_2026.json';   // read-only: plates + maintenance log
 const TRIPS_FILE   = 'emelco_data.json';          // read-only: revenue, for the 25% comparison
 const PAYROLL_FILE = 'emelco_payroll_2026.json';  // read-only: finalized office/admin payslips
+const BILLING_FILE = 'emelco_billing_2026.json';  // read-only: submitted / paid billing entries (for the cash forecast)
 const VERSION_FILE = 'app_version.json';
 const EXP_API   = `${PROXY_URL}/contents/${EXP_FILE}`;
 const FLEET_API = `${PROXY_URL}/contents/${FLEET_FILE}`;
 const TRIPS_API = `${PROXY_URL}/contents/${TRIPS_FILE}`;
 const PAYROLL_API = `${PROXY_URL}/contents/${PAYROLL_FILE}`;
+const BILLING_API = `${PROXY_URL}/contents/${BILLING_FILE}`;
 const VERSION_API = `${PROXY_URL}/contents/${VERSION_FILE}`;
 const HDRS = { 'X-Proxy-Auth':PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
 const OPEX_RATE = 0.25;   // same flat estimate index.html uses per trip (Rate + Surcharge)
@@ -518,9 +539,11 @@ const DEFAULT_PLACES=['Both yards','Barracks yard','Truck yard','Office','Genera
    State + cloud I/O
    ============================================================ */
 let STATE = freshState();
-function freshState(){ return { version:1, categories:defaultCategories(), places:DEFAULT_PLACES.slice(), entries:[], budgets:[], capital:[], deletionLog:[] }; }
+function defaultCushion(){ return { cash:null, cashDate:'', minMode:'months', minValue:2, costOverride:null, speed:'cautious', _u:'' }; }
+function freshState(){ return { version:1, categories:defaultCategories(), places:DEFAULT_PLACES.slice(), entries:[], budgets:[], capital:[], deletionLog:[], cushion:defaultCushion() }; }
 let FLEET = { plates:[], maintenance:[], loaded:false };
-let TRIPS = { monthRS:{}, loaded:false, error:'' };
+let TRIPS = { monthRS:{}, list:[], loaded:false, error:'' };
+let BILLING = { entries:[], loaded:false, error:'' };
 let PAYROLL = { byMonth:{}, list:[], loaded:false, error:'', slips:0 };
 let viewMode = localStorage.getItem('emelco_exp_view')||'spread';
 
@@ -574,6 +597,7 @@ function mergeState(local,remote){
   out.entries=mergeById(out.entries,local.entries);
   out.budgets=mergeById(out.budgets,local.budgets);
   out.capital=mergeById(out.capital,local.capital);
+  out.cushion=(String((local.cushion||{})._u||'')>String((out.cushion||{})._u||''))?Object.assign(defaultCushion(),local.cushion):out.cushion;
   out.places=Array.from(new Set([...(out.places||[]),...(local.places||[])]));
   const seen=new Set((out.deletionLog||[]).map(x=>x.deletedAt+x.ref));
   (local.deletionLog||[]).forEach(x=>{ const k=x.deletedAt+x.ref; if(!seen.has(k)){ out.deletionLog.push(x); seen.add(k); } });
@@ -591,6 +615,7 @@ function normalize(d){
   s.categories.forEach(c=>{ if(!c.spread) c.spread='forward'; });
   s.places=(d.places&&d.places.length)?d.places:DEFAULT_PLACES.slice();
   s.entries=d.entries||[]; s.budgets=d.budgets||[]; s.capital=d.capital||[]; s.deletionLog=d.deletionLog||[];
+  s.cushion=Object.assign(defaultCushion(),d.cushion||{});
   s.savedAt=d.savedAt; s.savedBy=d.savedBy;
   return s;
 }
@@ -615,9 +640,28 @@ async function loadTripsRevenue(){
     const trips=(got.data&&got.data.trips)||[];
     const m={};
     trips.forEach(t=>{ const mo=t.tripStartDate?String(t.tripStartDate).slice(0,7):''; if(!mo) return; m[mo]=(m[mo]||0)+n(t.rate)+n(t.surcharge); });
+    TRIPS.list=trips.map(t=>{
+      const rs=n(t.rate)+n(t.surcharge);
+      const dEnt=Array.isArray(t.dieselEntries)?t.dieselEntries.reduce((s,d)=>s+n(d.amount),0):0;
+      const diesel=dEnt||(n(t.dieselPrice)*n(t.dieselLiter));
+      const cost=diesel+n(t.toll)+n(t.food)+n(t.passway)+n(t.parking)+n(t.checker)+n(t.load)+n(t.gcash)+n(t.maint)+n(t.otherExp)+n(t.manoDrv)+n(t.manoH1)+n(t.manoH2)+n(t.manoOthers)+n(t.drvPay)+n(t.h1Pay)+n(t.h2Pay);
+      return {start:String(t.tripStartDate||'').slice(0,10),client:t.client||'',status:String(t.status||'').toLowerCase(),cutoff:String(t.cutoff||'').trim(),rs,cost};
+    }).filter(t=>t.start);
     TRIPS.monthRS=m; TRIPS.loaded=true; TRIPS.error='';
   }catch(e){ TRIPS.error=String(e.message||e); console.warn('Trips read failed',e); }
-  renderMonthly();
+  renderMonthly(); if(typeof renderCushion==='function') renderCushion();
+}
+
+// Owner only: submitted and paid billing entries — read-only, used only for the cash forecast.
+async function loadBilling(){
+  if(BILLING.loaded||!isOwner()) return;
+  try{
+    const got=await cloudGetJSON(BILLING_API);
+    if(got.__missing) throw new Error('billing file not found');
+    BILLING.entries=((got.data&&got.data.entries)||[]).filter(e=>!e.voided).map(e=>({bu:e.bu||'',status:e.status||'',submitted:e.submitted||'',tripEnd:e.tripEnd||'',paidDate:e.paidDate||'',dueDays:n(e.dueDays)||30,due:(n(e.net)-n(e.penalty))*1.10,si:e.si||''}));
+    BILLING.loaded=true; BILLING.error='';
+  }catch(e){ BILLING.error=String(e.message||e); console.warn('Billing read failed',e); }
+  if(typeof renderCushion==='function') renderCushion();
 }
 
 // Owner only: finalized office/admin/tech payslips. Cost to the company = gross pay (standard + holiday + leave + bonus + 13th + other),
@@ -636,8 +680,16 @@ async function loadPayroll(){
         standard:n(d.standardPay),holiday:n(d.holidayPay),leave:n(d.paidLeave),bonus:n(d.bonus),thirteenth:n(d.thirteenthMonth),otherPay:n(d.otherPay),gross,
         ca:n(d.cashAdvance),sss:n(d.sss),philhealth:n(d.philhealth),pagibig:n(d.pagibig),rent:n(d.rent),electric:n(d.electric),water:n(d.water),phone:n(d.phone),bond:n(d.bond),otherDed:n(d.otherDeduction),ded,net:gross-ded});
     });
+    // Two slips for the same person whose dates overlap: only the most recently finalized one counts.
+    const kept={}; list.slice().sort((a,b)=>String(b.finalizedAt).localeCompare(String(a.finalizedAt))).forEach(r=>{
+      const k=r.staffId||r.name; kept[k]=kept[k]||[];
+      const clash=kept[k].find(o=>r.start<=(o.end||o.start)&&o.start<=(r.end||r.start));
+      if(clash){ r.superseded=true; r.supersededBy=clash.start+' → '+clash.end; } else kept[k].push(r);
+    });
+    Object.keys(m).forEach(k=>delete m[k]); list.forEach(r=>{ if(!r.superseded){ const mo=r.start.slice(0,7); m[mo]=(m[mo]||0)+r.gross; } });
     list.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
-    PAYROLL.byMonth=m; PAYROLL.list=list; PAYROLL.slips=slips.length; PAYROLL.loaded=true; PAYROLL.error='';
+    PAYROLL.superseded=list.filter(r=>r.superseded).length;
+    PAYROLL.byMonth=m; PAYROLL.list=list; PAYROLL.slips=list.filter(r=>!r.superseded).length; PAYROLL.loaded=true; PAYROLL.error='';
   }catch(e){ PAYROLL.error=String(e.message||e); console.warn('Payroll read failed',e); }
   renderMonthly(); renderBudget();
 }
@@ -661,7 +713,7 @@ async function boot(){
   }catch(e){ console.warn('backup merge skipped',e); }
   await loadFleet();
   renderAll();
-  if(isOwner()){ loadTripsRevenue(); loadPayroll(); }
+  if(isOwner()){ loadTripsRevenue(); loadPayroll(); loadBilling(); }
 }
 </script>
 <script>
@@ -696,6 +748,7 @@ function switchTab(t){
   document.body.classList.toggle('owner-tab', isOwner() && t!=='entries');
   if(t==='monthly'){ renderMonthly(); loadTripsRevenue(); }
   if(t==='budget') renderBudget();
+  if(t==='cushion'){ renderCushion(); loadTripsRevenue(); loadBilling(); }
   if(t==='capital') renderCapital();
   if(t==='categories') renderCategories();
 }
@@ -703,7 +756,7 @@ function setView(v){ viewMode=v; localStorage.setItem('emelco_exp_view',v); sync
 function syncSeg(){ $$('#viewSeg button,#viewSeg2 button').forEach(b=>b.classList.toggle('on',b.dataset.v===viewMode)); }
 function renderAll(){
   syncSeg(); renderEntries();
-  if(isOwner()){ renderMonthly(); renderBudget(); renderCapital(); renderCategories(); }
+  if(isOwner()){ renderMonthly(); renderBudget(); renderCapital(); renderCategories(); renderCushion(); }
 }
 
 /* ============================================================
@@ -872,7 +925,7 @@ function renderMonthly(){
   html+='</tbody>';
   $('#monthly-table').innerHTML=html;
   let note='Months with no entries yet show no real OPEX, so only compare months that are fully entered. ';
-  if(PAYROLL.loaded) note+='Office & admin payroll is the gross pay of '+PAYROLL.slips+' finalized payslips, counted in the month each pay period starts. '; else if(PAYROLL.error) note+='Payroll could not be read ('+esc(PAYROLL.error)+'), so office salaries are not included yet. '; else note+='Loading payroll… ';
+  if(PAYROLL.loaded) note+='Office & admin payroll is the gross pay of '+PAYROLL.slips+' finalized payslips, counted in the month each pay period starts'+(PAYROLL.superseded?' ('+PAYROLL.superseded+' older overlapping slip'+(PAYROLL.superseded>1?'s':'')+' not counted — see Payroll listing)':'')+'. '; else if(PAYROLL.error) note+='Payroll could not be read ('+esc(PAYROLL.error)+'), so office salaries are not included yet. '; else note+='Loading payroll… ';
   if(TRIPS.loaded) note+='Revenue is Rate + Surcharge by trip start date, the same basis as the dashboard. The 25% row is what the dashboard currently assumes.';
   else if(TRIPS.error) note+='Revenue could not be read ('+esc(TRIPS.error)+'), so the 25% comparison is hidden.';
   else note+='Loading revenue for the 25% comparison…';
@@ -1074,7 +1127,7 @@ function drillRows(g,ym,year){
     rows.push({date:e.date,group:grp,item:c?c.name:'',detail:[e.place,e.plate,e.remark].filter(Boolean).join(' · '),by:e.by||'',amount:amt,note:spread?`₱${n(e.amount).toLocaleString('en-PH',{minimumFractionDigits:2})} spread over ${c.type==='yearly'?12:3} months (${parts.length} in this view)`:''});
   });
   if(g==='*'||g===FLEET_GROUP) FLEET.maintenance.forEach(m=>{ const mo=monthOf(m.date); if(!inScope(mo)) return; rows.push({date:m.date,group:FLEET_GROUP,item:m.category||m.type||'Maintenance',detail:[m.plate,m.description||m.remark||m.notes].filter(Boolean).join(' · '),by:'Fleet',amount:n(m.amount),note:''}); });
-  if((g==='*'||g===PAYROLL_GROUP)&&PAYROLL.loaded) PAYROLL.list.forEach(s=>{ const mo=s.start.slice(0,7); if(!inScope(mo)) return; rows.push({date:s.start,group:PAYROLL_GROUP,item:s.name,detail:'Pay period '+s.start+' → '+(s.end||'?'),by:'Payroll',amount:s.gross,note:''}); });
+  if((g==='*'||g===PAYROLL_GROUP)&&PAYROLL.loaded) PAYROLL.list.forEach(s=>{ if(s.superseded) return; const mo=s.start.slice(0,7); if(!inScope(mo)) return; rows.push({date:s.start,group:PAYROLL_GROUP,item:s.name,detail:'Pay period '+s.start+' → '+(s.end||'?'),by:'Payroll',amount:s.gross,note:''}); });
   rows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return rows;
 }
@@ -1116,11 +1169,11 @@ function drillRange(k){
 function drillRender(){
   if(!DRILL.payroll||!PAYROLL.loaded) return;
   const f=$('#dr-from').value||'0000-00-00', t=$('#dr-to').value||'9999-99-99';
-  const rows=PAYROLL.list.filter(s=>s.start>=f&&s.start<=t); DRILL.rows=rows;
+  const all=PAYROLL.list.filter(s=>s.start>=f&&s.start<=t), rows=all.filter(r=>!r.superseded), sup=all.filter(r=>r.superseded); DRILL.rows=all; DRILL.counted=rows;
   const sum=k=>rows.reduce((a,r)=>a+r[k],0);
   $('#drill-sum').innerHTML=`<span>Payslips <b>${rows.length}</b></span><span>Gross pay (cost) <b>${peso(sum('gross'))}</b></span><span>Deductions <b>${peso(sum('ded'))}</b></span><span>Net paid <b>${peso(sum('net'))}</b></span>`;
   $('#drill-table').innerHTML='<thead><tr><th>Name</th><th>Pay period</th><th style="text-align:right">Gross (cost)</th><th style="text-align:right">Deductions</th><th style="text-align:right">of which CA</th><th style="text-align:right">of which Bond</th><th style="text-align:right">Net pay</th></tr></thead><tbody>'+
-    (rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.start)} → ${esc(r.end)}</td><td class="num">${peso(r.gross)}</td><td class="num">${peso(r.ded)}</td><td class="num muted">${r.ca?peso(r.ca):'—'}</td><td class="num muted">${r.bond?peso(r.bond):'—'}</td><td class="num">${peso(r.net)}</td></tr>`).join(''):`<tr><td colspan="7" class="muted" style="padding:16px">No finalized payslips in this range.</td></tr>`)+
+    (all.length?all.map(r=>r.superseded?`<tr style="opacity:.55;text-decoration:line-through"><td>${esc(r.name)}</td><td class="mono">${esc(r.start)} → ${esc(r.end)}</td><td class="num" colspan="5" style="text-decoration:none;font-size:11px">⚠ not counted — overlaps a newer slip (${esc(r.supersededBy)}); gross ${peso(r.gross)}</td></tr>`:`<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.start)} → ${esc(r.end)}</td><td class="num">${peso(r.gross)}</td><td class="num">${peso(r.ded)}</td><td class="num muted">${r.ca?peso(r.ca):'—'}</td><td class="num muted">${r.bond?peso(r.bond):'—'}</td><td class="num">${peso(r.net)}</td></tr>`).join(''):`<tr><td colspan="7" class="muted" style="padding:16px">No finalized payslips in this range.</td></tr>`)+
     (rows.length?`<tr class="row-total"><td colspan="2">Total</td><td class="num">${peso(sum('gross'))}</td><td class="num">${peso(sum('ded'))}</td><td class="num">${peso(sum('ca'))}</td><td class="num">${peso(sum('bond'))}</td><td class="num">${peso(sum('net'))}</td></tr>`:'')+'</tbody>';
   // per person and per month / quarter
   const by=(keyf)=>{ const m={}; rows.forEach(r=>{ const k=keyf(r); (m[k]=m[k]||{n:0,gross:0}); m[k].n++; m[k].gross+=r.gross; }); return Object.keys(m).sort().map(k=>`<tr><td>${esc(k)}</td><td class="num">${m[k].n}</td><td class="num">${peso(m[k].gross)}</td></tr>`).join(''); };
@@ -1132,7 +1185,8 @@ function drillExport(){
   let head,data,name;
   if(DRILL.payroll){
     head=['Name','Staff ID','Period start','Period end','Standard pay','Holiday pay','Paid leave','Bonus','13th month','Other pay','Gross (cost)','Cash advance','SSS','PhilHealth','Pag-IBIG','Rent','Electric','Water','Phone','Bond','Other deduction','Total deductions','Net pay'];
-    data=DRILL.rows.map(r=>[r.name,r.staffId,r.start,r.end,r.standard,r.holiday,r.leave,r.bonus,r.thirteenth,r.otherPay,r.gross,r.ca,r.sss,r.philhealth,r.pagibig,r.rent,r.electric,r.water,r.phone,r.bond,r.otherDed,r.ded,r.net]);
+    head.push('Counted in cost?');
+    data=DRILL.rows.map(r=>[r.name,r.staffId,r.start,r.end,r.standard,r.holiday,r.leave,r.bonus,r.thirteenth,r.otherPay,r.gross,r.ca,r.sss,r.philhealth,r.pagibig,r.rent,r.electric,r.water,r.phone,r.bond,r.otherDed,r.ded,r.net,r.superseded?'No - overlaps a newer slip':'Yes']);
     name='emelco_payroll_listing_'+($('#dr-from').value||'start')+'_to_'+($('#dr-to').value||'end');
   } else {
     head=['Date','Group','Item','Details','By','Amount counted','Note'];
@@ -1142,6 +1196,105 @@ function drillExport(){
   if(!data.length){ toast('Nothing to export','error'); return; }
   const csv='\uFEFF'+[head].concat(data).map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=name+'.csv'; a.click();
+}
+
+
+/* ============================================================
+   Cushion — usable cash (estimate)
+   ============================================================ */
+function saveCushion(){
+  const c=STATE.cushion=Object.assign(defaultCushion(),STATE.cushion||{});
+  const v=id=>$('#'+id).value;
+  const prev=c.cash; c.cash=v('cu-cash')===''?null:n(v('cu-cash'));
+  if(c.cash!==prev) c.cashDate=todayISO();
+  c.minValue=n(v('cu-min')); c.minMode=v('cu-minmode'); c.speed=v('cu-speed');
+  c.costOverride=v('cu-cost')===''?null:n(v('cu-cost'));
+  c._u=new Date().toISOString();
+  saveExp(); renderCushion();
+}
+const dDiff=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000);
+const dAdd=(iso,d)=>{ const t=new Date(iso+'T00:00:00Z'); t.setUTCDate(t.getUTCDate()+d); return t.toISOString().slice(0,10); };
+function cushionModel(){
+  const c=Object.assign(defaultCushion(),STATE.cushion||{}), today=todayISO(), thisM=today.slice(0,7);
+  const H=6, months=[]; for(let i=0;i<H;i++) months.push(addMonths(thisM,i));
+  const mi={}; months.forEach((m,i)=>mi[m]=i);
+  const paid=BILLING.entries.filter(e=>e.status==='paid'&&e.paidDate&&e.submitted);
+  const pick=a=>{ a=a.filter(x=>x>=0).sort((x,y)=>x-y); if(!a.length) return null; return c.speed==='typical'?(a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2):a[Math.min(a.length-1,Math.floor(a.length*0.8))]; };
+  const lagS={}, lagT={};
+  const lagFor=(bu,kind)=>{ const store=kind==='s'?lagS:lagT; if(store[bu]!==undefined) return store[bu];
+    const mk=e=>kind==='s'?dDiff(e.submitted,e.paidDate):(e.tripEnd?dDiff(e.tripEnd,e.paidDate):-1);
+    let v=pick(paid.filter(e=>e.bu===bu).map(mk)); if(v===null) v=pick(paid.map(mk)); if(v===null) v=kind==='s'?50:60; return store[bu]=Math.round(v); };
+  const inSub=months.map(()=>0), inUnb=months.map(()=>0), inCont=months.map(()=>0), outFix=months.map(()=>0), outTrip=months.map(()=>0);
+  let laterSub=0, laterUnb=0, subTotal=0, unbTotal=0, lateAmt=0, lateN=0, unbN=0, subN=0;
+  const soon=dAdd(today,7);
+  BILLING.entries.filter(e=>e.status==='submitted'&&e.submitted).forEach(e=>{
+    let d=dAdd(e.submitted,lagFor(e.bu,'s'));
+    if(d<soon){ d=soon; lateAmt+=e.due; lateN++; }
+    subTotal+=e.due; subN++;
+    const i=mi[d.slice(0,7)]; if(i===undefined) laterSub+=e.due; else inSub[i]+=e.due;
+  });
+  TRIPS.list.filter(t=>t.status==='completed'&&['CCAC','CMIP','CDI'].includes(t.client)&&!t.cutoff).forEach(t=>{
+    const due=t.rs*1.10; let d=dAdd(t.start,lagFor(t.client,'t')); const d2=dAdd(today,lagFor(t.client,'s')); if(d<d2) d=d2;
+    unbTotal+=due; unbN++;
+    const i=mi[d.slice(0,7)]; if(i===undefined) laterUnb+=due; else inUnb[i]+=due;
+  });
+  // recent run-rate of costs: last 3 complete months that actually have expenses entered
+  const hasEntries=ym=>STATE.entries.some(e=>monthOf(e.date)===ym);
+  const recent=[1,2,3].map(k=>addMonths(thisM,-k));
+  const totalOf=ym=>{ const d=monthlyData(ym.slice(0,4),'spread'); let s=0; Object.keys(d).forEach(g=>{ s+=(d[g][ym]||0); }); return s; };
+  const used=recent.filter(ym=>hasEntries(ym)&&totalOf(ym)>0);
+  const autoRate=used.length?used.reduce((s,ym)=>s+totalOf(ym),0)/used.length:0;
+  const rate=c.costOverride!==null?c.costOverride:autoRate;
+  const dim=new Date(Number(thisM.slice(0,4)),Number(thisM.slice(5,7)),0).getDate(), dayN=Number(today.slice(8,10));
+  months.forEach((m,i)=>{ outFix[i]=i===0?rate*((dim-dayN+1)/dim):rate; });
+  // continuing trips (optional)
+  const cont=$('#cu-cont')&&$('#cu-cont').checked;
+  let avgCost=0, avgDue=0;
+  const tm=ym=>TRIPS.list.filter(t=>t.start.slice(0,7)===ym);
+  const tUsed=recent.filter(ym=>tm(ym).length);
+  if(tUsed.length){ avgCost=tUsed.reduce((s,ym)=>s+tm(ym).reduce((a,t)=>a+t.cost,0),0)/tUsed.length; avgDue=tUsed.reduce((s,ym)=>s+tm(ym).reduce((a,t)=>a+t.rs*1.10,0),0)/tUsed.length; }
+  if(cont) for(let k=1;k<H;k++){ outTrip[k]+=avgCost; if(k+2<H) inCont[k+2]+=avgDue; }
+  const minAmt=c.minMode==='months'?n(c.minValue)*rate:n(c.minValue);
+  const cash=c.cash===null?0:n(c.cash);
+  let bal=cash; const net=[], close=[], usable=[];
+  months.forEach((m,i)=>{ const nn=inSub[i]+inUnb[i]+inCont[i]-outFix[i]-outTrip[i]; bal+=nn; net.push(nn); close.push(bal); usable.push(bal-minAmt); });
+  const safeNow=Math.max(0,Math.min(cash-minAmt,...usable));
+  return {c,today,months,inSub,inUnb,inCont,outFix,outTrip,net,close,usable,minAmt,rate,autoRate,used,cont,avgCost,avgDue,laterSub,laterUnb,subTotal,unbTotal,subN,unbN,lateAmt,lateN,lagS,lagT,safeNow,cash,hasCash:c.cash!==null,tUsed};
+}
+function renderCushion(){
+  if(!isOwner()||!$('#cu-table')) return;
+  const c=Object.assign(defaultCushion(),STATE.cushion||{});
+  const setIf=(id,val)=>{ const el=$('#'+id); if(el&&document.activeElement!==el) el.value=val; };
+  setIf('cu-cash',c.cash===null?'':c.cash); setIf('cu-min',c.minValue); setIf('cu-minmode',c.minMode); setIf('cu-speed',c.speed); setIf('cu-cost',c.costOverride===null?'':c.costOverride);
+  $('#cu-cashdate').textContent=c.cash!==null&&c.cashDate?'As of '+c.cashDate+' — update this whenever the real figure changes.':'Enter the amount Rhoda considers EMELCO\'s working money (not the whole account balance).';
+  if(!BILLING.loaded||!TRIPS.loaded){ $('#cu-stats').innerHTML=''; $('#cu-table').innerHTML=''; $('#cu-notes').textContent=(BILLING.error||TRIPS.error)?('Could not read: '+esc(BILLING.error||TRIPS.error)):'Loading billing and trips…'; return; }
+  const M=cushionModel();
+  const f=v=>pesoShort(v), neg=v=>v<0?'neg-cell':'';
+  $('#cu-stats').innerHTML=
+    `<div class="stat-card"><div class="stat-label">Cash set aside</div><div class="stat-value">${M.hasCash?peso(M.cash):'— enter above'}</div></div>`+
+    `<div class="stat-card"><div class="stat-label">Still to collect</div><div class="stat-value">${peso(M.subTotal+M.unbTotal)}</div><div class="stat-sub">${peso(M.subTotal)} submitted (${M.subN}) + ${peso(M.unbTotal)} not yet submitted (${M.unbN} trips) · cash after VAT/WHT</div></div>`+
+    `<div class="stat-card"><div class="stat-label">Monthly costs assumed</div><div class="stat-value">${peso(M.rate)}</div><div class="stat-sub">${M.c.costOverride!==null?'entered by you':(M.used.length?'average of '+M.used.join(', '):'no complete month with entries yet — enter an amount')}</div></div>`+
+    `<div class="stat-card"><div class="stat-label">Safe to use now</div><div class="stat-value" style="color:var(--accent)">${M.hasCash?peso(M.safeNow):'—'}</div><div class="stat-sub">above the minimum in every month shown</div></div>`;
+  const heads='<thead><tr><th></th>'+M.months.map(m=>`<th style="text-align:right">${MONTHS[Number(m.slice(5))-1]} ${m.slice(2,4)}</th>`).join('')+'<th style="text-align:right">Later</th></tr></thead><tbody>';
+  const row=(label,arr,later,cls)=>`<tr class="${cls||''}"><td>${label}</td>${arr.map(v=>`<td class="num ${neg(v)}">${f(v)}</td>`).join('')}<td class="num">${later?f(later):'—'}</td></tr>`;
+  let h=heads;
+  h+=row('＋ Collections: already submitted',M.inSub,M.laterSub);
+  h+=row('＋ Collections: completed trips not yet submitted',M.inUnb,M.laterUnb);
+  if(M.cont) h+=row('＋ Collections: continuing trips (est.)',M.inCont,0);
+  h+=row('− Monthly costs (overhead, payroll, etc.)',M.outFix.map(v=>-v),0);
+  if(M.cont) h+=row('− Running costs of continuing trips (est.)',M.outTrip.map(v=>-v),0);
+  h+=row('Net for the month',M.net,0,'row-sub');
+  h+=row('Cash at month end',M.hasCash?M.close:M.close.map(()=>0),0,'row-total');
+  h+=row('Minimum to keep',M.months.map(()=>-M.minAmt).map(v=>-v),0,'row-sub');
+  h+=row('Above the minimum (usable)',M.hasCash?M.usable:M.usable.map(()=>0),0,'row-total');
+  $('#cu-table').innerHTML=h+'</tbody>';
+  const lagTxt=['CCAC','CMIP'].map(b=>`${b} ≈ ${M.lagS[b]??'—'} days`).join(', ');
+  const notes=[];
+  notes.push('Collections use how long each client has actually taken to pay since submission ('+(M.c.speed==='typical'?'typical':'cautious')+'): '+(Object.keys(M.lagS).length?Object.keys(M.lagS).map(b=>`${b} ${M.lagS[b]} days`).join(', '):'based on '+lagTxt)+'. Amounts are the cash that actually lands: net + 12% VAT − 2% WHT.');
+  if(M.lateN) notes.push(`${M.lateN} submitted entries (${peso(M.lateAmt)}) are already past their usual payment time, so they are placed in the next 7 days — treat that as hopeful, not certain.`);
+  notes.push('Trips not yet submitted are placed one normal payment period after today. With the tick on, new trips are assumed at the recent monthly average: diesel, driver pay and other running costs go out first, and the money comes in about 2 months later — this is what makes the early months tighter. With it off, only work already done is counted and the cost of running new trips is left out, so the result looks better than reality.');
+  notes.push('The cash figure is only what you type in; it is not read from any bank. Costs come from the Monthly tab (entered expenses, Fleet repairs, office payroll), so months with missing entries make the cushion look better than it is.');
+  $('#cu-notes').innerHTML=notes.map(t=>'• '+esc(t)).join('<br>');
 }
 
 /* ---- start ---- */
