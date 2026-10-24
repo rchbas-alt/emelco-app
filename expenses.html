@@ -193,7 +193,7 @@ body.role-operations .owner-only{display:none!important}
       </div>
       <div class="spacer"></div>
     </div>
-    <div class="hint">Yearly items (registration, taxes, stickers, insurance, permits) are either spread evenly over the 12 months from the month paid, or shown in the month they were paid. Truck maintenance is read from the Fleet module.</div>
+    <div class="hint">Yearly and quarterly items (registration, taxes, stickers, insurance, permits, BIR) are either spread evenly over 12 or 3 months, or shown in the month they were paid. Truck maintenance is read from the Fleet module.</div>
     <div class="table-wrapper"><table id="monthly-table"></table></div>
     <div class="hint" id="rev-note" style="margin-top:10px"></div>
   </div>
@@ -275,9 +275,13 @@ body.role-operations .owner-only{display:none!important}
       <div class="form-group"><label class="form-label">Item name <span class="req">*</span></label><input class="form-input" id="c-name" placeholder="e.g. Generator fuel"></div>
     </div>
     <div class="form-grid g3">
-      <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="c-type"><option value="monthly">Monthly</option><option value="yearly">Yearly (spread over 12 months)</option><option value="adhoc">Ad hoc</option></select></div>
+      <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="c-type"><option value="monthly">Monthly</option><option value="yearly">Yearly (spread over 12 months)</option><option value="quarterly">Quarterly (spread over 3 months)</option><option value="adhoc">Ad hoc</option></select></div>
       <div class="form-group"><label class="form-label">Who enters it</label><select class="form-select" id="c-tier"><option value="daily">Daily (Operations can enter)</option><option value="owner">Owner only</option></select></div>
       <div class="form-group"><label class="form-label">Tagged to</label><select class="form-select" id="c-tag"><option value="place">A place</option><option value="plate">A truck plate</option><option value="none">Nothing (general)</option></select></div>
+    </div>
+    <div class="form-grid g2">
+      <div class="form-group"><label class="form-label">Spread direction (yearly / quarterly)</label><select class="form-select" id="c-spread"><option value="forward">Forward — from the paid month (paid in advance)</option><option value="back">Backward — the months before the paid date (paid after)</option></select></div>
+      <div class="form-group"></div>
     </div>
     <div class="form-grid g2">
       <div class="form-group"><label class="form-label">Default place</label><select class="form-select" id="c-defplace"></select></div>
@@ -324,7 +328,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610241730'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202610241830'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -332,10 +336,12 @@ const PROXY_SECRET = 'emelco1254rch';
 const EXP_FILE     = 'emelco_expenses_2026.json';
 const FLEET_FILE   = 'emelco_fleet_2026.json';   // read-only: plates + maintenance log
 const TRIPS_FILE   = 'emelco_data.json';          // read-only: revenue, for the 25% comparison
+const PAYROLL_FILE = 'emelco_payroll_2026.json';  // read-only: finalized office/admin payslips
 const VERSION_FILE = 'app_version.json';
 const EXP_API   = `${PROXY_URL}/contents/${EXP_FILE}`;
 const FLEET_API = `${PROXY_URL}/contents/${FLEET_FILE}`;
 const TRIPS_API = `${PROXY_URL}/contents/${TRIPS_FILE}`;
+const PAYROLL_API = `${PROXY_URL}/contents/${PAYROLL_FILE}`;
 const VERSION_API = `${PROXY_URL}/contents/${VERSION_FILE}`;
 const HDRS = { 'X-Proxy-Auth':PROXY_SECRET, Accept:'application/vnd.github.v3+json' };
 const OPEX_RATE = 0.25;   // same flat estimate index.html uses per trip (Rate + Surcharge)
@@ -447,7 +453,7 @@ async function publishVersionFromUI(){
    tag : 'place' | 'plate' | 'none'
    ============================================================ */
 function defaultCategories(){
-  const C=(id,group,name,type,tier,tag,defPlace,other)=>({id,group,name,type,tier,tag,defPlace:defPlace||'',other:!!other,active:true,_u:'seed'});
+  const C=(id,group,name,type,tier,tag,defPlace,other,spread)=>({id,group,name,type,tier,tag,defPlace:defPlace||'',other:!!other,spread:spread||'forward',active:true,_u:'seed'});
   return [
     C('c-elec-yards','Utilities','Electric — both yards (one Meralco bill)','monthly','daily','place','Both yards'),
     C('c-elec-office','Utilities','Electric — office','monthly','daily','place','Office'),
@@ -471,13 +477,15 @@ function defaultCategories(){
     C('c-insurance','Truck compliance','Insurance (TPL / comprehensive)','yearly','owner','plate',''),
     C('c-emission','Truck compliance','Emission test','yearly','owner','plate',''),
     C('c-franchise','Truck compliance','Permits & franchise fees','yearly','owner','plate',''),
-    C('c-biz-fees','Business fees','Business permits & government fees','yearly','owner','none',''),
+    C('c-biz-fees','Business fees & taxes','Business permits & government fees','yearly','owner','none',''),
+    C('c-bir-tax','Business fees & taxes','BIR tax (quarterly, covers the 3 months before payment)','quarterly','owner','none','',false,'back'),
     C('c-prop-tax','Office property tax','Office property tax (paid by Rhoda, counted internally)','yearly','owner','place','Office'),
     C('c-truck-fin','Truck financing','Truck installment','monthly','owner','plate',''),
     C('c-other-owner','Other (Owner)','Other — owner (write a remark)','adhoc','owner','none','',true)
   ];
 }
 const FLEET_GROUP='Truck maintenance (Fleet log)';
+const PAYROLL_GROUP='Office & admin payroll (from Payroll)';
 const DEFAULT_PLACES=['Both yards','Barracks yard','Truck yard','Office','General'];
 
 /* ============================================================
@@ -487,6 +495,7 @@ let STATE = freshState();
 function freshState(){ return { version:1, categories:defaultCategories(), places:DEFAULT_PLACES.slice(), entries:[], budgets:[], capital:[], deletionLog:[] }; }
 let FLEET = { plates:[], maintenance:[], loaded:false };
 let TRIPS = { monthRS:{}, loaded:false, error:'' };
+let PAYROLL = { byMonth:{}, loaded:false, error:'', slips:0 };
 let viewMode = localStorage.getItem('emelco_exp_view')||'spread';
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
@@ -551,6 +560,9 @@ function mergeState(local,remote){
 function normalize(d){
   const s=freshState();
   s.categories=(d.categories&&d.categories.length)?d.categories:defaultCategories();
+  // items added in later versions are appended once, by id, so existing data keeps working and nothing is overwritten
+  defaultCategories().forEach(dc=>{ if(dc.id==='c-bir-tax' && !s.categories.some(c=>c.id===dc.id)) s.categories.push(dc); });
+  s.categories.forEach(c=>{ if(!c.spread) c.spread='forward'; });
   s.places=(d.places&&d.places.length)?d.places:DEFAULT_PLACES.slice();
   s.entries=d.entries||[]; s.budgets=d.budgets||[]; s.capital=d.capital||[]; s.deletionLog=d.deletionLog||[];
   s.savedAt=d.savedAt; s.savedBy=d.savedBy;
@@ -582,6 +594,21 @@ async function loadTripsRevenue(){
   renderMonthly();
 }
 
+// Owner only: finalized office/admin/tech payslips. Cost to the company = gross pay (standard + holiday + leave + bonus + 13th + other),
+// counted in the month the pay period starts (same simple month-attribution as the rest of payroll).
+async function loadPayroll(){
+  if(PAYROLL.loaded||!isOwner()) return;
+  try{
+    const got=await cloudGetJSON(PAYROLL_API);
+    if(got.__missing) throw new Error('payroll file not found');
+    const slips=Object.values((got.data&&got.data.officeSlips)||{}).filter(d=>d&&d.finalizedAt&&d.periodStart);
+    const m={};
+    slips.forEach(d=>{ const gross=n(d.standardPay)+n(d.holidayPay)+n(d.paidLeave)+n(d.bonus)+n(d.thirteenthMonth)+n(d.otherPay); const mo=String(d.periodStart).slice(0,7); m[mo]=(m[mo]||0)+gross; });
+    PAYROLL.byMonth=m; PAYROLL.slips=slips.length; PAYROLL.loaded=true; PAYROLL.error='';
+  }catch(e){ PAYROLL.error=String(e.message||e); console.warn('Payroll read failed',e); }
+  renderMonthly(); renderBudget();
+}
+
 async function boot(){
   await checkVersion();
   try{
@@ -601,7 +628,7 @@ async function boot(){
   }catch(e){ console.warn('backup merge skipped',e); }
   await loadFleet();
   renderAll();
-  if(isOwner()) loadTripsRevenue();
+  if(isOwner()){ loadTripsRevenue(); loadPayroll(); }
 }
 </script>
 <script>
@@ -617,11 +644,12 @@ function orderedGroups(extraFromData){
   const push=g=>{ if(g && !seen.has(g)){ seen.add(g); out.push(g); } };
   STATE.categories.forEach(c=>{ if(c.tier==='daily') push(c.group); });
   push(FLEET_GROUP);
+  push(PAYROLL_GROUP);
   STATE.categories.forEach(c=>{ if(c.tier==='owner') push(c.group); });
   (extraFromData||[]).forEach(push);
   return out;
 }
-function groupTier(g){ const c=STATE.categories.find(x=>x.group===g); return c?c.tier:(g===FLEET_GROUP?'daily':'owner'); }
+function groupTier(g){ if(g===PAYROLL_GROUP) return 'owner'; const c=STATE.categories.find(x=>x.group===g); return c?c.tier:(g===FLEET_GROUP?'daily':'owner'); }
 
 /* ============================================================
    Tabs / view
@@ -682,7 +710,7 @@ function renderEntries(){
     const where=[e.place,e.plate].filter(Boolean).join(' · ');
     return `<tr class="${owner?'row-owner':''}"><td>${esc(e.date)}</td>
       <td class="wrap">${c?`<strong>${esc(c.name)}</strong><br><span class="muted" style="font-size:10px">${esc(c.group)}</span>`:'<span class="muted">(removed item)</span>'}
-        ${owner?'<span class="badge badge-owner" style="margin-left:4px">Owner</span>':''}${c&&c.type==='yearly'?'<span class="badge badge-type" style="margin-left:4px">yearly</span>':''}</td>
+        ${owner?'<span class="badge badge-owner" style="margin-left:4px">Owner</span>':''}${c&&(c.type==='yearly'||c.type==='quarterly')?`<span class="badge badge-type" style="margin-left:4px">${c.type}</span>`:''}</td>
       <td>${esc(where)||'<span class="muted">—</span>'}</td><td class="num">${peso(e.amount)}</td>
       <td class="wrap">${esc(e.remark)}${e.hist&&e.hist.length?' <span class="badge badge-type" title="Edited — earlier values are kept">edited</span>':''}</td>
       <td class="muted">${esc(e.by)}</td><td><button class="btn btn-ghost btn-sm" onclick="openEntry('${e.id}')">Edit</button></td></tr>`;
@@ -717,7 +745,7 @@ function entryCatChanged(keep){
   $('#e-plate-wrap').style.display=(c&&c.tag==='plate')?'flex':'none';
   $('#e-remark-req').style.display=(c&&c.other)?'inline':'none';
   let hint='';
-  if(c){ if(c.type==='yearly') hint='Yearly item — counted in full on the paid date, and also shown spread over 12 months in the Monthly view.'; else if(c.type==='monthly') hint='Monthly item.'; else hint='Counted in the month it happened.'; }
+  if(c){ if(c.type==='yearly') hint='Yearly item — counted in full on the paid date, and also shown spread over 12 months in the Monthly view.'; else if(c.type==='quarterly') hint='Quarterly item — shown spread over 3 months in the Monthly view ('+(c.spread==='back'?'the 3 months up to the paid date':'from the paid month forward')+').'; else if(c.type==='monthly') hint='Monthly item.'; else hint='Counted in the month it happened.'; }
   $('#e-cat-hint').textContent=hint;
   if(c && c.tag==='place' && !keep && c.defPlace) $('#e-place').value=c.defPlace;
 }
@@ -773,10 +801,11 @@ function monthlyData(year,view){
   STATE.entries.forEach(e=>{
     const c=catById(e.catId), grp=c?c.group:'(removed item)', a=n(e.amount), mo=monthOf(e.date);
     if(!mo) return;
-    if(c && c.type==='yearly' && view==='spread'){ for(let i=0;i<12;i++) add(grp,addMonths(mo,i),a/12); }
+    if(c && (c.type==='yearly'||c.type==='quarterly') && view==='spread'){ const N=c.type==='yearly'?12:3, back=c.spread==='back'; for(let i=0;i<N;i++) add(grp,addMonths(mo,back?-i:i),a/N); }
     else add(grp,mo,a);
   });
   FLEET.maintenance.forEach(m=>add(FLEET_GROUP,monthOf(m.date),n(m.amount)));
+  if(PAYROLL.loaded) Object.keys(PAYROLL.byMonth).forEach(ym=>add(PAYROLL_GROUP,ym,PAYROLL.byMonth[ym]));
   return g;
 }
 function renderMonthly(){
@@ -789,14 +818,14 @@ function renderMonthly(){
   ySel.innerHTML=ys.map(y=>`<option>${y}</option>`).join(''); ySel.value=ys.includes(prev)?prev:(ys.includes(String(new Date().getFullYear()))?String(new Date().getFullYear()):ys[0]);
   const year=ySel.value, data=monthlyData(year,viewMode);
   const months=MONTHS.map((_,i)=>`${year}-${String(i+1).padStart(2,'0')}`);
-  const groups=orderedGroups(Object.keys(data)).filter(g=>data[g]||STATE.categories.some(c=>c.group===g&&c.active)||g===FLEET_GROUP);
+  const groups=orderedGroups(Object.keys(data)).filter(g=>data[g]||STATE.categories.some(c=>c.group===g&&c.active)||g===FLEET_GROUP||g===PAYROLL_GROUP);
   let html='<thead><tr><th>Group</th>'+months.map((m,i)=>`<th style="text-align:right">${MONTHS[i]}</th>`).join('')+'<th style="text-align:right">Total</th></tr></thead><tbody>';
   const colTot=months.map(()=>0); let grand=0;
   groups.forEach(g=>{
     const owner=groupTier(g)==='owner'; let rowTot=0;
     const cells=months.map((m,i)=>{ const v=(data[g]&&data[g][m])||0; rowTot+=v; colTot[i]+=v; return `<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`; }).join('');
     grand+=rowTot;
-    html+=`<tr class="${owner?'row-owner':''}"><td><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}</td>${cells}<td class="num"><strong>${pesoShort(rowTot)}</strong></td></tr>`;
+    html+=`<tr class="${owner?'row-owner':''}"><td><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}${g===PAYROLL_GROUP?' <span class="badge badge-type">from Payroll</span>':''}</td>${cells}<td class="num"><strong>${pesoShort(rowTot)}</strong></td></tr>`;
   });
   html+=`<tr class="row-total"><td>Real OPEX</td>${colTot.map(v=>`<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`).join('')}<td class="num">${pesoShort(grand)}</td></tr>`;
   if(TRIPS.loaded){
@@ -810,6 +839,7 @@ function renderMonthly(){
   html+='</tbody>';
   $('#monthly-table').innerHTML=html;
   let note='Months with no entries yet show no real OPEX, so only compare months that are fully entered. ';
+  if(PAYROLL.loaded) note+='Office & admin payroll is the gross pay of '+PAYROLL.slips+' finalized payslips, counted in the month each pay period starts. '; else if(PAYROLL.error) note+='Payroll could not be read ('+esc(PAYROLL.error)+'), so office salaries are not included yet. '; else note+='Loading payroll… ';
   if(TRIPS.loaded) note+='Revenue is Rate + Surcharge by trip start date, the same basis as the dashboard. The 25% row is what the dashboard currently assumes.';
   else if(TRIPS.error) note+='Revenue could not be read ('+esc(TRIPS.error)+'), so the 25% comparison is hidden.';
   else note+='Loading revenue for the 25% comparison…';
@@ -833,7 +863,7 @@ function renderBudget(){
   const mi=$('#b-month'); if(!mi.value) mi.value=monthOf(todayISO());
   const ym=mi.value; const cache={};
   const act=actualFor(ym,cache);
-  const groups=orderedGroups(Object.keys(act)).filter(g=>STATE.categories.some(c=>c.group===g&&c.active)||act[g]||g===FLEET_GROUP);
+  const groups=orderedGroups(Object.keys(act)).filter(g=>STATE.categories.some(c=>c.group===g&&c.active)||act[g]||g===FLEET_GROUP||g===PAYROLL_GROUP);
   let html='<thead><tr><th>Group</th><th style="text-align:right">Budget</th><th>Set budget from '+monthLabel(ym)+'</th><th style="text-align:right">Used</th><th style="text-align:right">Remaining</th><th style="text-align:right">% used</th></tr></thead><tbody>';
   let bT=0,aT=0;
   groups.forEach((g,i)=>{
@@ -928,13 +958,13 @@ function deleteCapital(){
 /* ============================================================
    Categories, "Other" review, places
    ============================================================ */
-const TYPE_LABEL={monthly:'Monthly',yearly:'Yearly',adhoc:'Ad hoc'}, TAG_LABEL={place:'Place',plate:'Truck plate',none:'General'};
+const TYPE_LABEL={monthly:'Monthly',yearly:'Yearly',quarterly:'Quarterly',adhoc:'Ad hoc'}, TAG_LABEL={place:'Place',plate:'Truck plate',none:'General'};
 function renderCategories(){
   if(!isOwner()) return;
   const counts={}; STATE.entries.forEach(e=>{ counts[e.catId]=(counts[e.catId]||0)+1; });
   let html='<thead><tr><th>Group</th><th>Item</th><th>Type</th><th>Who enters</th><th>Tagged to</th><th>Default place</th><th>Entries</th><th>Status</th><th></th></tr></thead><tbody>';
   STATE.categories.forEach(c=>{
-    html+=`<tr class="${c.tier==='owner'?'row-owner':''}"><td>${esc(c.group)}</td><td class="wrap"><strong>${esc(c.name)}</strong>${c.other?' <span class="badge badge-type">catch-all</span>':''}</td><td>${TYPE_LABEL[c.type]||c.type}</td>
+    html+=`<tr class="${c.tier==='owner'?'row-owner':''}"><td>${esc(c.group)}</td><td class="wrap"><strong>${esc(c.name)}</strong>${c.other?' <span class="badge badge-type">catch-all</span>':''}</td><td>${TYPE_LABEL[c.type]||c.type}${(c.type==='yearly'||c.type==='quarterly')?`<br><span class="muted" style="font-size:10px">spreads ${c.spread==='back'?'backward':'forward'}</span>`:''}</td>
       <td><span class="badge ${c.tier==='owner'?'badge-owner':'badge-daily'}">${c.tier==='owner'?'Owner':'Daily'}</span></td><td>${TAG_LABEL[c.tag]||c.tag}</td><td>${esc(c.defPlace||'')}</td><td class="num">${counts[c.id]||0}</td>
       <td>${c.active?'Active':'<span class="badge badge-off">Retired</span>'}</td><td><button class="btn btn-ghost btn-sm" onclick="openCategory('${c.id}')">Edit</button></td></tr>`;
   });
@@ -971,14 +1001,14 @@ function openCategory(id){
   $('#cat-title').textContent=c?'Edit item':'Add item';
   $('#dl-groups').innerHTML=Array.from(new Set(STATE.categories.map(x=>x.group))).map(g=>`<option value="${esc(g)}">`).join('');
   $('#c-defplace').innerHTML='<option value="">—</option>'+STATE.places.map(p=>`<option>${esc(p)}</option>`).join('');
-  $('#c-group').value=c?c.group:''; $('#c-name').value=c?c.name:''; $('#c-type').value=c?c.type:'monthly'; $('#c-tier').value=c?c.tier:'daily'; $('#c-tag').value=c?c.tag:'place';
+  $('#c-group').value=c?c.group:''; $('#c-name').value=c?c.name:''; $('#c-type').value=c?c.type:'monthly'; $('#c-spread').value=c&&c.spread?c.spread:'forward'; $('#c-tier').value=c?c.tier:'daily'; $('#c-tag').value=c?c.tag:'place';
   $('#c-defplace').value=c?(c.defPlace||''):''; $('#c-active').value=c&&!c.active?'0':'1';
   $('#c-active').disabled=!!(c&&c.other); openModal('cat-modal');
 }
 function saveCategory(){
   const group=$('#c-group').value.trim(), name=$('#c-name').value.trim();
   if(!group||!name){ toast('Group and item name are required','error'); return; }
-  const rec={group,name,type:$('#c-type').value,tier:$('#c-tier').value,tag:$('#c-tag').value,defPlace:$('#c-defplace').value,active:$('#c-active').value==='1',_u:nowISO()};
+  const rec={group,name,type:$('#c-type').value,spread:$('#c-spread').value,tier:$('#c-tier').value,tag:$('#c-tag').value,defPlace:$('#c-defplace').value,active:$('#c-active').value==='1',_u:nowISO()};
   if(editingCatId){ const c=catById(editingCatId); if(c.other) rec.active=true; Object.assign(c,rec); }
   else STATE.categories.push(Object.assign({id:uid('c'),other:false},rec));
   closeModal('cat-modal'); saveExp(); renderAll(); toast('Saved');
