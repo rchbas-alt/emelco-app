@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMELCO — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f0f2f5;--bg2:#ffffff;--bg3:#f5f6f8;--border:#dde1e9;--border2:#c8cdd8;--accent:#d4820a;--accent-soft:rgba(212,130,10,.12);--on-accent:#000;--green:#1a8c52;--red:#c0392b;--blue:#2563eb;--text:#1a1e2e;--text2:#5a6175;--text3:#9099b0;--card:#fff;--input-bg:#f8f9fb;--radius:10px}
+body.role-operations{--accent:#2563eb;--accent-soft:rgba(37,99,235,.12);--on-accent:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);border-top:5px solid var(--accent);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:64px;gap:10px;position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-mark{width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-weight:500;font-size:13px;color:var(--on-accent)}
+.logo-text{font-weight:700;font-size:16px}.logo-sub{font-size:11px;color:var(--text2);font-weight:300}
+.header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pill{font-size:12px;font-weight:700;padding:6px 12px;border-radius:8px;background:var(--accent);color:var(--on-accent)}
+.who{font-size:12px;color:var(--text2);font-weight:600}
+#sync-status{font-size:11px;color:var(--text2)}
+.btn{padding:8px 14px;border-radius:var(--radius);border:none;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:var(--on-accent)}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--border2)}
+.layout{display:flex;min-height:calc(100vh - 64px)}
+.nav{width:190px;flex:none;background:var(--bg2);border-right:1px solid var(--border);padding:14px 10px}
+.nav a{display:block;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--text2);text-decoration:none;margin-bottom:2px}
+.nav a:hover{background:var(--bg3);color:var(--text)}
+.nav a.cur{background:var(--accent-soft);color:var(--accent)}
+.main{flex:1;min-width:0;padding:20px;max-width:1200px}
+.title{font-size:18px;font-weight:700;margin-bottom:4px}
+.sub{font-size:12px;color:var(--text2);margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.card.wide{grid-column:1/-1}
+.lbl{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+.big{font-size:26px;font-weight:700;font-family:'DM Mono',monospace;line-height:1.2}
+.small{font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5}
+.meter{position:relative;height:10px;background:var(--bg3);border-radius:4px;margin-top:12px}
+.meter i{display:block;height:10px;border-radius:4px}
+.meter b{position:absolute;top:-3px;width:2px;height:16px;background:var(--text)}
+.bars{display:flex;align-items:flex-end;gap:8px;height:100px;margin-top:10px}
+.bars div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:10px;color:var(--text3)}
+.bars span{display:block;width:100%;max-width:30px;border-radius:4px 4px 0 0;margin-bottom:3px}
+.hrow{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}
+.hrow .n{width:78px;color:var(--text2)}.hrow .t{flex:1;height:10px;background:var(--bg3);border-radius:3px}.hrow .t i{display:block;height:10px;border-radius:3px}.hrow .v{width:70px;text-align:right;font-family:'DM Mono',monospace;font-size:11px}
+.mono{font-family:'DM Mono',monospace}
+.muted{color:var(--text3)}
+.pos{color:var(--green)}.neg{color:var(--red)}
+a.card-link{display:block;text-decoration:none;color:inherit}
+table.log{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+table.log td{padding:5px 4px;border-bottom:1px solid var(--border)}
+/* login */
+.login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-overlay.hidden{display:none}
+.login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;width:100%;max-width:380px}
+.login-title{font-weight:800;font-size:18px;margin-bottom:4px}
+.login-desc{font-size:11px;color:var(--text2);margin-bottom:18px}
+.role-picker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.role-opt{border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2)}
+.role-opt.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.form-input{background:var(--input-bg);border:1px solid var(--border2);border-radius:8px;padding:9px 11px;color:var(--text);font-family:'Sora',sans-serif;font-size:13px;width:100%;margin-bottom:8px}
+.login-error{color:var(--red);font-size:11px;min-height:14px;margin-bottom:6px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--red);border-radius:var(--radius);padding:10px 14px;font-size:12px;z-index:2000}
+@media(max-width:760px){.layout{flex-direction:column}.nav{width:100%;display:flex;gap:4px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px}.nav a{white-space:nowrap;margin:0}.header{padding:0 12px}.logo-sub{display:none}.main{padding:12px}}
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div class="login-title">EMELCO Dashboard</div>
+    <div class="login-desc">Select role, pick your name and enter the access code</div>
+    <div class="role-picker">
+      <div class="role-opt active" id="pick-owner" onclick="pickRole('owner')">Owner</div>
+      <div class="role-opt" id="pick-operations" onclick="pickRole('operations')">Operations</div>
+    </div>
+    <select class="form-input" id="login-name"></select>
+    <input type="password" class="form-input" id="login-pass" placeholder="Access code" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="login-error" id="login-error"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Unlock</button>
+  </div>
+</div>
+
+<div class="header">
+  <div class="logo"><div class="logo-mark">EM</div><div><div class="logo-text">EMELCO Dashboard</div><div class="logo-sub">Overview of all modules</div></div></div>
+  <div class="header-right">
+    <span id="sync-status"></span>
+    <span class="who" id="who"></span>
+    <span class="pill" id="role-pill" style="display:none"></span>
+    <button class="btn btn-ghost" id="logoffBtn" style="display:none" onclick="doLogout()">Log off</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="nav" id="nav"></div>
+  <div class="main" id="main"></div>
+</div>
+<div id="toast-box"></div>
+
+<script>
+const APP_VERSION='202610242200'; // Dashboard v1 — read-only hub; only write is the login log
+
+const PROXY_URL='https://emelco-proxy.rchbas.workers.dev';
+const PROXY_SECRET='emelco1254rch';
+const HDRS={'X-Proxy-Auth':PROXY_SECRET,Accept:'application/vnd.github.v3+json'};
+const api=f=>`${PROXY_URL}/contents/${f}`;
+const F_EXP='emelco_expenses_2026.json', F_FLEET='emelco_fleet_2026.json', F_TRIPS='emelco_data.json', F_PAY='emelco_payroll_2026.json', F_BILL='emelco_billing_2026.json', F_LOG='emelco_login_log_2026.json';
+const ACCESS_CODES={owner:'emelco2026',operations:'ops2026'};
+// Names offered at login. Edit these lists when staff change.
+const NAMES={owner:['Ruchan','Rhoda','Michelle'],operations:['Michelle','Llhen','Jhen','Ric']};
+const OPEX_RATE=0.25;
+const LINKS={
+  owner:[['Dashboard','dashboard.html'],['Trips','index.html'],['Assignment','assignment.html'],['Billing','billing.html'],['Fleet','fleet.html'],['Expenses','expenses.html']],
+  operations:[['Dashboard','dashboard.html'],['Trips','index.html'],['Assignment','assignment.html'],['Fleet','fleet.html'],['Expenses','expenses.html']]
+};
+
+const $=s=>document.querySelector(s);
+const n=v=>Number(v)||0;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nowISO=()=>new Date().toISOString();
+const todayISO=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const monthOf=d=>String(d||'').slice(0,7);
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function addMonths(ym,k){const [y,m]=ym.split('-').map(Number);const t=y*12+(m-1)+k;return `${Math.floor(t/12)}-${String(t%12+1).padStart(2,'0')}`;}
+const dAdd=(iso,d)=>{const t=new Date(iso+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+d);return t.toISOString().slice(0,10);};
+const dDiff=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/86400000);
+function compact(v){v=n(v);const s=v<0?'-':'';v=Math.abs(v);if(v>=1e6)return s+'₱'+(v/1e6).toFixed(2)+'M';if(v>=1e3)return s+'₱'+Math.round(v/1e3).toLocaleString()+'k';return s+'₱'+Math.round(v);}
+const peso=v=>'₱'+n(v).toLocaleString('en-PH',{maximumFractionDigits:0});
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;$('#toast-box').appendChild(t);setTimeout(()=>t.remove(),4500);}
+function safeAtobUtf8(b64){const bin=atob(b64.replace(/\n/g,''));const b=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return new TextDecoder('utf-8').decode(b);}
+function toB64Utf8(s){return btoa(unescape(encodeURIComponent(s)));}
+
+async function getJSON(file){
+  const r=await fetch(api(file)+'?t='+Date.now(),{headers:HDRS});
+  if(r.status===404) return {missing:true};
+  if(!r.ok) throw new Error(file+' '+r.status);
+  const meta=await r.json(); let text;
+  if(meta.content&&meta.encoding==='base64') text=safeAtobUtf8(meta.content);
+  else{const b=await fetch(`${PROXY_URL}/git/blobs/${meta.sha}`,{headers:HDRS});if(!b.ok)throw new Error('blob '+b.status);text=safeAtobUtf8((await b.json()).content);}
+  return {sha:meta.sha,data:JSON.parse(text)};
+}
+
+/* ---------- login / roles ---------- */
+let role=null, userName='', pickedRole='owner';
+const isOwner=()=>role==='owner';
+function fillNames(){ $('#login-name').innerHTML='<option value="">— pick your name —</option>'+NAMES[pickedRole].map(x=>`<option>${esc(x)}</option>`).join(''); }
+function pickRole(r){pickedRole=r;$('#pick-owner').classList.toggle('active',r==='owner');$('#pick-operations').classList.toggle('active',r==='operations');$('#login-error').textContent='';$('#login-pass').value='';fillNames();}
+function doLogin(){
+  const nm=$('#login-name').value, p=$('#login-pass').value.trim();
+  if(!nm){$('#login-error').textContent='Pick your name.';return;}
+  if(p!==ACCESS_CODES[pickedRole]){$('#login-error').textContent='Incorrect access code.';return;}
+  setRole(pickedRole,nm); $('#login-overlay').classList.add('hidden'); logEvent('in'); boot();
+}
+function setRole(r,nm){
+  role=r; userName=nm;
+  try{
+    if(r==='owner'){sessionStorage.setItem('emelco_dash_owner',nm);localStorage.removeItem('emelco_dash_ops');}
+    else{localStorage.setItem('emelco_dash_ops',nm);sessionStorage.removeItem('emelco_dash_owner');}
+    localStorage.setItem('emelco_user_name',nm);
+  }catch(_){}
+  document.body.classList.toggle('role-operations',r==='operations');
+  $('#who').textContent=nm; const p=$('#role-pill'); p.style.display='inline-block'; p.textContent=r==='owner'?'Owner':'Operations';
+  $('#logoffBtn').style.display='inline-flex';
+}
+async function doLogout(){
+  if(!confirm('Log off from the dashboard?')) return;
+  await logEvent('out');
+  try{sessionStorage.removeItem('emelco_dash_owner');localStorage.removeItem('emelco_dash_ops');}catch(_){}
+  location.reload();
+}
+function initGate(){
+  try{
+    const o=sessionStorage.getItem('emelco_dash_owner'), p=localStorage.getItem('emelco_dash_ops');
+    if(o){setRole('owner',o);$('#login-overlay').classList.add('hidden');return true;}
+    if(p){setRole('operations',p);$('#login-overlay').classList.add('hidden');return true;}
+  }catch(_){}
+  return false;
+}
+
+/* ---------- login log (the only thing this page writes) ---------- */
+async function logEvent(action){
+  try{
+    const got=await getJSON(F_LOG);
+    const data=got.missing?{entries:[]}:got.data; data.entries=data.entries||[];
+    data.entries.push({name:userName,role,action,at:nowISO()});
+    data.entries=data.entries.slice(-500);
+    const body={message:'Dashboard log '+action,content:toB64Utf8(JSON.stringify(data,null,2))};
+    if(got.sha) body.sha=got.sha;
+    const r=await fetch(api(F_LOG),{method:'PUT',headers:{...HDRS,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('PUT '+r.status);
+  }catch(e){ console.warn('login log failed',e); toast('Login was not recorded (add "'+F_LOG+'" to the Worker ALLOWED_PATHS).'); }
+}
+
+/* ---------- data ---------- */
+const D={exp:null,fleet:null,trips:null,pay:null,bill:null,log:null,err:{}};
+async function load(key,file,fn){
+  try{const got=await getJSON(file);D[key]=got.missing?{}:got.data;if(fn)fn(D[key]);}
+  catch(e){D.err[key]=String(e.message||e);console.warn(e);}
+  render();
+}
+function boot(){
+  $('#sync-status').textContent='loading…';
+  render();
+  load('trips',F_TRIPS,prepTrips);
+  load('fleet',F_FLEET);
+  if(isOwner()){ load('exp',F_EXP); load('pay',F_PAY,preparePay); load('bill',F_BILL); load('log',F_LOG); }
+}
+
+let T={list:[]};
+function prepTrips(d){
+  T.list=((d&&d.trips)||[]).map(t=>{
+    const rs=n(t.rate)+n(t.surcharge);
+    const dEnt=Array.isArray(t.dieselEntries)?t.dieselEntries.reduce((s,x)=>s+n(x.amount),0):0;
+    return {start:String(t.tripStartDate||'').slice(0,10),rs,diesel:dEnt||(n(t.dieselPrice)*n(t.dieselLiter))};
+  }).filter(t=>t.start);
+}
+let PAYM={};
+function preparePay(d){
+  const slips=Object.values((d&&d.officeSlips)||{}).filter(x=>x&&x.finalizedAt&&x.periodStart);
+  const list=slips.map(x=>({key:x.staffId||x.name||'?',start:String(x.periodStart).slice(0,10),end:String(x.periodEnd||x.periodStart).slice(0,10),fin:x.finalizedAt,
+    gross:n(x.standardPay)+n(x.holidayPay)+n(x.paidLeave)+n(x.bonus)+n(x.thirteenthMonth)+n(x.otherPay)}));
+  // same rule as the Expenses page: overlapping slips for one person -> only the newest finalized counts
+  const kept={}; PAYM={};
+  list.sort((a,b)=>String(b.fin).localeCompare(String(a.fin))).forEach(r=>{
+    kept[r.key]=kept[r.key]||[];
+    const clash=kept[r.key].find(o=>dDiff(r.start>o.start?r.start:o.start,r.end<o.end?r.end:o.end)>=1);
+    if(!clash){kept[r.key].push(r);const mo=r.start.slice(0,7);PAYM[mo]=(PAYM[mo]||0)+r.gross;}
+  });
+}
+
+/* ---------- calculations (same rules as expenses.html) ---------- */
+function catMap(){const m={};((D.exp&&D.exp.categories)||[]).forEach(c=>m[c.id]=c);return m;}
+function realByMonth(){
+  const cm=catMap(), out={}, has={};
+  const add=(ym,a)=>{out[ym]=(out[ym]||0)+a;};
+  ((D.exp&&D.exp.entries)||[]).forEach(e=>{
+    const mo=monthOf(e.date); if(!mo) return; has[mo]=1;
+    const c=cm[e.catId], a=n(e.amount);
+    if(c&&(c.type==='yearly'||c.type==='quarterly')){const N=c.type==='yearly'?12:3,back=c.spread==='back';for(let i=0;i<N;i++)add(addMonths(mo,back?-i:i),a/N);}
+    else add(mo,a);
+  });
+  ((D.fleet&&D.fleet.maintenance)||[]).forEach(m=>{const mo=monthOf(m.date);if(mo){has[mo]=1;add(mo,n(m.amount));}});
+  Object.keys(PAYM).forEach(ym=>add(ym,PAYM[ym]));
+  return {out,has};
+}
+function revByMonth(){const m={};T.list.forEach(t=>{const mo=t.start.slice(0,7);m[mo]=(m[mo]||0)+t.rs;});return m;}
+
+/* ---------- rendering ---------- */
+function card(label,body,extra){return `<div class="card ${extra||''}"><div class="lbl">${label}</div>${body}</div>`;}
+function loading(key,what){ if(D.err[key]) return `<div class="small neg">Could not read ${what}: ${esc(D.err[key])}</div>`; return `<div class="small muted">Loading ${what}…</div>`; }
+function hrow(name,val,max,color,txt){return `<div class="hrow"><span class="n">${esc(name)}</span><span class="t"><i style="width:${max>0?Math.round(val/max*100):0}%;background:${color}"></i></span><span class="v">${txt}</span></div>`;}
+
+function revenueCard(){
+  if(!D.trips) return card('Revenue, last 6 months',loading('trips','trips'));
+  const rev=revByMonth(), thisM=todayISO().slice(0,7), ms=[];
+  for(let i=5;i>=0;i--) ms.push(addMonths(thisM,-i));
+  const vals=ms.map(m=>rev[m]||0), mx=Math.max(...vals,1);
+  const bars='<div class="bars">'+ms.map((m,i)=>`<div><span style="height:${Math.round(vals[i]/mx*80)}px;background:${i===5?'#2a78d6':'#b5d4f4'}"></span>${MONTHS[Number(m.slice(5))-1]}</div>`).join('')+'</div>';
+  return card('Revenue, last 6 months (Rate + Surcharge)',`<div class="big">${compact(vals[5])}</div><div class="small">This month so far · last month ${compact(vals[4])}</div>${bars}`);
+}
+function opexCard(){
+  if(!D.exp||!D.trips||!D.pay) return card('Real OPEX %',loading(D.err.exp?'exp':(D.err.trips?'trips':'pay'),'expenses, trips and payroll'));
+  const {out,has}=realByMonth(), rev=revByMonth(), thisM=todayISO().slice(0,7);
+  let ym=null; for(let i=1;i<=6;i++){const m=addMonths(thisM,-i);if(has[m]&&rev[m]){ym=m;break;}}
+  if(!ym) return card('Real OPEX %','<div class="small muted">No complete month with both expenses and revenue yet.</div>');
+  const real=out[ym]||0, pct=real/rev[ym]*100;
+  return card('Real OPEX %',`<div class="big">${pct.toFixed(1)}%</div><div class="small">${MONTHS[Number(ym.slice(5))-1]} ${ym.slice(0,4)} · real ${compact(real)} vs 25% estimate ${compact(rev[ym]*OPEX_RATE)}</div>
+    <div class="meter"><i style="width:${Math.min(100,pct/40*100)}%;background:${pct>25?'#eb6834':'#1baf7a'}"></i><b style="left:${25/40*100}%"></b></div><div class="small muted">Line marks the old flat 25%</div>`);
+}
+function cushionCard(){
+  if(!D.exp||!D.pay) return card('Cash cushion',loading(D.err.exp?'exp':'pay','expenses'));
+  const c=(D.exp.cushion)||{}; if(c.cash==null) return card('Cash cushion','<div class="small muted">No cash figure entered yet. Set it in Expenses → Cushion.</div>');
+  const {out,has}=realByMonth(), thisM=todayISO().slice(0,7);
+  const used=[1,2,3].map(k=>addMonths(thisM,-k)).filter(m=>has[m]&&(out[m]||0)>0);
+  const avg=used.length?used.reduce((s,m)=>s+out[m],0)/used.length:0;
+  const rate=c.costOverride!=null?n(c.costOverride):avg;
+  const min=c.minMode==='months'?n(c.minValue)*rate:n(c.minValue), cash=n(c.cash), above=cash-min;
+  const top=Math.max(cash,min,1);
+  return card('Cash cushion',`<div class="big">${compact(cash)}</div><div class="small">Minimum to keep ${compact(min)} · <span class="${above<0?'neg':'pos'}">${above<0?'below':'above'} the minimum by ${compact(Math.abs(above))}</span></div>
+    <div class="meter"><i style="width:${Math.round(cash/top*100)}%;background:#1baf7a"></i><b style="left:${Math.round(min/top*100)}%"></b></div><div class="small muted">Line marks the minimum · cash as entered ${esc(c.cashDate||'')}. The month-by-month forecast is in Expenses → Cushion.</div>`);
+}
+function receivablesCard(){
+  if(!D.bill) return card('Receivables by age',loading('bill','billing'));
+  const today=todayISO(), B=[['Not yet due',0,'#2a78d6'],['1–30 days late',0,'#eda100'],['31–60 days late',0,'#eb6834'],['61+ days late',0,'#e34948']];
+  let total=0,cnt=0;
+  ((D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='submitted'&&e.submitted).forEach(e=>{
+    const due=(n(e.net)-n(e.penalty))*1.10, late=dDiff(dAdd(e.submitted,n(e.dueDays)||30),today);
+    B[late<=0?0:late<=30?1:late<=60?2:3][1]+=due; total+=due; cnt++;
+  });
+  const mx=Math.max(...B.map(b=>b[1]),1);
+  return card('Receivables by age (submitted, unpaid)',`<div class="big">${compact(total)}</div><div class="small">${cnt} submitted billing entries · cash after VAT/WHT</div>`+B.map(b=>hrow(b[0],b[1],mx,b[2],compact(b[1]))).join(''));
+}
+function truckCostCard(){
+  if(!D.exp||!D.fleet) return card('Cost per truck',loading(D.err.exp?'exp':'fleet','expenses and fleet'));
+  const y=todayISO().slice(0,4), m={};
+  ((D.exp.entries)||[]).forEach(e=>{if(e.plate&&String(e.date).slice(0,4)===y)m[e.plate]=(m[e.plate]||0)+n(e.amount);});
+  ((D.fleet.maintenance)||[]).forEach(x=>{if(x.plate&&String(x.date).slice(0,4)===y)m[x.plate]=(m[x.plate]||0)+n(x.amount);});
+  const rows=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]).slice(0,6), mx=rows.length?rows[0][1]:1;
+  return card('Cost per truck, '+y+' (top 6)',(rows.length?rows.map(r=>hrow(r[0],r[1],mx,'#2a78d6',compact(r[1]))).join(''):'<div class="small muted">No plate-tagged costs yet.</div>')+'<div class="small muted" style="margin-top:10px">Plate-tagged expenses plus Fleet maintenance. Trip running costs are not included yet.</div>','wide');
+}
+function logCard(){
+  if(!D.log) return card('Recent logins',loading('log','login log'));
+  const rows=((D.log.entries)||[]).slice(-8).reverse();
+  return card('Recent logins',rows.length?'<table class="log">'+rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.role)}</td><td>${r.action==='in'?'logged in':'logged off'}</td><td class="muted mono">${esc(String(r.at).replace('T',' ').slice(0,16))} UTC</td></tr>`).join('')+'</table>':'<div class="small muted">Nothing recorded yet.</div>');
+}
+/* operations cards */
+function tripsTodayCard(){
+  if(!D.trips) return card('Trips today',loading('trips','trips'));
+  const t=todayISO(); return card('Trips today',`<div class="big">${T.list.filter(x=>x.start===t).length}</div><div class="small">Trips with a start date of today</div>`);
+}
+function trucksCard(){
+  if(!D.fleet) return card('Trucks',loading('fleet','fleet'));
+  const tr=((D.fleet.trucks)||[]).filter(x=>x.plate), act=tr.filter(x=>x.status!=='Retired');
+  return card('Trucks',`<div class="big">${act.length}</div><div class="small">Active trucks in the fleet registry (${tr.length-act.length} retired)</div>`);
+}
+function fuelWeekCard(){
+  if(!D.trips) return card('Fuel this week',loading('trips','trips'));
+  const to=todayISO(), from=dAdd(to,-6), s=T.list.filter(x=>x.start>=from&&x.start<=to).reduce((a,x)=>a+x.diesel,0);
+  return card('Fuel this week',`<div class="big">${peso(s)}</div><div class="small">Diesel on trips started in the last 7 days</div>`);
+}
+function expensesLinkCard(){
+  return `<a class="card card-link" href="expenses.html"><div class="lbl">Expenses</div><div class="big" style="font-size:18px">Add an expense</div><div class="small">Opens the expense entry page</div></a>`;
+}
+
+function render(){
+  if(!role) return;
+  const here='dashboard.html';
+  $('#nav').innerHTML=LINKS[role].map(l=>`<a href="${l[1]}" class="${l[1]===here?'cur':''}">${l[0]}</a>`).join('');
+  const hello=isOwner()?'Owner dashboard':'Operations dashboard';
+  let cards;
+  if(isOwner()) cards=revenueCard()+opexCard()+cushionCard()+receivablesCard()+truckCostCard()+logCard();
+  else cards=tripsTodayCard()+trucksCard()+fuelWeekCard()+expensesLinkCard();
+  $('#main').innerHTML=`<div class="title">${hello}</div><div class="sub">Read-only overview · ${new Date().toLocaleDateString('en-PH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div><div class="grid">${cards}</div>`;
+  const pending=isOwner()?['trips','fleet','exp','pay','bill','log']:['trips','fleet'];
+  const done=pending.every(k=>D[k]||D.err[k]);
+  $('#sync-status').textContent=done?(Object.keys(D.err).length?'some data unavailable':'up to date'):'loading…';
+}
+
+if(initGate()){boot();}else{pickRole('owner');}
+</script>
+</body>
+</html>
