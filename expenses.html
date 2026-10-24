@@ -109,6 +109,10 @@ body.role-operations .owner-only{display:none!important}
 .version-block.show{display:flex}
 .version-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:30px;max-width:420px;text-align:center}
 @media(max-width:700px){.g2,.g3{grid-template-columns:1fr}.header{padding:0 12px}.tabs{padding:0 8px}.main{padding:12px}.logo-sub{display:none}}
+.clk{cursor:pointer}.clk:hover{background:var(--bg3);outline:1px solid var(--accent)}
+.drill-sum{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0;font-size:13px}.drill-sum b{font-family:'DM Mono',monospace}
+#drill-modal .modal{max-width:1020px;width:94vw}#drill-table td,#drill-table th{white-space:normal;vertical-align:top}#drill-table td.num,#drill-table td.mono{white-space:nowrap}
+.drill-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
 </style>
 </head>
 <body>
@@ -192,8 +196,9 @@ body.role-operations .owner-only{display:none!important}
         <button data-v="paid" onclick="setView('paid')">By paid month</button>
       </div>
       <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="openPayrollListing()">Payroll listing</button>
     </div>
-    <div class="hint">Yearly and quarterly items (registration, taxes, stickers, insurance, permits, BIR) are either spread evenly over 12 or 3 months, or shown in the month they were paid. Truck maintenance is read from the Fleet module.</div>
+    <div class="hint">Click any amount, group name or total to see exactly what it is made of. Yearly and quarterly items (registration, taxes, stickers, insurance, permits, BIR) are either spread evenly over 12 or 3 months, or shown in the month they were paid. Truck maintenance is read from the Fleet module.</div>
     <div class="table-wrapper"><table id="monthly-table"></table></div>
     <div class="hint" id="rev-note" style="margin-top:10px"></div>
   </div>
@@ -294,6 +299,27 @@ body.role-operations .owner-only{display:none!important}
   </div>
 </div></div>
 
+<!-- DRILL-DOWN MODAL -->
+<div class="modal-overlay" id="drill-modal"><div class="modal wide">
+  <div class="modal-header"><div><div class="modal-title" id="drill-title">Breakdown</div><div class="modal-subtitle" id="drill-sub"></div></div><div class="modal-close" onclick="closeModal('drill-modal')">✕</div></div>
+  <div class="modal-body">
+    <div class="drill-tools" id="drill-range" style="display:none">
+      <label class="form-label" style="margin:0">From</label><input type="date" class="form-input" id="dr-from" style="width:150px" onchange="drillRender()">
+      <label class="form-label" style="margin:0">To</label><input type="date" class="form-input" id="dr-to" style="width:150px" onchange="drillRender()">
+      <button class="btn btn-ghost btn-sm" onclick="drillRange('year')">This year</button>
+      <button class="btn btn-ghost btn-sm" onclick="drillRange('q')">This quarter</button>
+      <button class="btn btn-ghost btn-sm" onclick="drillRange('month')">This month</button>
+    </div>
+    <div class="drill-sum" id="drill-sum"></div>
+    <div class="table-wrapper" style="max-height:48vh;overflow:auto"><table id="drill-table"></table></div>
+    <div id="drill-extra"></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('drill-modal')">Close</button>
+    <button class="btn btn-primary" onclick="drillExport()">⬇ Export CSV</button>
+  </div>
+</div></div>
+
 <!-- CAPITAL MODAL -->
 <div class="modal-overlay" id="cap-modal"><div class="modal wide">
   <div class="modal-header"><div><div class="modal-title" id="cap-title">Add capital item</div><div class="modal-subtitle">Not part of monthly OPEX.</div></div><div class="modal-close" onclick="closeModal('cap-modal')">✕</div></div>
@@ -328,7 +354,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610241830'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202610241930'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -495,7 +521,7 @@ let STATE = freshState();
 function freshState(){ return { version:1, categories:defaultCategories(), places:DEFAULT_PLACES.slice(), entries:[], budgets:[], capital:[], deletionLog:[] }; }
 let FLEET = { plates:[], maintenance:[], loaded:false };
 let TRIPS = { monthRS:{}, loaded:false, error:'' };
-let PAYROLL = { byMonth:{}, loaded:false, error:'', slips:0 };
+let PAYROLL = { byMonth:{}, list:[], loaded:false, error:'', slips:0 };
 let viewMode = localStorage.getItem('emelco_exp_view')||'spread';
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
@@ -602,9 +628,16 @@ async function loadPayroll(){
     const got=await cloudGetJSON(PAYROLL_API);
     if(got.__missing) throw new Error('payroll file not found');
     const slips=Object.values((got.data&&got.data.officeSlips)||{}).filter(d=>d&&d.finalizedAt&&d.periodStart);
-    const m={};
-    slips.forEach(d=>{ const gross=n(d.standardPay)+n(d.holidayPay)+n(d.paidLeave)+n(d.bonus)+n(d.thirteenthMonth)+n(d.otherPay); const mo=String(d.periodStart).slice(0,7); m[mo]=(m[mo]||0)+gross; });
-    PAYROLL.byMonth=m; PAYROLL.slips=slips.length; PAYROLL.loaded=true; PAYROLL.error='';
+    const m={}, list=[];
+    slips.forEach(d=>{
+      const gross=n(d.standardPay)+n(d.holidayPay)+n(d.paidLeave)+n(d.bonus)+n(d.thirteenthMonth)+n(d.otherPay); const mo=String(d.periodStart).slice(0,7); m[mo]=(m[mo]||0)+gross;
+      const ded=n(d.cashAdvance)+n(d.sss)+n(d.philhealth)+n(d.pagibig)+n(d.rent)+n(d.electric)+n(d.water)+n(d.phone)+n(d.bond)+n(d.otherDeduction);
+      list.push({name:d.name||d.staffId||'(unknown)',staffId:d.staffId||'',start:String(d.periodStart).slice(0,10),end:String(d.periodEnd||'').slice(0,10),finalizedAt:d.finalizedAt,
+        standard:n(d.standardPay),holiday:n(d.holidayPay),leave:n(d.paidLeave),bonus:n(d.bonus),thirteenth:n(d.thirteenthMonth),otherPay:n(d.otherPay),gross,
+        ca:n(d.cashAdvance),sss:n(d.sss),philhealth:n(d.philhealth),pagibig:n(d.pagibig),rent:n(d.rent),electric:n(d.electric),water:n(d.water),phone:n(d.phone),bond:n(d.bond),otherDed:n(d.otherDeduction),ded,net:gross-ded});
+    });
+    list.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
+    PAYROLL.byMonth=m; PAYROLL.list=list; PAYROLL.slips=slips.length; PAYROLL.loaded=true; PAYROLL.error='';
   }catch(e){ PAYROLL.error=String(e.message||e); console.warn('Payroll read failed',e); }
   renderMonthly(); renderBudget();
 }
@@ -823,11 +856,11 @@ function renderMonthly(){
   const colTot=months.map(()=>0); let grand=0;
   groups.forEach(g=>{
     const owner=groupTier(g)==='owner'; let rowTot=0;
-    const cells=months.map((m,i)=>{ const v=(data[g]&&data[g][m])||0; rowTot+=v; colTot[i]+=v; return `<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`; }).join('');
+    const cells=months.map((m,i)=>{ const v=(data[g]&&data[g][m])||0; rowTot+=v; colTot[i]+=v; return `<td class="num clk" data-g="${esc(g)}" data-m="${m}" title="${peso(v)}">${pesoShort(v)}</td>`; }).join('');
     grand+=rowTot;
-    html+=`<tr class="${owner?'row-owner':''}"><td><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}${g===PAYROLL_GROUP?' <span class="badge badge-type">from Payroll</span>':''}</td>${cells}<td class="num"><strong>${pesoShort(rowTot)}</strong></td></tr>`;
+    html+=`<tr class="${owner?'row-owner':''}"><td class="clk" data-g="${esc(g)}" data-m=""><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}${g===PAYROLL_GROUP?' <span class="badge badge-type">from Payroll</span>':''}</td>${cells}<td class="num clk" data-g="${esc(g)}" data-m=""><strong>${pesoShort(rowTot)}</strong></td></tr>`;
   });
-  html+=`<tr class="row-total"><td>Real OPEX</td>${colTot.map(v=>`<td class="num" title="${peso(v)}">${pesoShort(v)}</td>`).join('')}<td class="num">${pesoShort(grand)}</td></tr>`;
+  html+=`<tr class="row-total"><td class="clk" data-g="*" data-m="">Real OPEX</td>${colTot.map((v,i)=>`<td class="num clk" data-g="*" data-m="${months[i]}" title="${peso(v)}">${pesoShort(v)}</td>`).join('')}<td class="num clk" data-g="*" data-m="">${pesoShort(grand)}</td></tr>`;
   if(TRIPS.loaded){
     const rev=months.map(m=>TRIPS.monthRS[m]||0), revTot=rev.reduce((a,b)=>a+b,0);
     const est=rev.map(v=>v*OPEX_RATE), estTot=revTot*OPEX_RATE;
@@ -1012,6 +1045,103 @@ function saveCategory(){
   if(editingCatId){ const c=catById(editingCatId); if(c.other) rec.active=true; Object.assign(c,rec); }
   else STATE.categories.push(Object.assign({id:uid('c'),other:false},rec));
   closeModal('cat-modal'); saveExp(); renderAll(); toast('Saved');
+}
+
+/* ============================================================
+   Drill-down: what is a number made of
+   ============================================================ */
+let DRILL={g:null,m:'',year:'',rows:[],payroll:false};
+document.addEventListener('click',ev=>{
+  const td=ev.target.closest&&ev.target.closest('#monthly-table td[data-g]'); if(!td||!isOwner()) return;
+  openDrill(td.dataset.g,td.dataset.m||'');
+});
+// every [month, amount] an entry counts for, using exactly the same rules as monthlyData()
+function entryContrib(e,view){
+  const c=catById(e.catId), a=n(e.amount), mo=monthOf(e.date); if(!mo) return [];
+  if(c && (c.type==='yearly'||c.type==='quarterly') && view==='spread'){ const N=c.type==='yearly'?12:3, back=c.spread==='back'; const o=[]; for(let i=0;i<N;i++) o.push([addMonths(mo,back?-i:i),a/N]); return o; }
+  return [[mo,a]];
+}
+function drillRows(g,ym,year){
+  const inScope=m=>m&&m.slice(0,4)===String(year)&&(!ym||m===ym);
+  const rows=[];
+  STATE.entries.forEach(e=>{
+    const c=catById(e.catId), grp=c?c.group:'(removed item)';
+    if(g!=='*'&&grp!==g) return;
+    const parts=entryContrib(e,viewMode).filter(p=>inScope(p[0]));
+    if(!parts.length) return;
+    const amt=parts.reduce((s,p)=>s+p[1],0);
+    const spread=c&&(c.type==='yearly'||c.type==='quarterly')&&viewMode==='spread';
+    rows.push({date:e.date,group:grp,item:c?c.name:'',detail:[e.place,e.plate,e.remark].filter(Boolean).join(' · '),by:e.by||'',amount:amt,note:spread?`₱${n(e.amount).toLocaleString('en-PH',{minimumFractionDigits:2})} spread over ${c.type==='yearly'?12:3} months (${parts.length} in this view)`:''});
+  });
+  if(g==='*'||g===FLEET_GROUP) FLEET.maintenance.forEach(m=>{ const mo=monthOf(m.date); if(!inScope(mo)) return; rows.push({date:m.date,group:FLEET_GROUP,item:m.category||m.type||'Maintenance',detail:[m.plate,m.description||m.remark||m.notes].filter(Boolean).join(' · '),by:'Fleet',amount:n(m.amount),note:''}); });
+  if((g==='*'||g===PAYROLL_GROUP)&&PAYROLL.loaded) PAYROLL.list.forEach(s=>{ const mo=s.start.slice(0,7); if(!inScope(mo)) return; rows.push({date:s.start,group:PAYROLL_GROUP,item:s.name,detail:'Pay period '+s.start+' → '+(s.end||'?'),by:'Payroll',amount:s.gross,note:''}); });
+  rows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  return rows;
+}
+function openDrill(g,ym){
+  const year=$('#m-year').value;
+  DRILL={g,year,ym,rows:[],payroll:false};
+  if(g===PAYROLL_GROUP){ openPayrollListing(ym); return; }
+  const rows=drillRows(g,ym,year); DRILL.rows=rows;
+  const total=rows.reduce((s,r)=>s+r.amount,0);
+  const label=g==='*'?'All groups (Real OPEX)':g, when=ym?MONTHS[Number(ym.slice(5))-1]+' '+ym.slice(0,4):'Whole year '+year;
+  $('#drill-title').textContent=label+' — '+when;
+  $('#drill-sub').textContent='View: '+(viewMode==='spread'?'yearly/quarterly spread':'by paid month')+'. The total here equals the figure you clicked.';
+  $('#drill-range').style.display='none'; $('#drill-extra').innerHTML='';
+  $('#drill-sum').innerHTML=`<span>Lines <b>${rows.length}</b></span><span>Total <b>${peso(total)}</b></span>`;
+  $('#drill-table').innerHTML='<thead><tr><th>Date</th>'+(g==='*'?'<th>Group</th>':'')+'<th>Item</th><th>Details</th><th>By</th><th style="text-align:right">Amount counted</th></tr></thead><tbody>'+
+    (rows.length?rows.map(r=>`<tr><td class="mono">${esc(r.date)}</td>${g==='*'?`<td>${esc(r.group)}</td>`:''}<td>${esc(r.item)}</td><td class="muted">${esc(r.detail)}${r.note?`<br><span style="font-size:10px">${esc(r.note)}</span>`:''}</td><td class="muted">${esc(r.by)}</td><td class="num">${peso(r.amount)}</td></tr>`).join(''):`<tr><td colspan="6" class="muted" style="padding:16px">Nothing counted here.</td></tr>`)+'</tbody>';
+  openModal('drill-modal');
+}
+/* ---- payroll listing (date range) ---- */
+function openPayrollListing(ym){
+  if(!isOwner()) return;
+  const year=($('#m-year')&&$('#m-year').value)||String(new Date().getFullYear());
+  DRILL={g:PAYROLL_GROUP,year,ym:ym||'',rows:[],payroll:true};
+  $('#drill-title').textContent='Office & admin payroll — listing';
+  $('#drill-sub').textContent='Finalized payslips only. Cost = gross pay, shown by the pay period start date. Deductions are shown for information (CA, bond, SSS, etc.) and are not extra cost.';
+  $('#drill-range').style.display='flex';
+  if(ym){ const [y,m]=ym.split('-').map(Number); $('#dr-from').value=ym+'-01'; $('#dr-to').value=ym+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0'); }
+  else { $('#dr-from').value=year+'-01-01'; $('#dr-to').value=year+'-12-31'; }
+  if(!PAYROLL.loaded){ $('#drill-sum').innerHTML='<span class="muted">'+(PAYROLL.error?('Payroll could not be read: '+esc(PAYROLL.error)):'Loading payroll…')+'</span>'; $('#drill-table').innerHTML=''; $('#drill-extra').innerHTML=''; openModal('drill-modal'); return; }
+  drillRender(); openModal('drill-modal');
+}
+function drillRange(k){
+  const now=new Date(), y=($('#m-year').value)||String(now.getFullYear()), p=v=>String(v).padStart(2,'0');
+  if(k==='year'){ $('#dr-from').value=y+'-01-01'; $('#dr-to').value=y+'-12-31'; }
+  else if(k==='month'){ const m=now.getMonth()+1,l=new Date(now.getFullYear(),m,0).getDate(); $('#dr-from').value=`${now.getFullYear()}-${p(m)}-01`; $('#dr-to').value=`${now.getFullYear()}-${p(m)}-${p(l)}`; }
+  else { const q=Math.floor(now.getMonth()/3), s=q*3+1, e=s+2, l=new Date(now.getFullYear(),e,0).getDate(); $('#dr-from').value=`${now.getFullYear()}-${p(s)}-01`; $('#dr-to').value=`${now.getFullYear()}-${p(e)}-${p(l)}`; }
+  drillRender();
+}
+function drillRender(){
+  if(!DRILL.payroll||!PAYROLL.loaded) return;
+  const f=$('#dr-from').value||'0000-00-00', t=$('#dr-to').value||'9999-99-99';
+  const rows=PAYROLL.list.filter(s=>s.start>=f&&s.start<=t); DRILL.rows=rows;
+  const sum=k=>rows.reduce((a,r)=>a+r[k],0);
+  $('#drill-sum').innerHTML=`<span>Payslips <b>${rows.length}</b></span><span>Gross pay (cost) <b>${peso(sum('gross'))}</b></span><span>Deductions <b>${peso(sum('ded'))}</b></span><span>Net paid <b>${peso(sum('net'))}</b></span>`;
+  $('#drill-table').innerHTML='<thead><tr><th>Name</th><th>Pay period</th><th style="text-align:right">Gross (cost)</th><th style="text-align:right">Deductions</th><th style="text-align:right">of which CA</th><th style="text-align:right">of which Bond</th><th style="text-align:right">Net pay</th></tr></thead><tbody>'+
+    (rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="mono">${esc(r.start)} → ${esc(r.end)}</td><td class="num">${peso(r.gross)}</td><td class="num">${peso(r.ded)}</td><td class="num muted">${r.ca?peso(r.ca):'—'}</td><td class="num muted">${r.bond?peso(r.bond):'—'}</td><td class="num">${peso(r.net)}</td></tr>`).join(''):`<tr><td colspan="7" class="muted" style="padding:16px">No finalized payslips in this range.</td></tr>`)+
+    (rows.length?`<tr class="row-total"><td colspan="2">Total</td><td class="num">${peso(sum('gross'))}</td><td class="num">${peso(sum('ded'))}</td><td class="num">${peso(sum('ca'))}</td><td class="num">${peso(sum('bond'))}</td><td class="num">${peso(sum('net'))}</td></tr>`:'')+'</tbody>';
+  // per person and per month / quarter
+  const by=(keyf)=>{ const m={}; rows.forEach(r=>{ const k=keyf(r); (m[k]=m[k]||{n:0,gross:0}); m[k].n++; m[k].gross+=r.gross; }); return Object.keys(m).sort().map(k=>`<tr><td>${esc(k)}</td><td class="num">${m[k].n}</td><td class="num">${peso(m[k].gross)}</td></tr>`).join(''); };
+  const qf=r=>r.start.slice(0,4)+' Q'+(Math.floor((Number(r.start.slice(5,7))-1)/3)+1);
+  const tbl=(title,body)=>`<div style="flex:1;min-width:230px"><div class="form-label" style="margin:12px 0 4px">${title}</div><div class="table-wrapper"><table><thead><tr><th>${title.split(' ')[1]||''}</th><th style="text-align:right">Slips</th><th style="text-align:right">Gross</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  $('#drill-extra').innerHTML=rows.length?`<div style="display:flex;gap:14px;flex-wrap:wrap">${tbl('By person',by(r=>r.name))}${tbl('By month',by(r=>r.start.slice(0,7)))}${tbl('By quarter',by(qf))}</div>`:'';
+}
+function drillExport(){
+  let head,data,name;
+  if(DRILL.payroll){
+    head=['Name','Staff ID','Period start','Period end','Standard pay','Holiday pay','Paid leave','Bonus','13th month','Other pay','Gross (cost)','Cash advance','SSS','PhilHealth','Pag-IBIG','Rent','Electric','Water','Phone','Bond','Other deduction','Total deductions','Net pay'];
+    data=DRILL.rows.map(r=>[r.name,r.staffId,r.start,r.end,r.standard,r.holiday,r.leave,r.bonus,r.thirteenth,r.otherPay,r.gross,r.ca,r.sss,r.philhealth,r.pagibig,r.rent,r.electric,r.water,r.phone,r.bond,r.otherDed,r.ded,r.net]);
+    name='emelco_payroll_listing_'+($('#dr-from').value||'start')+'_to_'+($('#dr-to').value||'end');
+  } else {
+    head=['Date','Group','Item','Details','By','Amount counted','Note'];
+    data=DRILL.rows.map(r=>[r.date,r.group,r.item,r.detail,r.by,r.amount.toFixed(2),r.note]);
+    name='emelco_breakdown_'+(DRILL.g==='*'?'all':DRILL.g.replace(/[^a-z0-9]+/gi,'_'))+'_'+(DRILL.ym||DRILL.year);
+  }
+  if(!data.length){ toast('Nothing to export','error'); return; }
+  const csv='\uFEFF'+[head].concat(data).map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=name+'.csv'; a.click();
 }
 
 /* ---- start ---- */
