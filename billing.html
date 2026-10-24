@@ -346,6 +346,7 @@ tr.en-section.clickable:hover td{background:#eceef3}
         <thead><tr>
           <th>Paid Date</th><th>SI #</th><th>BU</th><th>SBU</th><th>Type</th>
           <th class="num-cell">Net Due</th><th>Cheque #</th><th>Remark</th>
+          <th>Trip period</th><th>Submitted</th><th class="num-cell" title="Days from date submitted to paid date">Days to pay</th><th class="num-cell" title="Days from end of trip period to paid date">From trip end</th>
         </tr></thead><tbody></tbody>
         <tfoot></tfoot>
       </table>
@@ -531,7 +532,7 @@ tr.en-section.clickable:hover td{background:#eceef3}
    Entry model: one row per BU + SBU + TYPE + Trip Start/End period.
    SI# is an optional field on an entry, not a grouping key.
    ============================================================ */
-const APP_VERSION = '202610192200';
+const APP_VERSION = '202610241900';
 const CLIENT   = 'CCAC';
 const UNBILLED_CLIENTS = ['CCAC','CMIP','CDI']; // sister companies under the same billing process — trip-level BU shown per row, not split into separate pages
 const YEAR     = 2026;
@@ -1574,26 +1575,34 @@ function getFilteredPaidEntries(){
   rows.sort((a,b)=>String(b.paidDate||'').localeCompare(String(a.paidDate||'')));
   return rows;
 }
+function payLag(e){
+  const sub=e.submitted&&e.paidDate?daysBetween(e.submitted,e.paidDate):null;
+  const trip=e.tripEnd&&e.paidDate?daysBetween(e.tripEnd,e.paidDate):null;
+  return {sub,trip};
+}
+function avgOf(a){ const v=a.filter(x=>x!==null); return v.length?Math.round(v.reduce((s,x)=>s+x,0)/v.length):null; }
 function renderPaidList(){
   const tbl=$('#paidlist-table'); if(!tbl) return;
   populatePlMonthFilter();
   const rows=getFilteredPaidEntries();
   const total=rows.reduce((s,e)=>s+entryCalc(e).due,0);
-  $('#pl-stats').innerHTML=stat('total','Entries',rows.length,'')+stat('collected','Total (Net Due)','₱'+peso(total),'');
-  tbl.querySelector('tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e);
+  const lags=rows.map(payLag), avgSub=avgOf(lags.map(l=>l.sub)), avgTrip=avgOf(lags.map(l=>l.trip));
+  $('#pl-stats').innerHTML=stat('total','Entries',rows.length,'')+stat('collected','Total (Net Due)','₱'+peso(total),'')+stat('total','Avg days to pay',avgSub===null?'—':avgSub,'from date submitted')+stat('total','Avg from trip end',avgTrip===null?'—':avgTrip,'days');
+  tbl.querySelector('tbody').innerHTML=rows.length?rows.map(e=>{ const t=entryCalc(e); const lg=payLag(e);
     const chequeCell = e.chequeNo ? `<span class="mono">${esc(e.chequeNo)}</span>` : '<span class="muted">—</span>';
     const mismatchNote = e.mismatchFlag ? ` <span title="Cheque-amount mismatch of ₱${peso(Math.abs(e.mismatchDiff||0))}" style="color:#b91c1c">⚠</span>` : '';
     return `<tr><td class="mono">${esc(e.paidDate)}</td><td class="mono">${esc(e.si||'—')}</td><td>${esc(e.bu||'')}</td><td>${esc(e.sbu||'')}</td><td>${esc(e.type||'')}</td>
-      <td class="num-cell">₱${peso(t.due)}${mismatchNote}</td><td>${chequeCell}</td><td class="muted">${esc(e.chequeRemark||'')}</td></tr>`;
-  }).join(''):`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No paid entries</div>Nothing paid yet matching this filter.</div></td></tr>`;
-  tbl.querySelector('tfoot').innerHTML = rows.length?`<tr><td colspan="5" style="text-align:right;font-weight:700">Total</td><td class="num-cell" style="font-weight:700">₱${peso(total)}</td><td colspan="2"></td></tr>`:'';
+      <td class="num-cell">₱${peso(t.due)}${mismatchNote}</td><td>${chequeCell}</td><td class="muted">${esc(e.chequeRemark||'')}</td>
+      <td class="mono muted">${e.tripStart?esc(e.tripStart)+' → '+esc(e.tripEnd||''):'—'}</td><td class="mono muted">${esc(e.submitted||'—')}</td><td class="num-cell">${lg.sub===null?'—':lg.sub}</td><td class="num-cell">${lg.trip===null?'—':lg.trip}</td></tr>`;
+  }).join(''):`<tr><td colspan="12"><div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No paid entries</div>Nothing paid yet matching this filter.</div></td></tr>`;
+  tbl.querySelector('tfoot').innerHTML = rows.length?`<tr><td colspan="5" style="text-align:right;font-weight:700">Total</td><td class="num-cell" style="font-weight:700">₱${peso(total)}</td><td colspan="2"></td><td colspan="2"></td><td class="num-cell" style="font-weight:700">${avgSub===null?'':avgSub}</td><td class="num-cell" style="font-weight:700">${avgTrip===null?'':avgTrip}</td></tr>`:'';
 }
 function exportPaidList(){
   const rows=getFilteredPaidEntries();
   if(!rows.length){ toast('Nothing to export','error'); return; }
-  const headers=['Paid Date','SI #','BU','SBU','Type','Net Due','Cheque #','Cheque Remark'];
+  const headers=['Paid Date','SI #','BU','SBU','Type','Net Due','Cheque #','Cheque Remark','Trip Start','Trip End','Date Submitted','Days to Pay (from submitted)','Days from Trip End'];
   const data=rows.map(e=>{ const t=entryCalc(e);
-    return [e.paidDate||'', e.si||'', e.bu||'', e.sbu||'', e.type||'', t.due.toFixed(2), e.chequeNo||'', e.chequeRemark||''];
+    return [e.paidDate||'', e.si||'', e.bu||'', e.sbu||'', e.type||'', t.due.toFixed(2), e.chequeNo||'', e.chequeRemark||'', e.tripStart||'', e.tripEnd||'', e.submitted||'', (()=>{const l=payLag(e);return l.sub===null?'':l.sub})(), (()=>{const l=payLag(e);return l.trip===null?'':l.trip})()];
   });
   downloadCSV('emelco_paid_entries_'+todayISO()+'.csv', headers, data);
 }
