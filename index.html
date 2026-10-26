@@ -253,27 +253,13 @@ body.role-operations .fin-only{display:none!important}
   </div>
 </div>
 
-<div class="header">
-  <div class="logo">
-    <div class="logo-mark">EM</div>
-    <div>
-      <div class="logo-text">EMELCO Logistics</div>
-      <div class="logo-sub">Trip List Manager — 2026</div>
-    </div>
-  </div>
-  <div class="header-right">
-    <span class="role-badge" id="role-badge" style="display:none"></span>
-    <span id="sync-status" style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace">⏳ Connecting…</span>
-    <span id="version-badge" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;cursor:default;border:1px solid var(--border);border-radius:4px;padding:1px 5px"></span>
-    <a href="https://rchbas-alt.github.io/emelco-app/assignment.html" target="_blank" class="btn btn-ghost btn-sm" title="View weekly truck assignment grid">📅 Assignment</a>
-    <a href="https://rchbas-alt.github.io/emelco-app/billing.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Billing">🧾 Billing 2026</a>
-    <a href="https://rchbas-alt.github.io/emelco-app/fleet.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Fleet Registry &amp; Maintenance">🚛 Fleet</a>
-    <button class="btn btn-ghost btn-sm" onclick="pullFromGitHub()" title="Pull latest from cloud">🔄 Sync</button>
-    <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
-    <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
-    <button class="btn btn-primary" onclick="openNewTrip()">+ New Trip</button>
-    <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Switch user">🔒 Logout</button>
-  </div>
+<div id="emelco-bar" data-page="trips" data-sub="Trip list manager · 2026"></div>
+<script src="shell.js"></script>
+<div class="emb-tools">
+  <span id="version-badge" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;cursor:default;border:1px solid var(--border);border-radius:4px;padding:1px 5px"></span>
+  <button class="btn btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
+  <button class="btn btn-ghost" onclick="switchTab('import')">⬆ Import</button>
+  <button class="btn btn-primary" onclick="openNewTrip()">+ New Trip</button>
 </div>
 
 <div class="tabs">
@@ -1399,35 +1385,20 @@ function doLogin(){
     document.getElementById('login-error').textContent = 'Incorrect access code.';
   }
 }
+// Login is shared by every module (shell.js). Not signed in -> sent to the Dashboard, which brings us back here.
 function setRole(role){
   currentRole = role;
-  localStorage.setItem('emelco_role', role);
   document.body.classList.toggle('role-operations', role==='operations');
-  const badge = document.getElementById('role-badge');
-  badge.style.display='inline-block';
-  badge.className = 'role-badge '+role;
-  badge.textContent = role==='owner' ? '👑 Owner' : '🧭 Operations';
 }
-function doLogout(){
-  if(!confirm('Switch user / lock the app?')) return;
-  localStorage.removeItem('emelco_role');
-  currentRole = null;
-  document.body.classList.remove('role-operations');
-  document.getElementById('role-badge').style.display='none';
-  document.getElementById('login-overlay').classList.remove('hidden');
-  document.getElementById('login-pass').value='';
-  pickRole('owner');
-  // if an operations user was sitting on a now-restricted page, snap back to trips
-  switchTab('trips');
-}
+function doLogout(){ EM.logoff(); }
 function initRoleGate(){
-  const saved = localStorage.getItem('emelco_role');
-  if(saved === 'owner' || saved === 'operations'){
-    setRole(saved);
-    document.getElementById('login-overlay').classList.add('hidden');
-  }
+  const s = EM.guard();
+  if(!s) return;
+  setRole(s.role);
+  document.getElementById('login-overlay').classList.add('hidden');
 }
 initRoleGate();
+EM.onSync = () => pullFromGitHub();
 
 const PROXY_URL = 'https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET = 'emelco1254rch';

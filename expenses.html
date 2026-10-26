@@ -25,7 +25,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--border2)}
 .btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#a93226}
 .btn-sm{padding:4px 9px;font-size:11px}
-.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:64px;z-index:99}
+.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:var(--emb-h,64px);z-index:99}
 .tab{padding:13px 18px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .owner-banner{display:none;background:var(--accent-soft);border-bottom:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;padding:6px 24px}
@@ -145,19 +145,8 @@ body.role-operations .owner-only{display:none!important}
   </div>
 </div>
 
-<div class="header">
-  <div class="logo">
-    <div class="logo-mark">EM</div>
-    <div><div class="logo-text">EMELCO Expenses</div><div class="logo-sub">Operating expenses &amp; budget</div></div>
-  </div>
-  <div class="header-right">
-    <span class="client-pill">2026</span>
-    <span id="sync-status">local</span>
-    <a href="https://rchbas-alt.github.io/emelco-app/index.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Trip List">🚚 Trip 2026</a>
-    <span class="role-label" id="role-label" onclick="doLogout()" title="Click to switch user"></span>
-    <button class="btn btn-ghost btn-sm" id="logoffBtn" style="display:none" onclick="doLogout()">⎋ Log off</button>
-  </div>
-</div>
+<div id="emelco-bar" data-page="expenses" data-sub="Operating expenses &amp; budget · 2026"></div>
+<script src="shell.js"></script>
 
 <div class="tabs">
   <div class="tab active" data-tab="entries" onclick="switchTab('entries')">🧾 Entries</div>
@@ -432,22 +421,17 @@ function doLogin(){
     setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot();
   } else { $('#login-error').textContent='Incorrect access code.'; }
 }
+// Login is shared by every module (shell.js). Not signed in -> sent to the Dashboard, which brings us back here.
 function setRole(r){
   currentRole=r;
-  // Own keys (not the shared 'emelco_role' of the other modules). Owner lasts only until the tab/browser closes; Operations is remembered on the device.
-  try{ if(r==='owner'){ sessionStorage.setItem('emelco_exp_owner','1'); localStorage.removeItem('emelco_exp_role'); } else { localStorage.setItem('emelco_exp_role','operations'); sessionStorage.removeItem('emelco_exp_owner'); } }catch(_){}
-  const lo=$('#logoffBtn'); if(lo) lo.style.display='inline-flex';
   document.body.classList.toggle('role-operations',r==='operations');
   document.body.classList.toggle('role-owner',r==='owner');
-  const b=$('#role-label'); b.style.display='inline-block'; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations';
   const pv=$('#publishVersionBtn'); if(pv) pv.style.display = isDeployAdmin() ? 'inline-flex' : 'none';
 }
-function doLogout(){ if(!confirm('Log off from Expenses?'))return; try{ sessionStorage.removeItem('emelco_exp_owner'); localStorage.removeItem('emelco_exp_role'); }catch(_){} currentRole=null; document.body.classList.remove('role-operations','role-owner','owner-tab'); $('#role-label').style.display='none'; const lo=$('#logoffBtn'); if(lo) lo.style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); location.reload(); }
+function doLogout(){ EM.logoff(); }
 function initRoleGate(){
-  let s=null;
-  try{ if(sessionStorage.getItem('emelco_exp_owner')==='1') s='owner'; else if(localStorage.getItem('emelco_exp_role')==='operations') s='operations'; }catch(_){}
-  if(s){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; }
-  return false;
+  const s=EM.guard(); if(!s) return false;
+  currentName=s.name; setRole(s.role); $('#login-overlay').classList.add('hidden'); return true;
 }
 
 /* ============================================================
@@ -1300,6 +1284,7 @@ function renderCushion(){
 }
 
 /* ---- start ---- */
+EM.onSync=()=>{ setSync('⏳ syncing…','var(--accent)'); setTimeout(()=>location.reload(),900); };
 if(initRoleGate()){ boot(); } else { pickRole('owner'); }
 </script>
 </body>

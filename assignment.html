@@ -87,11 +87,13 @@ tfoot td.plate-cell{text-align:left;padding-left:14px;background:var(--bg3)}
 </head>
 <body>
 
+<div id="emelco-bar" data-page="assignment" data-sub="Weekly truck assignment grid"></div>
+<script src="shell.js"></script>
+
 <div class="header">
   <div class="header-top">
     <div>
-      <div class="title">EMELCO — Weekly Truck Assignment</div>
-      <div class="subtitle" id="sync-status">Connecting…</div>
+      <div class="title">Weekly Truck Assignment</div>
     </div>
     <div class="weeklabel" id="week-label">—</div>
   </div>
@@ -409,6 +411,7 @@ function goToday(){
   renderGrid();
 }
 
+EM.onSync = () => loadData(true);
 loadData(false);
 setInterval(() => loadData(false), 60000);
 </script>

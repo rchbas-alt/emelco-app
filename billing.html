@@ -26,7 +26,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .btn-danger{background:var(--red);color:#fff}.btn-danger:hover{background:#a93226}
 .btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#157a45}
 .btn-sm{padding:4px 9px;font-size:11px}
-.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:60px;z-index:99}
+.tabs{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto;position:sticky;top:var(--emb-h,60px);z-index:99}
 .tab{padding:13px 18px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
 .tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .main{padding:20px;max-width:1500px}
@@ -148,18 +148,8 @@ tr.en-section.clickable:hover td{background:#eceef3}
   </div>
 </div>
 
-<div class="header">
-  <div class="logo">
-    <div class="logo-mark">EM</div>
-    <div><div class="logo-text">EMELCO Billing</div><div class="logo-sub">Service Invoices &amp; Collections</div></div>
-  </div>
-  <div class="header-right">
-    <span class="client-pill">CCAC · 2026</span>
-    <span id="sync-status">local</span>
-    <a href="https://rchbas-alt.github.io/emelco-app/index.html" target="_blank" class="btn btn-ghost btn-sm" title="Switch to Trip List">🚚 Trip 2026</a>
-    <span class="role-badge" id="role-badge" onclick="doLogout()" title="Click to switch user"></span>
-  </div>
-</div>
+<div id="emelco-bar" data-page="billing" data-sub="Service invoices &amp; collections · CCAC 2026"></div>
+<script src="shell.js"></script>
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('overview')">📊 Overview</div>
@@ -594,9 +584,10 @@ function toB64Utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
 let currentRole=null, pickedRole='owner', currentName='';
 function pickRole(r){ pickedRole=r; $('#pick-owner').classList.toggle('active',r==='owner'); $('#pick-operations').classList.toggle('active',r==='operations'); $('#login-error').textContent=''; $('#login-pass').value=''; $('#login-pass').focus(); }
 function doLogin(){ const p=$('#login-pass').value.trim(); if(p===ACCESS_CODES[pickedRole]){ let saved=localStorage.getItem('emelco_user_name')||''; let nm=(prompt('Your name (for the record):', saved)||saved||'').trim(); if(nm){ currentName=nm; localStorage.setItem('emelco_user_name',nm); } else { currentName=(pickedRole==='owner'?'Owner':'Operations'); } setRole(pickedRole); $('#login-overlay').classList.add('hidden'); boot(); } else { $('#login-error').textContent='Incorrect access code.'; } }
-function setRole(r){ currentRole=r; localStorage.setItem('emelco_role',r); document.body.classList.toggle('role-operations',r==='operations'); const b=$('#role-badge'); b.style.display='inline-block'; b.className='role-badge '+r; b.textContent=r==='owner'?'👑 Owner':'🧭 Operations'; }
-function doLogout(){ if(!confirm('Switch user / lock billing?'))return; localStorage.removeItem('emelco_role'); currentRole=null; document.body.classList.remove('role-operations'); $('#role-badge').style.display='none'; $('#login-overlay').classList.remove('hidden'); pickRole('owner'); }
-function initRoleGate(){ const s=localStorage.getItem('emelco_role'); if(s==='owner'||s==='operations'){ currentName=localStorage.getItem('emelco_user_name')||(s==='owner'?'Owner':'Operations'); setRole(s); $('#login-overlay').classList.add('hidden'); return true; } return false; }
+// Login is shared by every module (shell.js). Not signed in -> sent to the Dashboard, which brings us back here.
+function setRole(r){ currentRole=r; document.body.classList.toggle('role-operations',r==='operations'); }
+function doLogout(){ EM.logoff(); }
+function initRoleGate(){ const s=EM.guard(); if(!s) return false; currentName=s.name; setRole(s.role); $('#login-overlay').classList.add('hidden'); return true; }
 
 /* ============================================================
    Version gate
@@ -2022,6 +2013,7 @@ function renderUnbilled(){
 }
 
 /* ---- start ---- */
+EM.onSync=()=>{ setSync('⏳ syncing…','var(--accent)'); setTimeout(boot,900); };
 if(initRoleGate()){ boot(); }
 </script>
 </body>

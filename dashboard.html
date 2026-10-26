@@ -26,7 +26,7 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 .nav a{display:block;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--text2);text-decoration:none;margin-bottom:2px}
 .nav a:hover{background:var(--bg3);color:var(--text)}
 .nav a.cur{background:var(--accent-soft);color:var(--accent)}
-.main{flex:1;min-width:0;padding:20px;max-width:1200px}
+.main{flex:1;min-width:0;padding:20px;max-width:1200px;margin:0 auto}
 .title{font-size:18px;font-weight:700;margin-bottom:4px}
 .sub{font-size:12px;color:var(--text2);margin-bottom:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
@@ -68,10 +68,10 @@ table.log td{padding:5px 4px;border-bottom:1px solid var(--border)}
 
 <div class="login-overlay" id="login-overlay">
   <div class="login-box">
-    <div class="login-title">EMELCO Dashboard</div>
-    <div class="login-desc">Select role, pick your name and enter the access code</div>
+    <div class="login-title">EMELCO Logistics</div>
+    <div class="login-desc">One login opens every module. Select role, pick your name and enter the access code</div>
     <div class="role-picker">
-      <div class="role-opt active" id="pick-owner" onclick="pickRole('owner')">Owner</div>
+      <div class="role-opt active" id="pick-owner" onclick="pickRole('owner')">Management</div>
       <div class="role-opt" id="pick-operations" onclick="pickRole('operations')">Operations</div>
     </div>
     <select class="form-input" id="login-name"></select>
@@ -81,18 +81,10 @@ table.log td{padding:5px 4px;border-bottom:1px solid var(--border)}
   </div>
 </div>
 
-<div class="header">
-  <div class="logo"><div class="logo-mark">EM</div><div><div class="logo-text">EMELCO Dashboard</div><div class="logo-sub">Overview of all modules</div></div></div>
-  <div class="header-right">
-    <span id="sync-status"></span>
-    <span class="who" id="who"></span>
-    <span class="pill" id="role-pill" style="display:none"></span>
-    <button class="btn btn-ghost" id="logoffBtn" style="display:none" onclick="doLogout()">Log off</button>
-  </div>
-</div>
+<div id="emelco-bar" data-page="dashboard" data-sub="Overview of all modules"></div>
+<script src="shell.js"></script>
 
 <div class="layout">
-  <div class="nav" id="nav"></div>
   <div class="main" id="main"></div>
 </div>
 <div id="toast-box"></div>
@@ -145,35 +137,39 @@ let role=null, userName='', pickedRole='owner';
 const isOwner=()=>role==='owner';
 function fillNames(){ $('#login-name').innerHTML='<option value="">— pick your name —</option>'+NAMES[pickedRole].map(x=>`<option>${esc(x)}</option>`).join(''); }
 function pickRole(r){pickedRole=r;$('#pick-owner').classList.toggle('active',r==='owner');$('#pick-operations').classList.toggle('active',r==='operations');$('#login-error').textContent='';$('#login-pass').value='';fillNames();}
-function doLogin(){
+/* One login for every module: the session lives in shell.js (EM.*). This page is the front door —
+   modules without a session send people here with ?next=<page>, and after sign-in we go straight back. */
+const waitMax=(p,ms)=>Promise.race([p,new Promise(r=>setTimeout(r,ms))]);
+const nextPage=()=>{const f=EM.safeNext(new URLSearchParams(location.search).get('next'));return (f&&f!=='dashboard.html')?f:null;};
+async function doLogin(){
   const nm=$('#login-name').value, p=$('#login-pass').value.trim();
   if(!nm){$('#login-error').textContent='Pick your name.';return;}
   if(p!==ACCESS_CODES[pickedRole]){$('#login-error').textContent='Incorrect access code.';return;}
-  setRole(pickedRole,nm); $('#login-overlay').classList.add('hidden'); logEvent('in'); boot();
+  setRole(pickedRole,nm); $('#login-overlay').classList.add('hidden');
+  await waitMax(logEvent('in'),4000);
+  const nx=nextPage(); if(nx){ location.href=nx; return; }
+  boot();
 }
 function setRole(r,nm){
   role=r; userName=nm;
-  try{
-    if(r==='owner'){sessionStorage.setItem('emelco_dash_owner',nm);localStorage.removeItem('emelco_dash_ops');}
-    else{localStorage.setItem('emelco_dash_ops',nm);sessionStorage.removeItem('emelco_dash_owner');}
-    localStorage.setItem('emelco_user_name',nm);
-  }catch(_){}
+  EM.setSession(r,nm);
   document.body.classList.toggle('role-operations',r==='operations');
-  $('#who').textContent=nm; const p=$('#role-pill'); p.style.display='inline-block'; p.textContent=r==='owner'?'Owner':'Operations';
-  $('#logoffBtn').style.display='inline-flex';
+  EM.mount();
 }
-async function doLogout(){
-  if(!confirm('Log off from the dashboard?')) return;
-  await logEvent('out');
-  try{sessionStorage.removeItem('emelco_dash_owner');localStorage.removeItem('emelco_dash_ops');}catch(_){}
-  location.reload();
-}
+// Log off is handled by the top bar (EM.logoff -> dashboard.html?logoff=1), so the log entry is written here.
+function doLogout(){ EM.logoff(); }
 function initGate(){
-  try{
-    const o=sessionStorage.getItem('emelco_dash_owner'), p=localStorage.getItem('emelco_dash_ops');
-    if(o){setRole('owner',o);$('#login-overlay').classList.add('hidden');return true;}
-    if(p){setRole('operations',p);$('#login-overlay').classList.add('hidden');return true;}
-  }catch(_){}
+  const q=new URLSearchParams(location.search), s=EM.getSession();
+  if(q.get('logoff')==='1'){
+    if(s){ role=s.role; userName=s.name; waitMax(logEvent('out'),4000).finally(()=>{EM.clearSession();location.replace('dashboard.html');}); }
+    else location.replace('dashboard.html');
+    return false;
+  }
+  if(s){
+    setRole(s.role,s.name); $('#login-overlay').classList.add('hidden');
+    const nx=nextPage(); if(nx){ location.replace(nx); return false; }
+    return true;
+  }
   return false;
 }
 
@@ -324,9 +320,7 @@ function expensesLinkCard(){
 
 function render(){
   if(!role) return;
-  const here='dashboard.html';
-  $('#nav').innerHTML=LINKS[role].map(l=>`<a href="${l[1]}" class="${l[1]===here?'cur':''}">${l[0]}</a>`).join('');
-  const hello=isOwner()?'Owner dashboard':'Operations dashboard';
+  const hello=isOwner()?'Management dashboard':'Operations dashboard';
   let cards;
   if(isOwner()) cards=revenueCard()+opexCard()+cushionCard()+receivablesCard()+truckCostCard()+logCard();
   else cards=tripsTodayCard()+trucksCard()+fuelWeekCard()+expensesLinkCard();
@@ -336,6 +330,7 @@ function render(){
   $('#sync-status').textContent=done?(Object.keys(D.err).length?'some data unavailable':'up to date'):'loading…';
 }
 
+EM.onSync=()=>{ if(role) boot(); };
 if(initGate()){boot();}else{pickRole('owner');}
 </script>
 </body>
