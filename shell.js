@@ -18,7 +18,7 @@ var MODS = [
   {k:'dashboard',  label:'Dashboard',  href:'dashboard.html',  desc:'Overview'},
   {k:'trips',      label:'Trips',      href:'index.html',      desc:'Trip list, payroll and fuel'},
   {k:'assignment', label:'Assignment', href:'assignment.html', desc:'Weekly truck assignment'},
-  {k:'billing',    label:'Billing',    href:'billing.html',    desc:'Service invoices and collections', mgmtOnly:true},
+  {k:'billing',    label:'Billing',    href:'billing.html',    desc:'Service invoices and collections'},
   {k:'fleet',      label:'Fleet',      href:'fleet.html',      desc:'Registry and maintenance'},
   {k:'expenses',   label:'Expenses',   href:'expenses.html',   desc:'Operating expenses'}
 ];
