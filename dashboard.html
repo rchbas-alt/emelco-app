@@ -49,6 +49,21 @@ body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;font-s
 a.card-link{display:block;text-decoration:none;color:inherit}
 table.log{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
 table.log td{padding:5px 4px;border-bottom:1px solid var(--border)}
+.fc-row{display:grid;grid-template-columns:62px 1fr 150px;gap:10px;align-items:center;margin-top:9px;font-size:12px}
+.fc-row .m{color:var(--text2);font-weight:600}
+.fc-track{position:relative;height:14px;background:var(--bg3);border-radius:4px}
+.fc-track .rg{position:absolute;top:0;height:14px;background:rgba(37,99,235,.22);border-radius:4px}
+.fc-track .md{position:absolute;top:3px;height:8px;background:#2a78d6;border-radius:3px}
+.fc-row .v{text-align:right;font-family:'DM Mono',monospace;font-size:11px;line-height:1.3}.fc-row .v small{display:block;color:var(--text3);font-size:10px}
+.fc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:6px}
+.fc-stats .big{font-size:20px}
+table.fc{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+table.fc th{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;text-align:right;padding:4px 4px;border-bottom:1px solid var(--border)}
+table.fc th:first-child,table.fc td:first-child{text-align:left}
+table.fc td{padding:6px 4px;border-bottom:1px solid var(--border);text-align:right;font-family:'DM Mono',monospace;font-size:11px}
+table.fc td:first-child{font-family:'Sora',sans-serif;color:var(--text2)}
+table.fc tr.tot td{font-weight:700;background:var(--bg3)}
+@media(max-width:760px){.fc-row{grid-template-columns:48px 1fr 110px}}
 /* login */
 .login-overlay{position:fixed;inset:0;background:rgba(24,28,42,.97);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}
 .login-overlay.hidden{display:none}
@@ -90,7 +105,7 @@ table.log td{padding:5px 4px;border-bottom:1px solid var(--border)}
 <div id="toast-box"></div>
 
 <script>
-const APP_VERSION='202610242200'; // Dashboard v1 — read-only hub; only write is the login log
+const APP_VERSION='202611071900'; // Dashboard v2 — adds expected collections + cash needed forecast
 
 const PROXY_URL='https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET='emelco1254rch';
@@ -207,7 +222,9 @@ function prepTrips(d){
   T.list=((d&&d.trips)||[]).map(t=>{
     const rs=n(t.rate)+n(t.surcharge);
     const dEnt=Array.isArray(t.dieselEntries)?t.dieselEntries.reduce((s,x)=>s+n(x.amount),0):0;
-    return {start:String(t.tripStartDate||'').slice(0,10),rs,diesel:dEnt||(n(t.dieselPrice)*n(t.dieselLiter))};
+    const diesel=dEnt||(n(t.dieselPrice)*n(t.dieselLiter));
+    const cost=diesel+n(t.toll)+n(t.food)+n(t.passway)+n(t.parking)+n(t.checker)+n(t.load)+n(t.gcash)+n(t.maint)+n(t.otherExp)+n(t.manoDrv)+n(t.manoH1)+n(t.manoH2)+n(t.manoOthers)+n(t.drvPay)+n(t.h1Pay)+n(t.h2Pay);
+    return {start:String(t.tripStartDate||'').slice(0,10),rs,diesel,cost,client:t.client||'',status:String(t.status||'').toLowerCase(),cutoff:String(t.cutoff||'').trim()};
   }).filter(t=>t.start);
 }
 let PAYM={};
@@ -299,6 +316,101 @@ function logCard(){
   const rows=((D.log.entries)||[]).slice(-8).reverse();
   return card('Recent logins',rows.length?'<table class="log">'+rows.map(r=>`<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.role)}</td><td>${r.action==='in'?'logged in':'logged off'}</td><td class="muted mono">${esc(String(r.at).replace('T',' ').slice(0,16))} UTC</td></tr>`).join('')+'</table>':'<div class="small muted">Nothing recorded yet.</div>');
 }
+
+/* ---------- cash forecast: expected collections + cash needed (same rules as Expenses → Cushion) ---------- */
+function fcLags(){
+  const paid=((D.bill&&D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='paid'&&e.paidDate&&e.submitted);
+  const q=(a,p)=>{a=a.filter(x=>x>=0).sort((x,y)=>x-y);if(!a.length)return null;if(p===.5)return a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2;return a[Math.round(p*(a.length-1))];};
+  const out={};
+  const calc=(rows,kind)=>{const mk=e=>kind==='s'?dDiff(e.submitted,e.paidDate):(e.tripEnd?dDiff(e.tripEnd,e.paidDate):-1);const a=rows.map(mk);return {early:q(a,.25),med:q(a,.5),late:q(a,.75),n:a.filter(x=>x>=0).length};};
+  const all={s:calc(paid,'s'),t:calc(paid,'t')};
+  ['CCAC','CMIP','CDI'].forEach(bu=>{
+    const rows=paid.filter(e=>e.bu===bu), s=calc(rows,'s'), t=calc(rows,'t');
+    out[bu]={s:s.n>=5?s:all.s,t:t.n>=5?t:all.t};
+  });
+  out._all=all;
+  return out;
+}
+const NEED_M=4; // cash-needed window: this month + next 3 (new-trip income lands ~2 months after costs, so a longer window would only show the edge of the forecast)
+function fcModel(){
+  const today=todayISO(), thisM=today.slice(0,7), H=6, months=[]; for(let i=0;i<H;i++) months.push(addMonths(thisM,i));
+  const mi={}; months.forEach((m,i)=>mi[m]=i);
+  const L=fcLags(), pickLag=(bu,kind,sc)=>{const o=(L[bu]||L._all)[kind];const v=sc==='early'?o.early:sc==='late'?o.late:o.med;return Math.round(v==null?(kind==='s'?50:60):v);};
+  const soon=dAdd(today,7);
+  const subs=((D.bill&&D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='submitted'&&e.submitted).map(e=>({bu:e.bu,sub:e.submitted,due:(n(e.net)-n(e.penalty))*1.10}));
+  const unb=T.list.filter(t=>t.status==='completed'&&['CCAC','CMIP','CDI'].includes(t.client)&&!t.cutoff).map(t=>({bu:t.client,start:t.start,due:t.rs*1.10}));
+  const scen={};
+  ['early','med','late'].forEach(sc=>{
+    const sub=months.map(()=>0), un=months.map(()=>0); let laterS=0, laterU=0, n30=0, overdue=0;
+    subs.forEach(e=>{let d=dAdd(e.sub,pickLag(e.bu,'s',sc)); if(d<soon){d=soon;overdue+=e.due;} const i=mi[d.slice(0,7)]; if(i===undefined) laterS+=e.due; else sub[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
+    unb.forEach(e=>{let d=dAdd(e.start,pickLag(e.bu,'t',sc)); const d2=dAdd(today,pickLag(e.bu,'s',sc)); if(d<d2) d=d2; const i=mi[d.slice(0,7)]; if(i===undefined) laterU+=e.due; else un[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
+    scen[sc]={sub,un,laterS,laterU,n30,overdue};
+  });
+  const subTotal=subs.reduce((a,e)=>a+e.due,0), unbTotal=unb.reduce((a,e)=>a+e.due,0);
+  // costs: recent monthly run-rate (same months/rules as the cushion card), trips' running costs, new-trip income arriving ~2 months later
+  const c=(D.exp&&D.exp.cushion)||{}, {out:ro,has}=realByMonth(), recent=[1,2,3].map(k=>addMonths(thisM,-k));
+  const used=recent.filter(m=>has[m]&&(ro[m]||0)>0), auto=used.length?used.reduce((a,m)=>a+ro[m],0)/used.length:0;
+  const rate=c.costOverride!=null?n(c.costOverride):auto;
+  const dim=new Date(Number(thisM.slice(0,4)),Number(thisM.slice(5,7)),0).getDate(), dayN=Number(today.slice(8,10));
+  const outFix=months.map((m,i)=>i===0?rate*((dim-dayN+1)/dim):rate);
+  const tm=ym=>T.list.filter(t=>t.start.slice(0,7)===ym), tUsed=recent.filter(ym=>tm(ym).length);
+  let avgCost=0, avgDue=0;
+  if(tUsed.length){avgCost=tUsed.reduce((a,ym)=>a+tm(ym).reduce((x,t)=>x+t.cost,0),0)/tUsed.length; avgDue=tUsed.reduce((a,ym)=>a+tm(ym).reduce((x,t)=>x+t.rs*1.10,0),0)/tUsed.length;}
+  const outTrip=months.map((m,i)=>i>=1?avgCost:0);
+  const contIn=sc=>{const lag=sc==='late'?3:2; return months.map((m,i)=>(i>=1+lag)?avgDue:0);};
+  const minAmt=c.minMode==='months'?n(c.minValue)*rate:n(c.minValue), cash=c.cash==null?null:n(c.cash);
+  const res={};
+  ['early','med','late'].forEach(sc=>{
+    const S=scen[sc], cin=contIn(sc), inn=months.map((m,i)=>S.sub[i]+S.un[i]+cin[i]), outt=months.map((m,i)=>outFix[i]+outTrip[i]);
+    let cum=0, worst=0, wi=0; const net=[], cumA=[];
+    months.forEach((m,i)=>{const x=inn[i]-outt[i]; net.push(x); cum+=x; cumA.push(cum); if(i<NEED_M&&cum<worst){worst=cum;wi=i;}});
+    res[sc]={inn,outt,net,cumA,needed:minAmt-worst,worstIdx:wi};
+  });
+  return {today,months,scen,res,subTotal,unbTotal,subN:subs.length,unbN:unb.length,L,rate,used,minAmt,cash,cashDate:c.cashDate||'',outFix,outTrip,avgCost};
+}
+function fcReady(){return D.bill&&D.trips&&D.exp&&D.pay&&D.fleet;}
+function fcMonthLbl(m){return MONTHS[Number(m.slice(5))-1]+' '+m.slice(2,4);}
+function collectionsCard(){
+  if(!fcReady()) return card('Expected collections',loading(D.err.bill?'bill':(D.err.trips?'trips':'exp'),'billing, trips and expenses'),'wide');
+  const M=fcModel(), E=M.scen.early, Md=M.scen.med, La=M.scen.late;
+  const tot=(S,i)=>S.sub[i]+S.un[i];
+  const vals=M.months.map((m,i)=>[tot(E,i),tot(Md,i),tot(La,i)]);
+  const mx=Math.max(...vals.map(v=>Math.max(...v)),1);
+  const pct=v=>Math.round(v/mx*100);
+  const rows=M.months.map((m,i)=>{const v=vals[i], lo=Math.min(...v), hi=Math.max(...v);
+    return `<div class="fc-row"><span class="m">${fcMonthLbl(m)}</span><span class="fc-track"><i class="rg" style="left:${pct(lo)}%;width:${Math.max(1,pct(hi)-pct(lo))}%"></i><i class="md" style="left:0;width:${pct(v[1])}%"></i></span><span class="v">${compact(v[1])}<small>${compact(lo)} – ${compact(hi)}</small></span></div>`;}).join('');
+  const lateM=Md.laterS+Md.laterU;
+  const later=lateM>0?`<div class="fc-row"><span class="m">Later</span><span class="fc-track"></span><span class="v">${compact(lateM)}</span></div>`:'';
+  const lc=['CCAC','CMIP'].map(b=>{const s=(M.L[b]||M.L._all).s;return `${b} ${Math.round(s.med)} days (${Math.round(s.early)}–${Math.round(s.late)})`;}).join(' · ');
+  return card('Expected collections — when the money should land',
+    `<div class="fc-stats">
+      <div><div class="big">${compact(M.subTotal+M.unbTotal)}</div><div class="small">Still to collect (after VAT/WHT)</div></div>
+      <div><div class="big">${compact(M.subTotal)}</div><div class="small">${M.subN} submitted invoices</div></div>
+      <div><div class="big">${compact(M.unbTotal)}</div><div class="small">${M.unbN} completed trips not yet billed</div></div>
+      <div><div class="big">${compact(Md.n30)}</div><div class="small">Expected within 30 days${Md.overdue>0?` · incl. ${compact(Md.overdue)} already past usual time`:''}</div></div>
+    </div>`+rows+later+
+    `<div class="small muted" style="margin-top:12px">Dark bar = typical timing (median). Light band = early to slow payment (middle 50% of past payers). Based on real days from submission to payment: ${lc}. Anything already past its usual payment time is placed in the next 7 days — hopeful, not certain.</div>`,'wide');
+}
+function cashNeedCard(){
+  if(!fcReady()) return card('Cash needed',loading(D.err.bill?'bill':(D.err.trips?'trips':'exp'),'billing, trips and expenses'),'wide');
+  const M=fcModel(), R=M.res.med, S=M.res.late, hasCash=M.cash!=null;
+  const gap=hasCash?M.cash-R.needed:null, gapS=hasCash?M.cash-S.needed:null;
+  const stat=(lbl,val,sub,cls)=>`<div><div class="lbl">${lbl}</div><div class="big ${cls||''}">${val}</div><div class="small">${sub}</div></div>`;
+  const cl=hasCash?M.months.map((m,i)=>M.cash+R.cumA[i]):null;
+  const row=(lbl,arr,cls,fn)=>`<tr class="${cls||''}"><td>${lbl}</td>${arr.map(v=>`<td class="${v<0?'neg':''}">${(fn||compact)(v)}</td>`).join('')}</tr>`;
+  const tbl=`<table class="fc"><thead><tr><th></th>${M.months.map(m=>`<th>${fcMonthLbl(m)}</th>`).join('')}</tr></thead><tbody>`+
+    row('＋ Collections',R.inn)+row('− Monthly costs',M.outFix.map(v=>-v))+row('− Trip running costs',M.outTrip.map(v=>-v))+row('Net for the month',R.net,'tot')+
+    (hasCash?row('Cash at month end',cl,'tot')+row('If payments are slow',M.months.map((m,i)=>M.cash+S.cumA[i])):'')+`</tbody></table>`;
+  const worstM=fcMonthLbl(M.months[R.worstIdx>=0?R.worstIdx:0]);
+  return card('Cash needed on hand',
+    `<div class="fc-stats">`+
+    stat('Needed on hand',compact(R.needed),`covers the next 4 months, tightest at ${worstM}, plus the minimum to keep (${compact(M.minAmt)})`)+
+    stat('If payments are slow',compact(S.needed),'clients pay at the slower end of their usual range')+
+    (hasCash?stat('Cash set aside',compact(M.cash),`as of ${esc(M.cashDate||'—')}`):stat('Cash set aside','—','enter it in Expenses → Cushion'))+
+    (hasCash?stat(gap>=0?'Spare vs typical':'Short vs typical',compact(Math.abs(gap)),gapS>=0?'still covered if payments are slow':`slow case is short by ${compact(Math.abs(gapS))}`,gap>=0?'pos':'neg'):'')+
+    `</div>`+tbl+
+    `<div class="small muted" style="margin-top:10px">Monthly costs ${compact(M.rate)} (${M.used.length?'average of '+M.used.map(m=>MONTHS[Number(m.slice(5))-1]).join(', '):'no complete month of expenses yet'}). New trips are assumed at the recent monthly average: about ${compact(M.avgCost)} of running costs go out each month and the money arrives about 2 months later. Months with missing expense entries make this look better than it is. Full detail is in Expenses → Cushion.</div>`,'wide');
+}
 /* operations cards */
 function tripsTodayCard(){
   if(!D.trips) return card('Trips today',loading('trips','trips'));
@@ -322,7 +434,7 @@ function render(){
   if(!role) return;
   const hello=isOwner()?'Management dashboard':'Operations dashboard';
   let cards;
-  if(isOwner()) cards=revenueCard()+opexCard()+cushionCard()+receivablesCard()+truckCostCard()+logCard();
+  if(isOwner()) cards=revenueCard()+opexCard()+cushionCard()+receivablesCard()+collectionsCard()+cashNeedCard()+truckCostCard()+logCard();
   else cards=tripsTodayCard()+trucksCard()+fuelWeekCard()+expensesLinkCard();
   $('#main').innerHTML=`<div class="title">${hello}</div><div class="sub">Read-only overview · ${new Date().toLocaleDateString('en-PH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div><div class="grid">${cards}</div>`;
   const pending=isOwner()?['trips','fleet','exp','pay','bill','log']:['trips','fleet'];
