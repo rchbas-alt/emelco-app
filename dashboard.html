@@ -105,7 +105,7 @@ table.fc tr.tot td{font-weight:700;background:var(--bg3)}
 <div id="toast-box"></div>
 
 <script>
-const APP_VERSION='202611071900'; // Dashboard v2 — adds expected collections + cash needed forecast
+const APP_VERSION='202611072000'; // Dashboard v2.2 — adds received-last-4-weeks figure
 
 const PROXY_URL='https://emelco-proxy.rchbas.workers.dev';
 const PROXY_SECRET='emelco1254rch';
@@ -337,16 +337,19 @@ function fcModel(){
   const mi={}; months.forEach((m,i)=>mi[m]=i);
   const L=fcLags(), pickLag=(bu,kind,sc)=>{const o=(L[bu]||L._all)[kind];const v=sc==='early'?o.early:sc==='late'?o.late:o.med;return Math.round(v==null?(kind==='s'?50:60):v);};
   const soon=dAdd(today,7);
-  const subs=((D.bill&&D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='submitted'&&e.submitted).map(e=>({bu:e.bu,sub:e.submitted,due:(n(e.net)-n(e.penalty))*1.10}));
+  const subs=((D.bill&&D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='submitted'&&e.submitted).map(e=>({bu:e.bu,sub:e.submitted,due:(n(e.net)-n(e.penalty))*1.10,terms:n(e.dueDays)||30}));
   const unb=T.list.filter(t=>t.status==='completed'&&['CCAC','CMIP','CDI'].includes(t.client)&&!t.cutoff).map(t=>({bu:t.client,start:t.start,due:t.rs*1.10}));
   const scen={};
   ['early','med','late'].forEach(sc=>{
-    const sub=months.map(()=>0), un=months.map(()=>0); let laterS=0, laterU=0, n30=0, overdue=0;
-    subs.forEach(e=>{let d=dAdd(e.sub,pickLag(e.bu,'s',sc)); if(d<soon){d=soon;overdue+=e.due;} const i=mi[d.slice(0,7)]; if(i===undefined) laterS+=e.due; else sub[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
-    unb.forEach(e=>{let d=dAdd(e.start,pickLag(e.bu,'t',sc)); const d2=dAdd(today,pickLag(e.bu,'s',sc)); if(d<d2) d=d2; const i=mi[d.slice(0,7)]; if(i===undefined) laterU+=e.due; else un[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
-    scen[sc]={sub,un,laterS,laterU,n30,overdue};
+    const sub=months.map(()=>0), un=months.map(()=>0), wk=[0,0,0,0,0,0,0,0]; let laterS=0, laterU=0, n30=0, overdue=0, overdueN=0, wkLater=0;
+    const addWk=(d,v)=>{const w=Math.floor(dDiff(today,d)/7); if(w>=1&&w<=8) wk[w-1]+=v; else if(w>8) wkLater+=v;};
+    subs.forEach(e=>{const d0=dAdd(e.sub,pickLag(e.bu,'s',sc)), od=d0<soon, d=od?soon:d0; if(od){overdue+=e.due;overdueN++;} else addWk(d,e.due); const i=mi[d.slice(0,7)]; if(i===undefined) laterS+=e.due; else sub[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
+    unb.forEach(e=>{let d=dAdd(e.start,pickLag(e.bu,'t',sc)); const d2=dAdd(today,pickLag(e.bu,'s',sc)); if(d<d2) d=d2; addWk(d,e.due); const i=mi[d.slice(0,7)]; if(i===undefined) laterU+=e.due; else un[i]+=e.due; if(d<=dAdd(today,30)) n30+=e.due;});
+    scen[sc]={sub,un,laterS,laterU,n30,overdue,overdueN,wk,wkLater};
   });
   const subTotal=subs.reduce((a,e)=>a+e.due,0), unbTotal=unb.reduce((a,e)=>a+e.due,0);
+  const from28=dAdd(today,-28), rec=((D.bill&&D.bill.entries)||[]).filter(e=>!e.voided&&e.status==='paid'&&e.paidDate&&String(e.paidDate).slice(0,10)>=from28&&String(e.paidDate).slice(0,10)<=today), recAmt=rec.reduce((a,e)=>a+(n(e.net)-n(e.penalty))*1.10,0);
+  const termsLate=subs.filter(e=>dAdd(e.sub,e.terms)<today), termsLateAmt=termsLate.reduce((a,e)=>a+e.due,0);
   // costs: recent monthly run-rate (same months/rules as the cushion card), trips' running costs, new-trip income arriving ~2 months later
   const c=(D.exp&&D.exp.cushion)||{}, {out:ro,has}=realByMonth(), recent=[1,2,3].map(k=>addMonths(thisM,-k));
   const used=recent.filter(m=>has[m]&&(ro[m]||0)>0), auto=used.length?used.reduce((a,m)=>a+ro[m],0)/used.length:0;
@@ -366,7 +369,7 @@ function fcModel(){
     months.forEach((m,i)=>{const x=inn[i]-outt[i]; net.push(x); cum+=x; cumA.push(cum); if(i<NEED_M&&cum<worst){worst=cum;wi=i;}});
     res[sc]={inn,outt,net,cumA,needed:minAmt-worst,worstIdx:wi};
   });
-  return {today,months,scen,res,subTotal,unbTotal,subN:subs.length,unbN:unb.length,L,rate,used,minAmt,cash,cashDate:c.cashDate||'',outFix,outTrip,avgCost};
+  return {today,months,scen,res,recAmt,recN:rec.length,termsLateAmt,termsLateN:termsLate.length,subTotal,unbTotal,subN:subs.length,unbN:unb.length,L,rate,used,minAmt,cash,cashDate:c.cashDate||'',outFix,outTrip,avgCost};
 }
 function fcReady(){return D.bill&&D.trips&&D.exp&&D.pay&&D.fleet;}
 function fcMonthLbl(m){return MONTHS[Number(m.slice(5))-1]+' '+m.slice(2,4);}
@@ -379,6 +382,13 @@ function collectionsCard(){
   const pct=v=>Math.round(v/mx*100);
   const rows=M.months.map((m,i)=>{const v=vals[i], lo=Math.min(...v), hi=Math.max(...v);
     return `<div class="fc-row"><span class="m">${fcMonthLbl(m)}</span><span class="fc-track"><i class="rg" style="left:${pct(lo)}%;width:${Math.max(1,pct(hi)-pct(lo))}%"></i><i class="md" style="left:0;width:${pct(v[1])}%"></i></span><span class="v">${compact(v[1])}<small>${compact(lo)} – ${compact(hi)}</small></span></div>`;}).join('');
+  const wv=Md.wk.map((v,i)=>[E.wk[i],v,La.wk[i]]), wmx=Math.max(...wv.map(v=>Math.max(...v)),Md.overdue,1), wp=v=>Math.round(v/wmx*100);
+  const dl=iso=>{const d=new Date(iso+'T00:00:00Z');return d.getUTCDate()+' '+MONTHS[d.getUTCMonth()];};
+  const wrows=wv.map((v,i)=>{const st=dAdd(M.today,7*(i+1)), lo=Math.min(...v), hi=Math.max(...v);
+    return `<div class="fc-row"><span class="m">${dl(st)}</span><span class="fc-track"><i class="rg" style="left:${wp(lo)}%;width:${Math.max(1,wp(hi)-wp(lo))}%"></i><i class="md" style="left:0;width:${wp(v[1])}%"></i></span><span class="v">${compact(v[1])}<small>${compact(lo)} – ${compact(hi)}</small></span></div>`;}).join('');
+  const wlater=Md.wkLater>0?`<div class="fc-row"><span class="m">Later</span><span class="fc-track"></span><span class="v">${compact(Md.wkLater)}</span></div>`:'';
+  const odRow=Md.overdue>0?`<div class="fc-row"><span class="m" style="color:#b45309">Overdue</span><span class="fc-track"><i class="md" style="left:0;width:${wp(Md.overdue)}%;background:#eda100"></i></span><span class="v" style="color:#b45309">${compact(Md.overdue)}<small>${Md.overdueN} invoices · past usual pay time · chase now</small></span></div>`:'';
+  const weekly=`<div class="lbl" style="margin-top:14px">Week by week (starting date of each week)</div>`+odRow+wrows+wlater+`<div class="small muted" style="margin-top:8px">Overdue = later than that client's usual days-to-pay, so not counted in any week. By the 30-day terms, ${compact(M.termsLateAmt)} (${M.termsLateN} invoices) is past due.</div><div class="lbl" style="margin-top:18px">Month by month</div>`;
   const lateM=Md.laterS+Md.laterU;
   const later=lateM>0?`<div class="fc-row"><span class="m">Later</span><span class="fc-track"></span><span class="v">${compact(lateM)}</span></div>`:'';
   const lc=['CCAC','CMIP'].map(b=>{const s=(M.L[b]||M.L._all).s;return `${b} ${Math.round(s.med)} days (${Math.round(s.early)}–${Math.round(s.late)})`;}).join(' · ');
@@ -387,9 +397,10 @@ function collectionsCard(){
       <div><div class="big">${compact(M.subTotal+M.unbTotal)}</div><div class="small">Still to collect (after VAT/WHT)</div></div>
       <div><div class="big">${compact(M.subTotal)}</div><div class="small">${M.subN} submitted invoices</div></div>
       <div><div class="big">${compact(M.unbTotal)}</div><div class="small">${M.unbN} completed trips not yet billed</div></div>
+      <div><div class="big">${compact(M.recAmt)}</div><div class="small">Received in the last 4 weeks · ${M.recN} invoices</div></div>
       <div><div class="big">${compact(Md.n30)}</div><div class="small">Expected within 30 days${Md.overdue>0?` · incl. ${compact(Md.overdue)} already past usual time`:''}</div></div>
-    </div>`+rows+later+
-    `<div class="small muted" style="margin-top:12px">Dark bar = typical timing (median). Light band = early to slow payment (middle 50% of past payers). Based on real days from submission to payment: ${lc}. Anything already past its usual payment time is placed in the next 7 days — hopeful, not certain.</div>`,'wide');
+    </div>`+weekly+rows+later+
+    `<div class="small muted" style="margin-top:12px">Dark bar = typical timing (median). Light band = early to slow payment (middle 50% of past payers). The monthly bars below still park overdue invoices in the next 7 days. Based on real days from submission to payment: ${lc}. Anything already past its usual payment time is placed in the next 7 days — hopeful, not certain.</div>`,'wide');
 }
 function cashNeedCard(){
   if(!fcReady()) return card('Cash needed',loading(D.err.bill?'bill':(D.err.trips?'trips':'exp'),'billing, trips and expenses'),'wide');
