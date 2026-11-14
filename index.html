@@ -1356,7 +1356,7 @@ let currentPage=1;
 const PAGE_SIZE=50;
 
 // ===== APP VERSION =====
-const APP_VERSION = '202611142200'; // 13th Month: Paid column + Paid/Still-to-pay cards + CSV download; new Owner-only CA & Bond report tab with critical flags. Earlier: 13th Month: per-person driver/helper rate overrides (blank = default). Earlier: 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
+const APP_VERSION = '202611142240'; // 13th Month: Paid column + Paid/Still-to-pay cards + CSV download; new Owner-only CA & Bond report tab with critical flags. Earlier: 13th Month: per-person driver/helper rate overrides (blank = default). Earlier: 13th Month & Bonus Report tab (Owner): trip-rate-based 13th month for drivers/helpers + standard-pay-based for office/admin/tech, per-person discretionary bonus, total cost view, print; Staff tab 13th month column. Previous: Payment status dots (matches billing.html's own period logic), fully-paid periods collapse into a summary row (Collapse/Expand all, chevron toggle), dupe UI simplified (EXACT/SIMILAR now small badges, no banner), per-BU client badge colors
 // prev: '202609172000'; // Added DR # and Trip Ticket as toggleable columns (off by default, on in Billing check/Operations presets); DR # added to search (trip ticket was already searchable)
 // Header version badge — always visible, hover shows the decoded build date/time
 document.addEventListener('DOMContentLoaded',()=>{
@@ -6342,44 +6342,55 @@ function carBuild(){
   rows.sort((a,b)=>ord[a.level]-ord[b.level]||b.ca-a.ca||a.name.localeCompare(b.name));
   const grp=(label,f)=>{ const g=rows.filter(f); return {label,people:g.length,owing:g.filter(r=>r.ca>0).length,ca:g.reduce((a,r)=>a+r.ca,0),bond:g.reduce((a,r)=>a+r.bond,0),
     red:g.filter(r=>r.level==='red').length,amber:g.filter(r=>r.level==='amber').length,notCovered:g.reduce((a,r)=>a+Math.max(0,r.ca-r.bond),0)}; };
-  const groups=[grp('All staff',()=>true),grp('Drivers',r=>r.pos==='DRIVER'),grp('Helpers',r=>r.pos==='HELPER'),grp('Office / Admin / Tech',r=>['OFFICE','ADMIN','TECH'].includes(r.pos))];
+  const isRes=r=>r.status==='Resigned';
+  const groups=[grp('Active & Idle staff',r=>!isRes(r)),grp('Drivers',r=>!isRes(r)&&r.pos==='DRIVER'),grp('Helpers',r=>!isRes(r)&&r.pos==='HELPER'),grp('Office / Admin / Tech',r=>!isRes(r)&&['OFFICE','ADMIN','TECH'].includes(r.pos)),grp('Resigned (likely loss)',isRes)];
+  const all=grp('All staff',()=>true);
+  const live=rows.filter(r=>!isRes(r)), resigned=rows.filter(isRes);
   const inact=rows.filter(r=>r.status==='Idle'||r.status==='Resigned');
-  return {rows,groups,inactiveCA:inact.reduce((a,r)=>a+r.ca,0),inactiveN:inact.filter(r=>r.ca>0).length};
+  return {rows,live,resigned,all,groups,inactiveCA:inact.reduce((a,r)=>a+r.ca,0),inactiveN:inact.filter(r=>r.ca>0).length};
 }
 function carHTML(m,print){
   const P=v=>'₱'+fmt(v), R='text-align:right';
   const only=!print&&document.getElementById('car-only')&&document.getElementById('car-only').checked;
   const printOnly=print&&window._carOnly;
-  const G=m.groups[0];
+  const G=m.groups[0], A=m.all, L=m.groups[4];
   const card=(label,val,sub,color)=>`<div style="background:var(--card,#fff);border:1px solid var(--border,#ccc);border-radius:8px;padding:10px 14px;min-width:140px"><div style="font-size:11px;color:var(--text2,#666)">${label}</div><div style="font-size:17px;font-weight:700;${color?'color:'+color:''}">${val}</div>${sub?`<div style="font-size:10px;color:var(--text2,#666)">${sub}</div>`:''}</div>`;
   const badge=lv=>({red:'<span style="background:#fde2e2;color:#b42318;font-weight:700;border-radius:4px;padding:2px 7px;font-size:11px">CRITICAL</span>',amber:'<span style="background:#fff1d6;color:#b54708;font-weight:700;border-radius:4px;padding:2px 7px;font-size:11px">WATCH</span>',ok:'<span style="background:#e3f5e8;color:#1a7f37;border-radius:4px;padding:2px 7px;font-size:11px">OK</span>',clear:'<span style="color:var(--text2,#666);font-size:11px">no CA</span>'}[lv]);
-  let h=`<div style="font-size:12px;color:var(--text2,#666);margin-bottom:10px">Live as of ${new Date().toLocaleString('en-PH')} · from the Ledger. CRITICAL = CA is more than Bond, or Idle/Resigned and still owes, or Active with no repayment for ${CAR.STALE_DAYS/7} weeks. WATCH = CA over ${CAR.WATCH_RATIO*100}% of Bond, or borrowed more than repaid in the last ${CAR.WINDOW_DAYS/7} weeks.</div>`;
+  let h=`<div style="font-size:12px;color:var(--text2,#666);margin-bottom:10px">Live as of ${new Date().toLocaleString('en-PH')} · from the Ledger. CRITICAL = CA is more than Bond, or Idle/Resigned and still owes, or Active with no repayment for ${CAR.STALE_DAYS/7} weeks. Resigned people are shown separately at the bottom as a likely loss. WATCH = CA over ${CAR.WATCH_RATIO*100}% of Bond, or borrowed more than repaid in the last ${CAR.WINDOW_DAYS/7} weeks.</div>`;
   h+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-    ${card('Total CA owed',P(G.ca),G.owing+' people owe',  'var(--red,#c00)')}
-    ${card('Total Bond held',P(G.bond),'',  'var(--green,#1a7f37)')}
-    ${card('Bond minus CA',P(G.bond-G.ca),G.bond-G.ca<0?'CA is more than all Bond':'Bond covers all CA overall')}
-    ${card('CA not covered by Bond',P(G.notCovered),'person by person')}
-    ${card('CRITICAL',String(G.red),'people to chase','#b42318')}
-    ${card('WATCH',String(G.amber),'people to keep an eye on','#b54708')}
-    ${card('Owed by Idle / Resigned',P(m.inactiveCA),m.inactiveN+' people')}
+    ${card('Total CA owed (all)',P(A.ca),A.owing+' people owe',  'var(--red,#c00)')}
+    ${card('Total Bond held (all)',P(A.bond),'',  'var(--green,#1a7f37)')}
+    ${card('CA to recover',P(G.ca),G.owing+' Active / Idle people','var(--red,#c00)')}
+    ${card('Bond minus CA',P(G.bond-G.ca),'Active / Idle only')}
+    ${card('CRITICAL',String(G.red),'Active / Idle to chase','#b42318')}
+    ${card('WATCH',String(G.amber),'to keep an eye on','#b54708')}
+    ${card('Likely loss (Resigned)',P(L.ca),L.owing+' people · Bond held '+P(L.bond),'#7a271a')}
   </div>`;
   h+=`<h3 style="margin:10px 0 6px;font-size:14px">By group</h3><div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr><th>Group</th><th style="${R}">People on ledger</th><th style="${R}">Owing CA</th><th style="${R}">CA owed</th><th style="${R}">Bond held</th><th style="${R}">Bond − CA</th><th style="${R}">Critical</th><th style="${R}">Watch</th></tr></thead><tbody>`;
   m.groups.forEach(g=>{ h+=`<tr><td style="font-weight:600">${g.label}</td><td style="${R}">${g.people}</td><td style="${R}">${g.owing}</td><td style="${R};color:var(--red,#c00)">${P(g.ca)}</td><td style="${R}">${P(g.bond)}</td><td style="${R}">${P(g.bond-g.ca)}</td><td style="${R};font-weight:700;color:#b42318">${g.red}</td><td style="${R};font-weight:700;color:#b54708">${g.amber}</td></tr>`; });
   h+=`</tbody></table></div>`;
-  const list=m.rows.filter(r=>!(only||printOnly)||r.level==='red'||r.level==='amber');
-  h+=`<h3 style="margin:18px 0 6px;font-size:14px">By person (most urgent first)</h3><div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>
-    <th>Flag</th><th>Name</th><th>Status</th><th style="${R}">CA owed</th><th style="${R}">Bond</th><th style="${R}">Bond − CA</th><th style="${R}">Last repaid</th><th style="${R}">Avg / week</th><th style="${R}">Weeks to clear</th><th style="${R}">13th month still due</th><th style="${R}">CA left after 13th</th><th style="${R}">Phone / utilities owed</th><th>Why flagged</th></tr></thead><tbody>`;
-  list.forEach(r=>{
+  const list=m.live.filter(r=>!(only||printOnly)||r.level==='red'||r.level==='amber');
+  const head=`<thead><tr>
+    <th>Flag</th><th>Name</th><th>Status</th><th style="${R}">CA owed</th><th style="${R}">Bond</th><th style="${R}">Bond − CA</th><th style="${R}">Last repaid</th><th style="${R}">Avg / week</th><th style="${R}">Weeks to clear</th><th style="${R}">13th month still due</th><th style="${R}">CA left after 13th</th><th style="${R}">Phone / utilities owed</th><th>Why flagged</th></tr></thead>`;
+  const rowH=r=>{
     const bg=r.level==='red'?' style="background:rgba(220,38,38,.07)"':r.level==='amber'?' style="background:rgba(245,158,11,.08)"':'';
-    h+=`<tr${bg}><td>${badge(r.level)}</td><td style="font-weight:600">${dirEsc(r.name)}<div style="font-size:10px;color:var(--text2,#666)">${dirEsc(r.pos)}</div></td><td>${tmBadge(r.status)}</td>
+    return `<tr${bg}><td>${badge(r.level)}</td><td style="font-weight:600">${dirEsc(r.name)}<div style="font-size:10px;color:var(--text2,#666)">${dirEsc(r.pos)}</div></td><td>${tmBadge(r.status)}</td>
       <td style="${R};font-weight:600;color:${r.ca>0?'var(--red,#c00)':'inherit'}">${r.ca?P(r.ca):'—'}</td><td style="${R}">${r.bond?P(r.bond):'—'}</td>
       <td style="${R};color:${r.net<0?'#b42318':'inherit'}">${(r.ca||r.bond)?P(r.net):'—'}</td>
       <td style="${R}">${r.lastRepay?fmtDate(r.lastRepay)+'<div style="font-size:10px;color:var(--text2,#666)">'+r.since+' days ago</div>':'—'}</td>
       <td style="${R}">${r.weekly?P(r.weekly):'—'}</td><td style="${R}">${r.ca>0?(r.weeks?r.weeks+' wks':'no repayments'):'—'}</td>
       <td style="${R}">${r.due?P(r.due):'—'}</td><td style="${R}">${r.ca>0&&r.due?P(r.after13):'—'}</td>
       <td style="${R}">${(r.phone+r.util)?P(r.phone+r.util):'—'}</td><td style="font-size:11px">${r.why.map(dirEsc).join('; ')}</td></tr>`;
-  });
+  };
+  h+=`<h3 style="margin:18px 0 6px;font-size:14px">Active &amp; Idle staff (most urgent first)</h3><div style="overflow-x:auto"><table class="data-table" style="width:100%">${head}<tbody>`;
+  list.forEach(r=>{ h+=rowH(r); });
   if(!list.length) h+=`<tr><td colspan="13" style="color:var(--text2,#666)">${(only||printOnly)?'Nobody is flagged.':'Nothing on the ledger yet.'}</td></tr>`;
+  h+=`</tbody></table></div>`;
+  if(m.resigned.length){
+    h+=`<details ${print?'open':''} style="margin-top:16px"><summary style="cursor:pointer;font-weight:700;font-size:14px;color:#7a271a">Resigned, likely loss: ${m.resigned.length} people · CA ${P(L.ca)} · Bond held ${P(L.bond)} (click to ${print?'view':'open'})</summary><div style="overflow-x:auto;margin-top:8px"><table class="data-table" style="width:100%">${head}<tbody>`;
+    m.resigned.forEach(r=>{ h+=rowH(r); });
+    h+=`</tbody></table></div></details>`;
+  }
   h+=`</tbody></table></div><div style="font-size:11px;color:var(--text2,#666);margin-top:10px">"13th month still due" is the 13th month + bonus from the 13th Month tab minus anything already paid on a finalized slip. "CA left after 13th" shows what would still be owed if that amount were deducted in full. Average per week uses repayments from the last ${CAR.AVG_DAYS/7} weeks.</div>`;
   return h;
 }
