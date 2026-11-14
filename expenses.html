@@ -362,7 +362,7 @@ body.role-operations .owner-only{display:none!important}
 
 <div class="toast-container" id="toasts"></div>
 <script>
-const APP_VERSION = '202610242100'; // Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
+const APP_VERSION = '202611142200'; // 2026-11-14: driver/helper 13th month, bonus and other pay from finalized weekly slips counted as their own payroll line. Earlier:  Expenses module, phase 1 (standalone — index.html and fleet.html untouched)
 
 // ---- proxy wiring: identical mechanism to index.html / fleet.html / billing.html ----
 const PROXY_URL    = 'https://emelco-proxy.rchbas.workers.dev';
@@ -517,6 +517,7 @@ function defaultCategories(){
 }
 const FLEET_GROUP='Truck maintenance (Fleet log)';
 const PAYROLL_GROUP='Office & admin payroll (from Payroll)';
+const PAYROLL_TRIP_GROUP='Driver & helper 13th month / bonus (from Payroll)';  // extras on finalized weekly slips; trip pay itself is already counted from trips
 const DEFAULT_PLACES=['Both yards','Barracks yard','Truck yard','Office','General'];
 
 /* ============================================================
@@ -528,7 +529,7 @@ function freshState(){ return { version:1, categories:defaultCategories(), place
 let FLEET = { plates:[], maintenance:[], loaded:false };
 let TRIPS = { monthRS:{}, list:[], loaded:false, error:'' };
 let BILLING = { entries:[], loaded:false, error:'' };
-let PAYROLL = { byMonth:{}, list:[], loaded:false, error:'', slips:0 };
+let PAYROLL = { byMonth:{}, list:[], loaded:false, error:'', slips:0, tripExtra:[], tripByMonth:{} };
 let viewMode = localStorage.getItem('emelco_exp_view')||'spread';
 
 function setSync(msg,color='var(--text2)'){ const el=$('#sync-status'); el.textContent=msg; el.style.color=color; }
@@ -674,6 +675,16 @@ async function loadPayroll(){
     });
     Object.keys(m).forEach(k=>delete m[k]); list.forEach(r=>{ if(!r.superseded){ const mo=r.start.slice(0,7); m[mo]=(m[mo]||0)+r.gross; } });
     list.sort((a,b)=>a.start.localeCompare(b.start)||a.name.localeCompare(b.name));
+    // Driver/helper weekly slips: only the 13th month, bonus and other pay typed on a FINALIZED slip (never the trip pay — that is already in the trips data)
+    const tx=[], tm={};
+    Object.values((got.data&&got.data.payrollSlips)||{}).forEach(d=>{
+      if(!d||!d.finalizedAt) return;
+      const x=n(d.thirteenthMonth)+n(d.bonus)+n(d.otherPay); if(!(x>0)) return;
+      const wk=String(d.weekNum||'').slice(0,10), date=/^\d{4}-\d{2}-\d{2}$/.test(wk)?wk:String(d.finalizedAt).slice(0,10), mo=date.slice(0,7);
+      tm[mo]=(tm[mo]||0)+x;
+      tx.push({name:d.name||'(unknown)',date,thirteenth:n(d.thirteenthMonth),bonus:n(d.bonus),otherPay:n(d.otherPay),total:x});
+    });
+    PAYROLL.tripExtra=tx; PAYROLL.tripByMonth=tm;
     PAYROLL.superseded=list.filter(r=>r.superseded).length;
     PAYROLL.byMonth=m; PAYROLL.list=list; PAYROLL.slips=list.filter(r=>!r.superseded).length; PAYROLL.loaded=true; PAYROLL.error='';
   }catch(e){ PAYROLL.error=String(e.message||e); console.warn('Payroll read failed',e); }
@@ -716,11 +727,12 @@ function orderedGroups(extraFromData){
   STATE.categories.forEach(c=>{ if(c.tier==='daily') push(c.group); });
   push(FLEET_GROUP);
   push(PAYROLL_GROUP);
+  push(PAYROLL_TRIP_GROUP);
   STATE.categories.forEach(c=>{ if(c.tier==='owner') push(c.group); });
   (extraFromData||[]).forEach(push);
   return out;
 }
-function groupTier(g){ if(g===PAYROLL_GROUP) return 'owner'; const c=STATE.categories.find(x=>x.group===g); return c?c.tier:(g===FLEET_GROUP?'daily':'owner'); }
+function groupTier(g){ if(g===PAYROLL_GROUP||g===PAYROLL_TRIP_GROUP) return 'owner'; const c=STATE.categories.find(x=>x.group===g); return c?c.tier:(g===FLEET_GROUP?'daily':'owner'); }
 
 /* ============================================================
    Tabs / view
@@ -878,6 +890,7 @@ function monthlyData(year,view){
   });
   FLEET.maintenance.forEach(m=>add(FLEET_GROUP,monthOf(m.date),n(m.amount)));
   if(PAYROLL.loaded) Object.keys(PAYROLL.byMonth).forEach(ym=>add(PAYROLL_GROUP,ym,PAYROLL.byMonth[ym]));
+  if(PAYROLL.loaded) Object.keys(PAYROLL.tripByMonth||{}).forEach(ym=>add(PAYROLL_TRIP_GROUP,ym,PAYROLL.tripByMonth[ym]));
   return g;
 }
 function renderMonthly(){
@@ -897,7 +910,7 @@ function renderMonthly(){
     const owner=groupTier(g)==='owner'; let rowTot=0;
     const cells=months.map((m,i)=>{ const v=(data[g]&&data[g][m])||0; rowTot+=v; colTot[i]+=v; return `<td class="num clk" data-g="${esc(g)}" data-m="${m}" title="${peso(v)}">${pesoShort(v)}</td>`; }).join('');
     grand+=rowTot;
-    html+=`<tr class="${owner?'row-owner':''}"><td class="clk" data-g="${esc(g)}" data-m=""><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}${g===PAYROLL_GROUP?' <span class="badge badge-type">from Payroll</span>':''}</td>${cells}<td class="num clk" data-g="${esc(g)}" data-m=""><strong>${pesoShort(rowTot)}</strong></td></tr>`;
+    html+=`<tr class="${owner?'row-owner':''}"><td class="clk" data-g="${esc(g)}" data-m=""><strong>${esc(g)}</strong>${g===FLEET_GROUP?' <span class="badge badge-type">from Fleet</span>':''}${(g===PAYROLL_GROUP||g===PAYROLL_TRIP_GROUP)?' <span class="badge badge-type">from Payroll</span>':''}</td>${cells}<td class="num clk" data-g="${esc(g)}" data-m=""><strong>${pesoShort(rowTot)}</strong></td></tr>`;
   });
   html+=`<tr class="row-total"><td class="clk" data-g="*" data-m="">Real OPEX</td>${colTot.map((v,i)=>`<td class="num clk" data-g="*" data-m="${months[i]}" title="${peso(v)}">${pesoShort(v)}</td>`).join('')}<td class="num clk" data-g="*" data-m="">${pesoShort(grand)}</td></tr>`;
   if(TRIPS.loaded){
@@ -911,6 +924,7 @@ function renderMonthly(){
   html+='</tbody>';
   $('#monthly-table').innerHTML=html;
   let note='Months with no entries yet show no real OPEX, so only compare months that are fully entered. ';
+  if(PAYROLL.loaded&&PAYROLL.tripExtra&&PAYROLL.tripExtra.length) note+='Driver & helper 13th month, bonus and other pay are taken from finalized weekly payslips (their trip pay is not counted here — it is already in the trips data). ';
   if(PAYROLL.loaded) note+='Office & admin payroll is the gross pay of '+PAYROLL.slips+' finalized payslips, counted in the month each pay period starts'+(PAYROLL.superseded?' ('+PAYROLL.superseded+' older overlapping slip'+(PAYROLL.superseded>1?'s':'')+' not counted — see Payroll listing)':'')+'. '; else if(PAYROLL.error) note+='Payroll could not be read ('+esc(PAYROLL.error)+'), so office salaries are not included yet. '; else note+='Loading payroll… ';
   if(TRIPS.loaded) note+='Revenue is Rate + Surcharge by trip start date, the same basis as the dashboard. The 25% row is what the dashboard currently assumes.';
   else if(TRIPS.error) note+='Revenue could not be read ('+esc(TRIPS.error)+'), so the 25% comparison is hidden.';
@@ -1113,6 +1127,7 @@ function drillRows(g,ym,year){
     rows.push({date:e.date,group:grp,item:c?c.name:'',detail:[e.place,e.plate,e.remark].filter(Boolean).join(' · '),by:e.by||'',amount:amt,note:spread?`₱${n(e.amount).toLocaleString('en-PH',{minimumFractionDigits:2})} spread over ${c.type==='yearly'?12:3} months (${parts.length} in this view)`:''});
   });
   if(g==='*'||g===FLEET_GROUP) FLEET.maintenance.forEach(m=>{ const mo=monthOf(m.date); if(!inScope(mo)) return; rows.push({date:m.date,group:FLEET_GROUP,item:m.category||m.type||'Maintenance',detail:[m.plate,m.description||m.remark||m.notes].filter(Boolean).join(' · '),by:'Fleet',amount:n(m.amount),note:''}); });
+  if((g==='*'||g===PAYROLL_TRIP_GROUP)&&PAYROLL.loaded) (PAYROLL.tripExtra||[]).forEach(s=>{ const mo=s.date.slice(0,7); if(!inScope(mo)) return; rows.push({date:s.date,group:PAYROLL_TRIP_GROUP,item:s.name,detail:[s.thirteenth?'13th month ₱'+s.thirteenth.toLocaleString('en-PH'):'',s.bonus?'bonus ₱'+s.bonus.toLocaleString('en-PH'):'',s.otherPay?'other pay ₱'+s.otherPay.toLocaleString('en-PH'):''].filter(Boolean).join(' · '),by:'Payroll',amount:s.total,note:''}); });
   if((g==='*'||g===PAYROLL_GROUP)&&PAYROLL.loaded) PAYROLL.list.forEach(s=>{ if(s.superseded) return; const mo=s.start.slice(0,7); if(!inScope(mo)) return; rows.push({date:s.start,group:PAYROLL_GROUP,item:s.name,detail:'Pay period '+s.start+' → '+(s.end||'?'),by:'Payroll',amount:s.gross,note:''}); });
   rows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return rows;
